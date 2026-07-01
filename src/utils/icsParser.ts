@@ -86,18 +86,30 @@ export function parseICS(
       }
 
       currentEvent.type = finalType;
-      if (finalType === 'cancelled') {
+      
+      // Determine if this is a session in a past month (earlier than the 1st of the current month)
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0-indexed
+      const currentMonthStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      
+      const isPastMonth = currentEvent.date && currentEvent.date < currentMonthStartStr;
+
+      if (finalType === 'cancelled' || isPastMonth) {
         currentEvent.price = 0;
         currentEvent.hasBabysitterFee = false;
         currentEvent.babysitterFeeAmount = 0;
         currentEvent.hasOfficeRentFee = false;
         currentEvent.officeRentFeeAmount = 0;
+        currentEvent.paymentStatus = 'paid';
       } else if (finalType === 'face-to-face') {
         currentEvent.hasOfficeRentFee = true;
         currentEvent.officeRentFeeAmount = defaultOfficeRentFee;
+        currentEvent.paymentStatus = 'unpaid';
       } else {
         currentEvent.hasOfficeRentFee = false;
         currentEvent.officeRentFeeAmount = 0;
+        currentEvent.paymentStatus = 'unpaid';
       }
       
       sessions.push(currentEvent as Session);

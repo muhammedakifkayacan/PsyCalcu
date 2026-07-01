@@ -28,8 +28,9 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Session, AppSettings } from './types';
-import { getInitialMockSessions } from './utils/icsParser';
+import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
+import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
 import StatsDashboard from './components/StatsDashboard';
@@ -218,6 +219,78 @@ export default function App() {
       saveUserData(user.uid, settings, sessions).catch(console.error);
     }
   }, [sessions, user, isAuthSyncing]);
+
+  // Automatic Background Calendar Sync on App Load
+  const hasAutoSyncedRef = useRef(false);
+  useEffect(() => {
+    if (isInitialAuthCheckDone && !isAuthLoading && !isAuthSyncing) {
+      if (hasAutoSyncedRef.current) return;
+      hasAutoSyncedRef.current = true;
+
+      const autoSync = async () => {
+        const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled } = settings;
+        if (!calendarSyncEnabled) return;
+
+        let totalNewSessions: Session[] = [];
+        let hasFetchedOnline = false;
+        let hasFetchedFaceToFace = false;
+
+        // Sync Online Calendar
+        if (onlineCalendarWebcalUrl) {
+          try {
+            const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
+            if (response.ok) {
+              const icsText = await response.text();
+              const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online');
+              if (parsed.length > 0) {
+                totalNewSessions = [...totalNewSessions, ...parsed];
+                hasFetchedOnline = true;
+              }
+            }
+          } catch (err) {
+            console.error("Auto-sync online calendar failed:", err);
+          }
+        }
+
+        // Sync Face-to-Face Calendar
+        if (faceToFaceCalendarWebcalUrl) {
+          try {
+            const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
+            if (response.ok) {
+              const icsText = await response.text();
+              const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face');
+              if (parsed.length > 0) {
+                totalNewSessions = [...totalNewSessions, ...parsed];
+                hasFetchedFaceToFace = true;
+              }
+            }
+          } catch (err) {
+            console.error("Auto-sync face-to-face calendar failed:", err);
+          }
+        }
+
+        if (totalNewSessions.length > 0) {
+          handleImportSessions(totalNewSessions);
+          
+          let syncMsg = "Takvimleriniz arka planda otomatik eşitlendi: ";
+          if (hasFetchedOnline && hasFetchedFaceToFace) {
+            syncMsg += "Online ve Yüzyüze seanslar güncellendi.";
+          } else if (hasFetchedOnline) {
+            syncMsg += "Online seanslar güncellendi.";
+          } else if (hasFetchedFaceToFace) {
+            syncMsg += "Yüzyüze seanslar güncellendi.";
+          }
+          showToast(syncMsg, 'info');
+        }
+      };
+
+      // Run with a slight delay so startup animation & layout render first
+      const timer = setTimeout(() => {
+        autoSync();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, settings]);
 
   const handleAuthSuccess = async (currentUser: User) => {
     // onAuthStateChanged is the master of data loading; just reset ref to force fetch
@@ -1662,6 +1735,14 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Email Report Generator Component */}
+              <EmailReportGenerator
+                sessions={sessions}
+                settings={settings}
+                showToast={showToast}
+                userEmail={user?.email || undefined}
+              />
             </motion.div>
           )}
         </AnimatePresence>
