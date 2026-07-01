@@ -85,7 +85,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       console.log(`Fetching calendar from: ${calendarUrl}`);
       const fetchResponse = await fetch(calendarUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "User-Agent": "iCal/1.0 (Macintosh; Intel Mac OS X 10.15; compatible;)",
           "Accept": "text/calendar, text/plain, */*"
         }
       });
@@ -95,6 +95,12 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       }
 
       const icsData = await fetchResponse.text();
+      
+      // Check if the returned content is HTML instead of a valid iCalendar file
+      if (icsData.trim().startsWith("<html") || icsData.trim().startsWith("<!DOCTYPE") || icsData.trim().startsWith("<!doctype")) {
+        throw new Error("Apple sunucusu takvim dosyası yerine bir web sayfası (HTML) döndürdü. Lütfen iCloud takviminizi herkese açık (Public) paylaştığınızdan ve linki eksiksiz kopyaladığınızdan emin olun. Ayrıca takvim isminin Türkçe karakter içermediğini kontrol edin.");
+      }
+
       res.setHeader("Content-Type", "text/calendar");
       res.send(icsData);
     } catch (err: any) {
