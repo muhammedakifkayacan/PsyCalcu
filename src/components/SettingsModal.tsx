@@ -44,7 +44,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" id="settings-modal-overlay">
       <div 
-        className="w-full max-w-md bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col"
+        className="w-full max-w-md bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh]"
         id="settings-modal-content"
       >
         {/* Header */}

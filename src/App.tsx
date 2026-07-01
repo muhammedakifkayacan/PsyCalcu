@@ -158,9 +158,28 @@ export default function App() {
               showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Bulut verisi çekilirken hata:", error);
-          showToast('Bulut verileri eşitlenirken bir hata oluştu.', 'error');
+          
+          // Graceful fallback to local storage on offline/network errors
+          const savedSessions = localStorage.getItem('psycalcu_sessions');
+          const savedSettings = localStorage.getItem('psycalcu_settings');
+          if (savedSessions) {
+            try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
+          }
+          if (savedSettings) {
+            try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
+          }
+          
+          const isOfflineErr = error?.message?.toLowerCase().includes('offline') || 
+                              error?.code?.toLowerCase().includes('offline') || 
+                              !navigator.onLine;
+                              
+          if (isOfflineErr) {
+            showToast('Şu anda çevrimdışısınız. Yerel verileriniz yüklendi; bağlantı geldiğinde bulut ile eşitlenecektir.', 'info');
+          } else {
+            showToast('Bulut verileri eşitlenirken bir sorun oluştu, yerel verileriniz kullanılıyor.', 'error');
+          }
         } finally {
           setIsAuthSyncing(false);
         }
@@ -754,10 +773,10 @@ export default function App() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs">
+        <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setActiveTab('agenda')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'agenda' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
@@ -765,7 +784,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'stats' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
@@ -773,7 +792,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('debts')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
@@ -781,7 +800,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('sync')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'sync' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
@@ -789,7 +808,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('backup')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'backup' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
@@ -1689,7 +1708,7 @@ export default function App() {
 
       {/* Toast Notification Overlay */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 bg-white border border-slate-100 shadow-xl rounded-2xl flex gap-3 items-start animate-slide-in-right" id="toast-overlay">
+        <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm w-auto sm:w-full p-4 bg-white border border-slate-100 shadow-xl rounded-2xl flex gap-3 items-start animate-slide-in-right" id="toast-overlay">
           <div className={`p-2 rounded-xl shrink-0 ${
             toast.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
             toast.type === 'error' ? 'bg-rose-50 text-rose-600' :
