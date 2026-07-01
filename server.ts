@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import "dotenv/config";
@@ -69,21 +70,22 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
   // Proxy endpoint for calendar (.ics) sync
   app.get("/api/proxy-ical", async (req, res) => {
+    let calendarUrl = req.query.url as string;
     try {
-      let calendarUrl = req.query.url as string;
       if (!calendarUrl) {
         return res.status(400).json({ error: "Lütfen geçerli bir takvim URL'si belirtin." });
       }
 
       // Handle webcal:// protocol by switching to https://
-      if (calendarUrl.startsWith("webcal://")) {
-        calendarUrl = "https://" + calendarUrl.substring(9);
-      } else if (calendarUrl.startsWith("webcal:")) {
-        calendarUrl = "https:" + calendarUrl.substring(7);
+      let normalizedUrl = calendarUrl;
+      if (normalizedUrl.startsWith("webcal://")) {
+        normalizedUrl = "https://" + normalizedUrl.substring(9);
+      } else if (normalizedUrl.startsWith("webcal:")) {
+        normalizedUrl = "https:" + normalizedUrl.substring(7);
       }
 
-      console.log(`Fetching calendar from: ${calendarUrl}`);
-      const fetchResponse = await fetch(calendarUrl, {
+      console.log(`Fetching calendar from: ${normalizedUrl}`);
+      const fetchResponse = await fetch(normalizedUrl, {
         headers: {
           "User-Agent": "iCal/1.0 (Macintosh; Intel Mac OS X 10.15; compatible;)",
           "Accept": "text/calendar, text/plain, */*"
@@ -96,6 +98,29 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
       const icsData = await fetchResponse.text();
       
+      // Save diagnostics log for debugging sync issue
+      try {
+        const diagnostics = {
+          timestamp: new Date().toISOString(),
+          originalUrl: calendarUrl,
+          normalizedUrl,
+          status: fetchResponse.status,
+          contentType: fetchResponse.headers.get("content-type"),
+          contentLength: icsData.length,
+          preview: icsData.substring(0, 3000), // First 3000 chars
+          hasVcalendar: icsData.includes("BEGIN:VCALENDAR"),
+          hasVevent: icsData.includes("BEGIN:VEVENT")
+        };
+        fs.writeFileSync(
+          path.join(process.cwd(), "src", "debug_log.json"),
+          JSON.stringify(diagnostics, null, 2),
+          "utf-8"
+        );
+        console.log("Diagnostics logged to src/debug_log.json");
+      } catch (logErr) {
+        console.error("Failed to write debug log:", logErr);
+      }
+
       // Check if the returned content is HTML instead of a valid iCalendar file
       if (icsData.trim().startsWith("<html") || icsData.trim().startsWith("<!DOCTYPE") || icsData.trim().startsWith("<!doctype")) {
         throw new Error("Apple sunucusu takvim dosyası yerine bir web sayfası (HTML) döndürdü. Lütfen iCloud takviminizi herkese açık (Public) paylaştığınızdan ve linki eksiksiz kopyaladığınızdan emin olun. Ayrıca takvim isminin Türkçe karakter içermediğini kontrol edin.");
@@ -105,6 +130,19 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       res.send(icsData);
     } catch (err: any) {
       console.error("Calendar fetch error:", err);
+      // Log failure diagnostics
+      try {
+        const diagnostics = {
+          timestamp: new Date().toISOString(),
+          originalUrl: calendarUrl,
+          error: err?.message || err
+        };
+        fs.writeFileSync(
+          path.join(process.cwd(), "src", "debug_log.json"),
+          JSON.stringify(diagnostics, null, 2),
+          "utf-8"
+        );
+      } catch (logErr) {}
       res.status(500).json({ error: `Takvim verisi çekilemedi: ${err?.message || err}` });
     }
   });

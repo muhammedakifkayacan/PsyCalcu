@@ -13,9 +13,12 @@ export function parseICS(
 ): Session[] {
   const sessions: Session[] = [];
   
-  // RFC 5545 Unfolding: Combine lines split by CRLF followed by a space or horizontal tab
-  const unfoldedText = icsText.replace(/\r?\n[ \t]/g, '');
-  const lines = unfoldedText.split(/\r?\n/);
+  // Normalize all newlines to standard \n to support CRLF (\r\n), LF (\n) and old Mac CR (\r) line endings.
+  const normalizedText = icsText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
+  // RFC 5545 Unfolding: Combine lines split by a newline followed by a space or horizontal tab
+  const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
+  const lines = unfoldedText.split('\n');
   
   let currentEvent: Partial<Session> & { dtStartRaw?: string; descriptionRaw?: string } | null = null;
   
@@ -23,7 +26,8 @@ export function parseICS(
     const line = lines[i].trim();
     if (!line) continue;
     
-    if (line === 'BEGIN:VEVENT') {
+    const upperLine = line.toUpperCase();
+    if (upperLine === 'BEGIN:VEVENT' || upperLine.startsWith('BEGIN:VEVENT')) {
       currentEvent = {
         id: 'ics_' + Math.random().toString(36).substr(2, 9),
         clientName: 'İsimsiz Seans',
@@ -39,20 +43,27 @@ export function parseICS(
         isSyncedFromCalendar: true,
         syncedCalendarType: forcedType
       };
-    } else if (line === 'END:VEVENT' && currentEvent) {
+    } else if ((upperLine === 'END:VEVENT' || upperLine.startsWith('END:VEVENT')) && currentEvent) {
       // Process date and time from dtStartRaw
       if (currentEvent.dtStartRaw) {
-        // Handle formats like: 20260630T090000Z or DTSTART;TZID=...:20260630T090000
-        const dateTimeStr = currentEvent.dtStartRaw.split(':').pop() || '';
-        if (dateTimeStr.length >= 8) {
-          const year = dateTimeStr.substring(0, 4);
-          const month = dateTimeStr.substring(4, 6);
-          const day = dateTimeStr.substring(6, 8);
+        // Find everything after the first colon to get the raw date-time value
+        const firstColonIndex = currentEvent.dtStartRaw.indexOf(':');
+        const rawValue = firstColonIndex !== -1 ? currentEvent.dtStartRaw.substring(firstColonIndex + 1).trim() : '';
+        
+        // Remove standard formatting symbols like - and : to normalize
+        // e.g. "2026-07-01T18:30:00" -> "20260701T183000"
+        const cleanValue = rawValue.replace(/[-:]/g, ''); 
+        
+        if (cleanValue.length >= 8) {
+          const year = cleanValue.substring(0, 4);
+          const month = cleanValue.substring(4, 6);
+          const day = cleanValue.substring(6, 8);
           currentEvent.date = `${year}-${month}-${day}`;
           
-          if (dateTimeStr.includes('T') && dateTimeStr.length >= 13) {
-            const hour = dateTimeStr.substring(9, 11);
-            const minute = dateTimeStr.substring(11, 13);
+          if (cleanValue.includes('T') && cleanValue.indexOf('T') + 5 <= cleanValue.length) {
+            const tIndex = cleanValue.indexOf('T');
+            const hour = cleanValue.substring(tIndex + 1, tIndex + 3);
+            const minute = cleanValue.substring(tIndex + 3, tIndex + 5);
             currentEvent.time = `${hour}:${minute}`;
           }
         }
@@ -97,14 +108,19 @@ export function parseICS(
         // Extract base property name (e.g. SUMMARY;CHARSET=UTF-8 -> SUMMARY)
         const key = keyPart.split(';')[0].toUpperCase();
         
+        const cleanVal = valPart
+          .replace(/\\,/g, ',')
+          .replace(/\\;/g, ';')
+          .replace(/\\n/gi, '\n');
+        
         if (key === 'SUMMARY') {
-          currentEvent.clientName = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+          currentEvent.clientName = cleanVal;
         } else if (key === 'DTSTART') {
           currentEvent.dtStartRaw = line;
         } else if (key === 'DESCRIPTION') {
-          currentEvent.descriptionRaw = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+          currentEvent.descriptionRaw = cleanVal;
         } else if (key === 'NOTE' || key === 'COMMENT') {
-          currentEvent.notes = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+          currentEvent.notes = cleanVal;
         }
       }
     }
