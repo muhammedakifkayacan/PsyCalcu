@@ -76,12 +76,22 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         return res.status(400).json({ error: "Lütfen geçerli bir takvim URL'si belirtin." });
       }
 
+      // Trim leading/trailing whitespaces
+      calendarUrl = calendarUrl.trim();
+
       // Handle webcal:// protocol by switching to https://
       let normalizedUrl = calendarUrl;
       if (normalizedUrl.startsWith("webcal://")) {
         normalizedUrl = "https://" + normalizedUrl.substring(9);
       } else if (normalizedUrl.startsWith("webcal:")) {
         normalizedUrl = "https:" + normalizedUrl.substring(7);
+      }
+
+      // Safe URL parsing & encoding for Turkish/Unicode/special characters in paths
+      try {
+        normalizedUrl = encodeURI(decodeURI(normalizedUrl));
+      } catch (urlErr) {
+        console.error("URL encoding error, using original normalizedUrl:", urlErr);
       }
 
       console.log(`Fetching calendar from: ${normalizedUrl}`);

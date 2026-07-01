@@ -580,9 +580,28 @@ export default function App() {
 
   const handleImportSessions = (newSessions: Session[]) => {
     setSessions(prev => {
-      const existingIds = new Set(prev.map(s => s.id));
-      const filteredNew = newSessions.filter(s => !existingIds.has(s.id));
-      return [...prev, ...filteredNew];
+      const sessionsMap = new Map(prev.map(s => [s.id, s]));
+      
+      newSessions.forEach(ns => {
+        if (sessionsMap.has(ns.id)) {
+          const existing = sessionsMap.get(ns.id)!;
+          // Merge changed calendar fields, preserving custom user edits on price/payment status
+          sessionsMap.set(ns.id, {
+            ...existing,
+            clientName: ns.clientName,
+            date: ns.date,
+            time: ns.time,
+            duration: ns.duration,
+            notes: ns.notes || existing.notes,
+            price: existing.price !== settings.defaultSessionPrice ? existing.price : ns.price,
+            paymentStatus: existing.paymentStatus || ns.paymentStatus,
+          });
+        } else {
+          sessionsMap.set(ns.id, ns);
+        }
+      });
+      
+      return Array.from(sessionsMap.values());
     });
   };
 
@@ -885,7 +904,7 @@ export default function App() {
             >
               
               {/* LEFT Column: Financial Overview */}
-              <div className="lg:col-span-4 flex flex-col gap-6">
+              <div className="lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1">
                 
                 {/* Balance Card */}
                 <div className="bg-[#6b705c] p-6 rounded-[2rem] text-white shadow-lg relative overflow-hidden" id="balance-card">
@@ -980,7 +999,7 @@ export default function App() {
                 </div>
 
               {/* RIGHT Column: Agenda & Calendar Sync */}
-              <div className="lg:col-span-8 flex flex-col gap-6">
+              <div className="lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2">
                 
                 {/* Horizontal Date Ribbon Picker */}
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">

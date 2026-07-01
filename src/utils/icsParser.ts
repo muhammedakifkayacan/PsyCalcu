@@ -13,8 +13,11 @@ export function parseICS(
 ): Session[] {
   const sessions: Session[] = [];
   
+  // Remove Byte Order Mark (BOM) if present
+  const cleanText = icsText.replace(/^\uFEFF/, '').replace(/^\uFFFE/, '');
+
   // Normalize all newlines to standard \n to support CRLF (\r\n), LF (\n) and old Mac CR (\r) line endings.
-  const normalizedText = icsText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalizedText = cleanText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   
   // RFC 5545 Unfolding: Combine lines split by a newline followed by a space or horizontal tab
   const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
@@ -115,6 +118,9 @@ export function parseICS(
         
         if (key === 'SUMMARY') {
           currentEvent.clientName = cleanVal;
+        } else if (key === 'UID') {
+          // Use a clean, sanitized UID from the iCal feed as the stable session ID
+          currentEvent.id = 'ics_' + cleanVal.replace(/[^a-zA-Z0-9_\-]/g, '').substring(0, 50);
         } else if (key === 'DTSTART') {
           currentEvent.dtStartRaw = line;
         } else if (key === 'DESCRIPTION') {
