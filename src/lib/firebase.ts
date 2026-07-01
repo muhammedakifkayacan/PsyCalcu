@@ -40,12 +40,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Initialize Firestore with offline persistence enabled
+// Initialize Firestore with offline persistence enabled and specify the correct databaseId
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   })
-});
+}, "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222");
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
