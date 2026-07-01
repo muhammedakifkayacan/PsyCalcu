@@ -118,16 +118,16 @@ export default function SessionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" id="session-modal-overlay">
       <div 
-        className="w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col"
+        className="w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh]"
         id="session-modal-content"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]">
+        <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7] shrink-0">
           <div>
-            <h3 className="text-lg font-serif text-[#6b705c] italic">
+            <h3 className="text-base sm:text-lg font-serif text-[#6b705c] italic">
               {sessionToEdit ? 'Seans Bilgilerini Düzenle' : 'Yeni Seans Kaydı'}
             </h3>
-            <p className="text-xs text-slate-400">Danışan seans detaylarını girin</p>
+            <p className="text-[10px] sm:text-xs text-slate-400">Danışan seans detaylarını girin</p>
           </div>
           <button 
             onClick={onClose}
@@ -138,10 +138,10 @@ export default function SessionModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-3.5 flex-1 overflow-y-auto">
           {/* Client Name */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Danışan Adı Soyadı</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Danışan Adı Soyadı</label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -149,7 +149,7 @@ export default function SessionModal({
                 required
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
                 placeholder="Örn. Ahmet Yılmaz"
               />
             </div>
@@ -157,115 +157,118 @@ export default function SessionModal({
 
           {/* Session Type Selector */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Tipi</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Tipi</label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => handleTypeChange('online')}
-                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
                   type === 'online'
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-2 ring-emerald-100'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
-                <Laptop className="w-4 h-4" />
+                <Laptop className="w-3.5 h-3.5" />
                 Online
               </button>
               <button
                 type="button"
                 onClick={() => handleTypeChange('face-to-face')}
-                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
                   type === 'face-to-face'
                     ? 'bg-amber-50 border-amber-300 text-amber-800 ring-2 ring-amber-100'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
-                <MapPin className="w-4 h-4" />
+                <MapPin className="w-3.5 h-3.5" />
                 Yüzyüze
               </button>
               <button
                 type="button"
                 onClick={() => handleTypeChange('cancelled')}
-                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
                   type === 'cancelled'
                     ? 'bg-red-50 border-red-200 text-red-800 ring-2 ring-red-50'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
-                <Ban className="w-4 h-4" />
+                <Ban className="w-3.5 h-3.5" />
                 İptal
               </button>
             </div>
           </div>
 
-          {/* Date, Time, Duration */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Core Fields Grid: 2 rows x 2 columns (Date, Time, Duration, Price) */}
+          <div className="grid grid-cols-2 gap-3.5">
+            {/* Row 1, Col 1: Tarih */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Tarih</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Tarih</label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
                 <input
                   type="date"
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full pl-8 pr-2 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
             </div>
 
+            {/* Row 1, Col 2: Saat */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Saat</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Saat</label>
               <div className="relative">
-                <Clock className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <Clock className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
                 <input
                   type="time"
                   required
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full pl-8 pr-2 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
             </div>
 
+            {/* Row 2, Col 1: Süre */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Süre (Dk)</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Süre</label>
               <select
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full px-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] h-[34px]"
+                className="w-full px-2.5 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] h-[34px]"
               >
                 <option value="30">30 Dakika</option>
                 <option value="45">45 Dakika</option>
-                <option value="50">50 Dakika (Standart)</option>
+                <option value="50">50 Dk (Standart)</option>
                 <option value="60">60 Dakika</option>
                 <option value="90">90 Dakika</option>
               </select>
             </div>
-          </div>
-          {/* Pricing & Expenses Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-            {/* Price input */}
+
+            {/* Row 2, Col 2: Seans Ücreti */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Ücreti (₺)</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Ücreti (₺)</label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs font-bold text-[#a5a58d]">₺</span>
+                <span className="absolute left-3 top-2 text-xs font-bold text-[#a5a58d]">₺</span>
                 <input
                   type="number"
                   required
                   min="0"
                   value={price}
                   onChange={(e) => setPrice(Number(e.target.value))}
-                  className="w-full pl-8 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full pl-7 pr-2 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
-              <p className="text-[10px] text-slate-400">Danışandan alınacak seans ücreti.</p>
             </div>
+          </div>
 
+          {/* Expenses Settings */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
             {/* Babysitter Fee Switcher */}
-            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between">
+            <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı?</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
@@ -274,29 +277,29 @@ export default function SessionModal({
                     className="sr-only peer"
                     disabled={type === 'cancelled'}
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                 </label>
               </div>
 
               {hasBabysitterFee && (
-                <div className="mt-2 flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-500 shrink-0">Tutar:</span>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
                   <input
                     type="number"
                     min="0"
                     value={babysitterFeeAmount}
                     onChange={(e) => setBabysitterFeeAmount(Number(e.target.value))}
-                    className="w-full px-2 py-0.5 text-xs bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-500">₺</span>
+                  <span className="text-[9px] text-slate-500">₺</span>
                 </div>
               )}
             </div>
 
             {/* Office Rent Fee Switcher */}
-            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between">
+            <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira?</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
@@ -305,21 +308,21 @@ export default function SessionModal({
                     className="sr-only peer"
                     disabled={type === 'cancelled'}
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                 </label>
               </div>
 
               {hasOfficeRentFee && (
-                <div className="mt-2 flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-500 shrink-0">Tutar:</span>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
                   <input
                     type="number"
                     min="0"
                     value={officeRentFeeAmount}
                     onChange={(e) => setOfficeRentFeeAmount(Number(e.target.value))}
-                    className="w-full px-2 py-0.5 text-xs bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-500">₺</span>
+                  <span className="text-[9px] text-slate-500">₺</span>
                 </div>
               )}
             </div>
@@ -327,21 +330,21 @@ export default function SessionModal({
 
           {/* Notes */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Notları (Özel)</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Notları (Özel)</label>
             <div className="relative">
-              <FileText className="absolute left-3 top-3.5 w-4 h-4 text-[#a5a58d]" />
+              <FileText className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none"
-                placeholder="Örn. Geçmiş terapi notları, ödeme planı veya ofis oda bilgisi..."
+                rows={1}
+                className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none"
+                placeholder="Geçmiş terapi notları, ödeme planı veya oda bilgisi..."
               />
             </div>
           </div>
 
           {/* Actions */}
-          <div className="pt-4 border-t border-[#f5f5f0] flex gap-3 justify-end">
+          <div className="pt-3 border-t border-[#f5f5f0] flex gap-3 justify-end shrink-0">
             <button
               type="button"
               onClick={onClose}
