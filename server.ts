@@ -1,0 +1,90 @@
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
+import "dotenv/config";
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json());
+
+  // API Route for Gemini Summary
+  app.post("/api/gemini/summarize", async (req, res) => {
+    try {
+      const { date, sessions, dailyMetrics } = req.body;
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({
+          error: "GEMINI_API_KEY asistan anahtarı ortam değişkenlerinde tanımlı değil. Lütfen Settings > Secrets bölümünden ekleyin."
+        });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const prompt = `Sen psikologlar için geliştirilmiş PsyCalcu uygulamasının profesyonel ve pratik yapay zeka asistanısın. 
+Kullanıcının ${date} tarihindeki günlük seans listesi ve muhasebe özeti aşağıdadır. Bu verileri analiz ederek psikoloğa son derece kısa, net, "az ve öz" bir günlük değerlendirme raporu sun. Gereksiz uzun cümlelerden, aşırı süslü ifadelerden kaçın.
+
+GÜNLÜK VERİLER:
+Tarih: ${date}
+Aktif Seans Sayısı: ${dailyMetrics.count}
+Toplam Brüt Gelir: ₺${dailyMetrics.gross}
+Bakıcı Gideri: ₺${dailyMetrics.babysitter}
+Ofis Kira Gideri: ₺${dailyMetrics.officeRent}
+Net Günlük Kâr: ₺${dailyMetrics.net}
+
+SEANSLAR:
+${sessions && sessions.length > 0 
+  ? sessions.map((s: any) => `- Danışan: ${s.clientName}, Saat: ${s.time}, Tipi: ${s.type === 'cancelled' ? 'İptal' : s.type === 'face-to-face' ? 'Yüzyüze' : 'Online'}, Ücret: ₺${s.price}, Durum: ${s.paymentStatus === 'paid' ? 'Ödendi' : 'Ödenmedi'}, Notlar: ${s.notes || 'Yok'}`).join('\n')
+  : 'Bu tarihte seans bulunmamaktadır.'
+}
+
+Lütfen yanıtını Türkçe olarak yaz. Yanıtın son derece kompakt, okunması kolay ve net olmalı. Uzun paragraflar yazma. Sadece şu 3 maddeyi içersin:
+
+- **Günün Değerlendirmesi:** Seans yoğunluğu, online/yüz yüze dağılımı ve iptaller hakkında tek bir net cümle.
+- **Finansal Durum & Tahsilat:** Günün net kârı ve varsa ödenmemiş seanslar için çok kısa tahsilat önerisi (tek cümle).
+- **Günün Sözü / Öneri:** Psikoloğun motivasyonu için tek bir kısa, yapıcı cümle.
+
+Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("Gemini API Error:", error);
+      res.status(500).json({ error: error?.message || "Yapay zeka özeti üretilirken bir hata oluştu." });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+startServer();

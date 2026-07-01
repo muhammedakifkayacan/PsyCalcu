@@ -26,6 +26,7 @@ import {
   Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import { Session, AppSettings } from './types';
 import { getInitialMockSessions } from './utils/icsParser';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -224,6 +225,22 @@ export default function App() {
   const [sheetLinkInput, setSheetLinkInput] = useState('');
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
 
+  // AI Daily Summary state
+  const [aiSummaries, setAiSummaries] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_ai_summaries');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+
+  const isPastDate = (dateStr: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return dateStr < todayStr;
+  };
+
   // Generate date ribbon (7 days centered around selected date or today)
   const dateRibbon = useMemo(() => {
     const ribbon = [];
@@ -374,6 +391,11 @@ export default function App() {
 
   // CRUD actions
   const handleSaveSession = (savedSession: Session) => {
+    const existing = sessions.find(s => s.id === savedSession.id);
+    if (existing && isPastDate(existing.date)) {
+      showToast('Geçmiş tarihlerdeki seanslar düzenlenemez! Muhasebesi yapılmıştır.', 'error');
+      return;
+    }
     setSessions(prev => {
       const exists = prev.some(s => s.id === savedSession.id);
       if (exists) {
@@ -385,6 +407,11 @@ export default function App() {
   };
 
   const handleDeleteSession = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (session && isPastDate(session.date)) {
+      showToast('Geçmiş tarihlerdeki seanslar silinemez! Muhasebesi yapılmıştır.', 'error');
+      return;
+    }
     triggerConfirm(
       'Seansı Sil',
       'Bu seansı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
@@ -400,6 +427,11 @@ export default function App() {
   };
 
   const handleToggleType = (id: string, currentType: 'online' | 'face-to-face' | 'cancelled') => {
+    const session = sessions.find(s => s.id === id);
+    if (session && isPastDate(session.date)) {
+      showToast('Geçmiş tarihlerdeki seansların tipi değiştirilemez! Muhasebesi yapılmıştır.', 'error');
+      return;
+    }
     const nextTypeMap: Record<string, 'online' | 'face-to-face' | 'cancelled'> = {
       'online': 'face-to-face',
       'face-to-face': 'cancelled',
@@ -433,6 +465,11 @@ export default function App() {
   };
 
   const handleToggleBabysitter = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (session && isPastDate(session.date)) {
+      showToast('Geçmiş tarihlerdeki seansların bakıcı ücreti değiştirilemez! Muhasebesi yapılmıştır.', 'error');
+      return;
+    }
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
         const hasFee = !s.hasBabysitterFee;
@@ -484,6 +521,42 @@ export default function App() {
       return s;
     }));
     showToast(`${clientName} adlı danışanın tüm borçları ödendi olarak işaretlendi!`, 'success');
+  };
+
+  const handleGenerateSummary = async () => {
+    setIsSummaryLoading(true);
+    try {
+      const response = await fetch("/api/gemini/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          sessions: filteredSessions,
+          dailyMetrics: dailySummary
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Yapay zeka özeti alınamadı.");
+      }
+
+      const data = await response.json();
+      const summaryText = data.text;
+
+      setAiSummaries(prev => {
+        const updated = { ...prev, [selectedDate]: summaryText };
+        localStorage.setItem('psycalcu_ai_summaries', JSON.stringify(updated));
+        return updated;
+      });
+
+      showToast('Günün değerlendirmesi başarıyla oluşturuldu!', 'success');
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Özet oluşturulurken bir hata meydana geldi.', 'error');
+    } finally {
+      setIsSummaryLoading(false);
+    }
   };
 
   const handleImportSessions = (newSessions: Session[]) => {
@@ -724,13 +797,22 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            Takvim Entegrasyon Aktif
-          </div>
+          {settings.onlineCalendarWebcalUrl || settings.faceToFaceCalendarWebcalUrl ? (
+            <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100" id="calendar-sync-active-pill">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              Takvim Entegrasyonu Aktif
+            </div>
+          ) : (
+            <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100" id="calendar-sync-inactive-pill">
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 animate-pulse"></span>
+              </span>
+              Takvim Linki Eklenmedi
+            </div>
+          )}
 
           {/* Bulut Senkronizasyon Durumu Pill */}
           {user && (
@@ -1060,22 +1142,40 @@ export default function App() {
                             <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0">
                               {/* Toggle Type */}
                               <button
-                                onClick={() => handleToggleType(session.id, session.type)}
-                                className="p-1.5 text-slate-400 hover:text-[#6b705c] hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                                title="Seans Tipini Değiştir"
+                                onClick={() => {
+                                  if (isPastDate(session.date)) {
+                                    showToast('Geçmiş seansların tipi değiştirilemez! (Muhasebe yapılmıştır)', 'error');
+                                    return;
+                                  }
+                                  handleToggleType(session.id, session.type);
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  isPastDate(session.date)
+                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
+                                    : 'text-slate-400 hover:text-[#6b705c] hover:bg-slate-50'
+                                }`}
+                                title={isPastDate(session.date) ? 'Geçmiş seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Toggle Babysitter */}
                               <button
-                                onClick={() => handleToggleBabysitter(session.id)}
+                                onClick={() => {
+                                  if (isPastDate(session.date)) {
+                                    showToast('Geçmiş seansların bakıcı ücreti değiştirilemez! (Muhasebe yapılmıştır)', 'error');
+                                    return;
+                                  }
+                                  handleToggleBabysitter(session.id);
+                                }}
                                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                  session.hasBabysitterFee 
+                                  isPastDate(session.date)
+                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
+                                    : session.hasBabysitterFee 
                                     ? 'text-blue-500 bg-blue-50/50 hover:bg-blue-50' 
                                     : 'text-slate-300 hover:text-blue-400'
                                 }`}
-                                title="Bakıcı Ücretini Aç/Kapat"
+                                title={isPastDate(session.date) ? 'Geçmiş seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
                               >
                                 <span className="text-xs font-bold font-serif">👶</span>
                               </button>
@@ -1083,20 +1183,38 @@ export default function App() {
                               {/* Edit */}
                               <button
                                 onClick={() => {
+                                  if (isPastDate(session.date)) {
+                                    showToast('Geçmiş tarihlerdeki seanslar düzenlenemez! (Muhasebe yapılmıştır)', 'error');
+                                    return;
+                                  }
                                   setEditingSession(session);
                                   setIsSessionModalOpen(true);
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                                title="Seansı Düzenle"
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  isPastDate(session.date)
+                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
+                                    : 'text-slate-400 hover:text-amber-600 hover:bg-slate-50'
+                                }`}
+                                title={isPastDate(session.date) ? 'Geçmiş seanslar düzenlenemez' : 'Seansı Düzenle'}
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Delete */}
                               <button
-                                onClick={() => handleDeleteSession(session.id)}
-                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                                title="Seansı Sil"
+                                onClick={() => {
+                                  if (isPastDate(session.date)) {
+                                    showToast('Geçmiş tarihlerdeki seanslar silinemez! (Muhasebe yapılmıştır)', 'error');
+                                    return;
+                                  }
+                                  handleDeleteSession(session.id);
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  isPastDate(session.date)
+                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
+                                    : 'text-slate-300 hover:text-rose-600 hover:bg-slate-50'
+                                }`}
+                                title={isPastDate(session.date) ? 'Geçmiş seanslar silinemez' : 'Seansı Sil'}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1125,6 +1243,77 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* AI Summary Card */}
+                <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f5f5f0] pb-5">
+                    <div>
+                      <h3 className="text-lg font-serif text-[#6b705c] flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-[#cb997e]" />
+                        Yapay Zeka Günlük Değerlendirmesi
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Günün seanslarını, finansal dengesini ve klinik yoğunluğunu analiz edin.
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={handleGenerateSummary}
+                      disabled={isSummaryLoading}
+                      className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                        isSummaryLoading 
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                          : 'bg-[#cb997e] hover:bg-[#b58368] text-white'
+                      }`}
+                    >
+                      {isSummaryLoading ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                          Özetleniyor...
+                        </>
+                      ) : aiSummaries[selectedDate] ? (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Analizi Yenile
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Yapay Zeka ile Analiz Et
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="mt-6">
+                    {isSummaryLoading ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                        <div className="relative w-10 h-10">
+                          <div className="absolute inset-0 rounded-full border-2 border-[#cb997e]/20 animate-ping" />
+                          <div className="absolute inset-0 rounded-full border-2 border-t-[#cb997e] animate-spin" />
+                        </div>
+                        <p className="text-xs text-slate-500 animate-pulse font-medium">
+                          Gün seansları analiz ediliyor ve klinik rapor oluşturuluyor...
+                        </p>
+                      </div>
+                    ) : aiSummaries[selectedDate] ? (
+                      <div className="prose prose-sm max-w-none text-slate-600 leading-relaxed text-sm markdown-body">
+                        <ReactMarkdown>{aiSummaries[selectedDate]}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400 space-y-3">
+                        <Sparkles className="w-10 h-10 text-[#a5a58d]/40 stroke-[1.5]" />
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-600">Henüz Değerlendirme Yapılmadı</h4>
+                          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                            Günün seans dengesini, gelir-gider oranlarını ve yapay zeka klinik asistanınızın önerilerini görmek için yukarıdaki butona tıklayın.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
               </div>
             </motion.div>
           )}
@@ -1317,6 +1506,7 @@ export default function App() {
                 defaultOfficeRentFee={settings.defaultOfficeRentFee}
                 settings={settings}
                 onSaveSettings={(updated) => setSettings(updated)}
+                showToast={showToast}
               />
             </motion.div>
           )}

@@ -11,6 +11,7 @@ interface CalendarSyncGuideProps {
   defaultOfficeRentFee: number;
   settings: AppSettings;
   onSaveSettings: (settings: AppSettings) => void;
+  showToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export default function CalendarSyncGuide({
@@ -20,6 +21,7 @@ export default function CalendarSyncGuide({
   defaultOfficeRentFee,
   settings,
   onSaveSettings,
+  showToast,
 }: CalendarSyncGuideProps) {
   const [dragActive, setDragActive] = useState(false);
   const [importType, setImportType] = useState<'online' | 'face-to-face'>('online');
@@ -66,12 +68,12 @@ export default function CalendarSyncGuide({
           if (parsed.length > 0) {
             onImportSessions(parsed, type);
             const typeLabel = type === 'online' ? 'Online' : 'Yüzyüze';
-            showSuccess(`${parsed.length} adet ${typeLabel} seansı başarıyla takvim (.ics) dosyasından içe aktarıldı!`);
+            showToast(`${parsed.length} adet ${typeLabel} seansı başarıyla takvim (.ics) dosyasından içe aktarıldı!`, 'success');
           } else {
-            alert('Dosya içinde geçerli bir seans (VEVENT) bulunamadı. Lütfen Google, Apple veya Outlook takviminizden dışa aktardığınızdan emin olun.');
+            showToast('Dosya içinde geçerli bir seans (VEVENT) bulunamadı. Lütfen Google, Apple veya Outlook takviminizden dışa aktardığınızdan emin olun.', 'error');
           }
         } catch (err) {
-          alert('Dosya işlenirken bir hata oluştu. Lütfen geçerli bir .ics dosyası seçin.');
+          showToast('Dosya işlenirken bir hata oluştu. Lütfen geçerli bir .ics dosyası seçin.', 'error');
         }
       }
     };
@@ -79,10 +81,7 @@ export default function CalendarSyncGuide({
   };
 
   const showSuccess = (msg: string) => {
-    setSuccessMessage(msg);
-    setTimeout(() => {
-      setSuccessMessage(null);
-    }, 5000);
+    showToast(msg, 'success');
   };
 
   const handleSaveUrls = (e: React.FormEvent) => {
@@ -96,7 +95,10 @@ export default function CalendarSyncGuide({
   };
 
   const handleSyncOnline = () => {
-    if (!onlineUrl) return;
+    if (!onlineUrl) {
+      showToast('Senkronizasyon başarısız: Lütfen önce Online Seanslar Takvim Linki ekleyin.', 'error');
+      return;
+    }
     setIsOnlineSyncing(true);
     setTimeout(() => {
       setIsOnlineSyncing(false);
@@ -127,7 +129,10 @@ export default function CalendarSyncGuide({
   };
 
   const handleSyncFaceToFace = () => {
-    if (!faceToFaceUrl) return;
+    if (!faceToFaceUrl) {
+      showToast('Senkronizasyon başarısız: Lütfen önce Yüzyüze Seanslar Takvim Linki ekleyin.', 'error');
+      return;
+    }
     setIsFaceToFaceSyncing(true);
     setTimeout(() => {
       setIsFaceToFaceSyncing(false);
@@ -322,7 +327,7 @@ export default function CalendarSyncGuide({
               <button
                 type="button"
                 onClick={handleSyncOnline}
-                disabled={isOnlineSyncing || !onlineUrl}
+                disabled={isOnlineSyncing}
                 className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 {isOnlineSyncing ? (
@@ -360,7 +365,7 @@ export default function CalendarSyncGuide({
               <button
                 type="button"
                 onClick={handleSyncFaceToFace}
-                disabled={isFaceToFaceSyncing || !faceToFaceUrl}
+                disabled={isFaceToFaceSyncing}
                 className="w-full py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 {isFaceToFaceSyncing ? (
