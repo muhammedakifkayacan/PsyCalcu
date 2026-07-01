@@ -1,0 +1,363 @@
+import React, { useState, useEffect } from 'react';
+import { X, Calendar, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building } from 'lucide-react';
+import { Session, SessionType } from '../types';
+
+interface SessionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  sessionToEdit?: Session | null;
+  onSave: (session: Session) => void;
+  defaultPrice: number;
+  defaultBabysitterFee: number;
+  defaultOfficeRentFee: number;
+  selectedDate: string; // prefill date
+}
+
+export default function SessionModal({
+  isOpen,
+  onClose,
+  sessionToEdit,
+  onSave,
+  defaultPrice,
+  defaultBabysitterFee,
+  defaultOfficeRentFee,
+  selectedDate,
+}: SessionModalProps) {
+  const [clientName, setClientName] = useState('');
+  const [type, setType] = useState<SessionType>('online');
+  const [date, setDate] = useState(selectedDate);
+  const [time, setTime] = useState('10:00');
+  const [duration, setDuration] = useState(50);
+  const [price, setPrice] = useState(defaultPrice);
+  const [hasBabysitterFee, setHasBabysitterFee] = useState(true);
+  const [babysitterFeeAmount, setBabysitterFeeAmount] = useState(defaultBabysitterFee);
+  const [hasOfficeRentFee, setHasOfficeRentFee] = useState(false);
+  const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState(defaultOfficeRentFee);
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (sessionToEdit) {
+        setClientName(sessionToEdit.clientName);
+        setType(sessionToEdit.type);
+        setDate(sessionToEdit.date);
+        setTime(sessionToEdit.time);
+        setDuration(sessionToEdit.duration);
+        setPrice(sessionToEdit.price);
+        setHasBabysitterFee(sessionToEdit.hasBabysitterFee);
+        setBabysitterFeeAmount(sessionToEdit.babysitterFeeAmount);
+        setHasOfficeRentFee(sessionToEdit.hasOfficeRentFee ?? (sessionToEdit.type === 'face-to-face'));
+        setOfficeRentFeeAmount(sessionToEdit.officeRentFeeAmount ?? defaultOfficeRentFee);
+        setNotes(sessionToEdit.notes || '');
+      } else {
+        // New session
+        setClientName('');
+        setType('online');
+        setDate(selectedDate);
+        setTime('10:00');
+        setDuration(50);
+        setPrice(defaultPrice);
+        setHasBabysitterFee(true);
+        setBabysitterFeeAmount(defaultBabysitterFee);
+        setHasOfficeRentFee(false);
+        setOfficeRentFeeAmount(defaultOfficeRentFee);
+        setNotes('');
+      }
+    }
+  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee]);
+
+  if (!isOpen) return null;
+
+  const handleTypeChange = (newType: SessionType) => {
+    setType(newType);
+    if (newType === 'cancelled') {
+      // Cancellation defaults to ₺0 unless they charge cancellation fee
+      setPrice(0);
+      setHasBabysitterFee(false);
+      setHasOfficeRentFee(false);
+    } else if (newType === 'face-to-face') {
+      if (price === 0) {
+        setPrice(defaultPrice);
+      }
+      setHasBabysitterFee(true);
+      setHasOfficeRentFee(true);
+    } else { // online
+      if (price === 0) {
+        setPrice(defaultPrice);
+      }
+      setHasBabysitterFee(true);
+      setHasOfficeRentFee(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientName.trim()) return;
+
+    const sessionData: Session = {
+      id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
+      clientName: clientName.trim(),
+      type,
+      date,
+      time,
+      duration: Number(duration),
+      price: Number(price),
+      hasBabysitterFee,
+      babysitterFeeAmount: hasBabysitterFee ? Number(babysitterFeeAmount) : 0,
+      hasOfficeRentFee,
+      officeRentFeeAmount: hasOfficeRentFee ? Number(officeRentFeeAmount) : 0,
+      notes: notes.trim(),
+      isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
+      syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined
+    };
+
+    onSave(sessionData);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" id="session-modal-overlay">
+      <div 
+        className="w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col"
+        id="session-modal-content"
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]">
+          <div>
+            <h3 className="text-lg font-serif text-[#6b705c] italic">
+              {sessionToEdit ? 'Seans Bilgilerini Düzenle' : 'Yeni Seans Kaydı'}
+            </h3>
+            <p className="text-xs text-slate-400">Danışan seans detaylarını girin</p>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto">
+          {/* Client Name */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Danışan Adı Soyadı</label>
+            <div className="relative">
+              <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+              <input
+                type="text"
+                required
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                placeholder="Örn. Ahmet Yılmaz"
+              />
+            </div>
+          </div>
+
+          {/* Session Type Selector */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Tipi</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleTypeChange('online')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  type === 'online'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-2 ring-emerald-100'
+                    : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <Laptop className="w-4 h-4" />
+                Online
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTypeChange('face-to-face')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  type === 'face-to-face'
+                    ? 'bg-amber-50 border-amber-300 text-amber-800 ring-2 ring-amber-100'
+                    : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <MapPin className="w-4 h-4" />
+                Yüzyüze
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTypeChange('cancelled')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  type === 'cancelled'
+                    ? 'bg-red-50 border-red-200 text-red-800 ring-2 ring-red-50'
+                    : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <Ban className="w-4 h-4" />
+                İptal
+              </button>
+            </div>
+          </div>
+
+          {/* Date, Time, Duration */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Tarih</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Saat</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <input
+                  type="time"
+                  required
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Süre (Dk)</label>
+              <select
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                className="w-full px-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] h-[34px]"
+              >
+                <option value="30">30 Dakika</option>
+                <option value="45">45 Dakika</option>
+                <option value="50">50 Dakika (Standart)</option>
+                <option value="60">60 Dakika</option>
+                <option value="90">90 Dakika</option>
+              </select>
+            </div>
+          </div>
+          {/* Pricing & Expenses Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            {/* Price input */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Ücreti (₺)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-[#a5a58d]">₺</span>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  value={price}
+                  onChange={(e) => setPrice(Number(e.target.value))}
+                  className="w-full pl-8 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">Danışandan alınacak seans ücreti.</p>
+            </div>
+
+            {/* Babysitter Fee Switcher */}
+            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasBabysitterFee}
+                    onChange={(e) => setHasBabysitterFee(e.target.checked)}
+                    className="sr-only peer"
+                    disabled={type === 'cancelled'}
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                </label>
+              </div>
+
+              {hasBabysitterFee && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-500 shrink-0">Tutar:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={babysitterFeeAmount}
+                    onChange={(e) => setBabysitterFeeAmount(Number(e.target.value))}
+                    className="w-full px-2 py-0.5 text-xs bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500">₺</span>
+                </div>
+              )}
+            </div>
+
+            {/* Office Rent Fee Switcher */}
+            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasOfficeRentFee}
+                    onChange={(e) => setHasOfficeRentFee(e.target.checked)}
+                    className="sr-only peer"
+                    disabled={type === 'cancelled'}
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                </label>
+              </div>
+
+              {hasOfficeRentFee && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-500 shrink-0">Tutar:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={officeRentFeeAmount}
+                    onChange={(e) => setOfficeRentFeeAmount(Number(e.target.value))}
+                    className="w-full px-2 py-0.5 text-xs bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500">₺</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Notları (Özel)</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-3.5 w-4 h-4 text-[#a5a58d]" />
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none"
+                placeholder="Örn. Geçmiş terapi notları, ödeme planı veya ofis oda bilgisi..."
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-4 border-t border-[#f5f5f0] flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
+            >
+              Vazgeç
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Kaydet
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
