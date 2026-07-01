@@ -66,13 +66,13 @@ export default function App() {
     };
   });
 
-  // Load sessions from localStorage or use initial mock sessions
+  // Load sessions from localStorage or use empty array
   const [sessions, setSessions] = useState<Session[]>(() => {
     const saved = localStorage.getItem('psycalcu_sessions');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return getInitialMockSessions(1200, 250, 200);
+    return [];
   });
 
   // Authentication & Cloud Sync states
@@ -169,7 +169,7 @@ export default function App() {
         if (savedSessions) {
           try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
         } else {
-          setSessions(getInitialMockSessions(1200, 250, 200));
+          setSessions([]);
         }
         if (savedSettings) {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
@@ -772,17 +772,8 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Quick actions in Left column */}
-                  <div className="pt-4 mt-4 border-t border-[#f5f5f0] flex flex-col gap-2">
-                    <button
-                      onClick={handleResetData}
-                      className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 text-xs font-semibold rounded-xl border border-slate-200/60 transition-colors cursor-pointer"
-                    >
-                      Örnek Verileri Yeniden Yükle
-                    </button>
                   </div>
                 </div>
-              </div>
 
               {/* RIGHT Column: Agenda & Calendar Sync */}
               <div className="lg:col-span-8 flex flex-col gap-6">
@@ -1259,6 +1250,20 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* Floating Bottom Action Bar for Quick Session Creation */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none" id="floating-bottom-action-bar">
+        <button
+          onClick={() => {
+            setEditingSession(null);
+            setIsSessionModalOpen(true);
+          }}
+          className="pointer-events-auto bg-[#cb997e] hover:bg-[#b58368] hover:shadow-lg text-white font-medium text-xs sm:text-sm px-6 py-3 rounded-full flex items-center gap-2 shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap"
+        >
+          <Plus className="w-4 h-4" />
+          Yeni Seans Ekle
+        </button>
+      </div>
     </div>
   );
 }
