@@ -20,7 +20,10 @@ import {
   Upload,
   ShieldCheck,
   Sparkles,
-  Check
+  Check,
+  Search,
+  Wallet,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings } from './types';
@@ -211,7 +214,8 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
-  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'settings'>('agenda');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings'>('agenda');
+  const [debtSearchQuery, setDebtSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -247,6 +251,55 @@ export default function App() {
       .filter(s => s.date === selectedDate)
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [sessions, selectedDate]);
+
+  // Debt Calculations
+  const debtsData = useMemo(() => {
+    // Filter non-cancelled and unpaid sessions
+    const unpaidSessions = sessions.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid');
+    
+    // Total unpaid amount
+    const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+    
+    // Group by client
+    const clientGroups: Record<string, Session[]> = {};
+    unpaidSessions.forEach(s => {
+      if (!clientGroups[s.clientName]) {
+        clientGroups[s.clientName] = [];
+      }
+      clientGroups[s.clientName].push(s);
+    });
+    
+    // Map to array of client debt info
+    const clientsWithDebts = Object.entries(clientGroups).map(([clientName, clientSessions]) => {
+      // Sort sessions by date and time (oldest first so they can pay oldest first)
+      const sortedSessions = [...clientSessions].sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.time.localeCompare(b.time);
+      });
+      
+      const totalAmount = sortedSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+      
+      return {
+        clientName,
+        sessions: sortedSessions,
+        totalAmount,
+        sessionCount: sortedSessions.length
+      };
+    }).sort((a, b) => b.totalAmount - a.totalAmount); // Sort by total debt descending
+    
+    return {
+      unpaidSessions,
+      totalUnpaidAmount,
+      clientsWithDebts,
+      debtorCount: clientsWithDebts.length
+    };
+  }, [sessions]);
+
+  const filteredDebtors = useMemo(() => {
+    if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
+    const q = debtSearchQuery.toLowerCase();
+    return debtsData.clientsWithDebts.filter(c => c.clientName.toLowerCase().includes(q));
+  }, [debtsData.clientsWithDebts, debtSearchQuery]);
 
   // Financial calculations for the CURRENT MONTH
   const monthlyMetrics = useMemo(() => {
@@ -391,6 +444,46 @@ export default function App() {
       }
       return s;
     }));
+  };
+
+  const handleTogglePaymentStatus = (id: string) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id === id) {
+        const nextStatus = s.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+        return {
+          ...s,
+          paymentStatus: nextStatus
+        };
+      }
+      return s;
+    }));
+    showToast('Ödeme durumu güncellendi.', 'success');
+  };
+
+  const handleMarkSessionAsPaid = (id: string) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id === id) {
+        return {
+          ...s,
+          paymentStatus: 'paid'
+        };
+      }
+      return s;
+    }));
+    showToast('Seans ödemesi başarıyla tahsil edildi!', 'success');
+  };
+
+  const handleMarkAllClientSessionsAsPaid = (clientName: string) => {
+    setSessions(prev => prev.map(s => {
+      if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+        return {
+          ...s,
+          paymentStatus: 'paid'
+        };
+      }
+      return s;
+    }));
+    showToast(`${clientName} adlı danışanın tüm borçları ödendi olarak işaretlendi!`, 'success');
   };
 
   const handleImportSessions = (newSessions: Session[]) => {
@@ -603,6 +696,14 @@ export default function App() {
             }`}
           >
             Muhasebe Raporu
+          </button>
+          <button
+            onClick={() => setActiveTab('debts')}
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+              activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+            }`}
+          >
+            Borç Takip
           </button>
           <button
             onClick={() => setActiveTab('sync')}
@@ -927,7 +1028,7 @@ export default function App() {
                             </div>
 
                             {/* Financial item state */}
-                            <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                            <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-2">
                               <div>
                                 <p className={`text-sm font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
                                   +₺{session.price}
@@ -938,6 +1039,21 @@ export default function App() {
                                   </p>
                                 )}
                               </div>
+
+                              {/* Payment Status Toggle Badge */}
+                              {!isCancelled && (
+                                <button
+                                  onClick={() => handleTogglePaymentStatus(session.id)}
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all border shrink-0 text-center cursor-pointer ${
+                                    session.paymentStatus === 'paid'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                      : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  }`}
+                                  title={session.paymentStatus === 'paid' ? 'Ödenmedi olarak işaretle' : 'Ödendi olarak işaretle'}
+                                >
+                                  {session.paymentStatus === 'paid' ? '● Ödendi' : '○ Ödenmedi'}
+                                </button>
+                              )}
                             </div>
 
                             {/* Quick Actions (Hover visible on desktop, always visible on mobile) */}
@@ -1022,6 +1138,167 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               <StatsDashboard sessions={sessions} settings={settings} />
+            </motion.div>
+          )}
+
+          {activeTab === 'debts' && (
+            <motion.div
+              key="debts-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* Header Card */}
+              <div className="bg-[#cb997e] p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
+                <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
+                <div className="max-w-2xl">
+                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold uppercase tracking-wider">Tahsilat Takip</span>
+                  <h2 className="text-3xl font-serif mt-3">Borç & Ödeme Takip Sayfası</h2>
+                  <p className="text-sm opacity-90 mt-2 leading-relaxed">
+                    Danışanlarınızın henüz ödenmemiş seans ücretlerini buradan takip edebilirsiniz. Ödeme durumunu güncellediğinizde aylık kazanç raporunuz otomatik olarak güncellenir.
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl border border-[#e5e1d8] shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-600 text-xl font-bold">
+                    ₺
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Toplam Alacak</span>
+                    <span className="text-xl font-bold text-slate-800">₺{debtsData.totalUnpaidAmount.toLocaleString('tr-TR')}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-[#e5e1d8] shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 text-lg">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Ödenmemiş Seans</span>
+                    <span className="text-xl font-bold text-slate-800">{debtsData.unpaidSessions.length} Seans</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-[#e5e1d8] shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-[#6b705c]/10 flex items-center justify-center text-[#6b705c] text-lg">
+                    <Users className="w-5 h-5 text-[#6b705c]" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Borçlu Danışan</span>
+                    <span className="text-xl font-bold text-slate-800">{debtsData.debtorCount} Kişi</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Debtors List and Search */}
+              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-xs flex flex-col min-h-[400px]">
+                {/* Header and Search */}
+                <div className="p-6 md:p-8 border-b border-[#f5f5f0] flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#fdfbf7]">
+                  <div>
+                    <h3 className="text-lg font-serif text-[#6b705c] italic">Borç Listesi</h3>
+                    <p className="text-xs text-slate-400">Danışan bazında gruplanmış bekleyen bakiyeler</p>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                    <input
+                      type="text"
+                      placeholder="Danışan adı ara..."
+                      value={debtSearchQuery}
+                      onChange={(e) => setDebtSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c]"
+                    />
+                  </div>
+                </div>
+
+                {/* List Container */}
+                <div className="p-6 space-y-6 flex-1">
+                  {debtsData.unpaidSessions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 text-3xl">
+                        ✓
+                      </div>
+                      <div>
+                        <h4 className="text-base font-serif italic text-slate-700">Tebrikler, Tüm Seanslar Ödendi!</h4>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                          Şu an sistemde bekleyen borcu olan danışan bulunmuyor. Her şey yolunda ve dengede.
+                        </p>
+                      </div>
+                    </div>
+                  ) : filteredDebtors.length === 0 ? (
+                    <div className="text-center py-16 text-slate-400 text-xs">
+                      Aradığınız isimle eşleşen borçlu danışan bulunamadı.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {filteredDebtors.map(debtor => (
+                        <div key={debtor.clientName} className="border border-[#e5e1d8]/80 rounded-2xl p-5 bg-[#fdfbf7]/40 hover:shadow-xs transition-shadow flex flex-col justify-between space-y-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-bold text-slate-800 text-base">{debtor.clientName}</h4>
+                              <p className="text-xs text-slate-400 mt-0.5">{debtor.sessionCount} adet seans borcu</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-red-600 block">₺{debtor.totalAmount.toLocaleString('tr-TR')}</span>
+                              <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider">ÖDENMEDİ</span>
+                            </div>
+                          </div>
+
+                          {/* Sessions mini list */}
+                          <div className="border-t border-[#e5e1d8]/40 pt-3 space-y-2">
+                            {debtor.sessions.map(s => {
+                              const isFaceToFace = s.type === 'face-to-face';
+                              return (
+                                <div key={s.id} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-slate-100">
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                                      <span className="text-[11px]">{new Date(s.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                                      <span className="text-[10px] text-slate-400">{s.time}</span>
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold uppercase tracking-wider ${
+                                        isFaceToFace ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                      }`}>
+                                        {isFaceToFace ? 'Yüzyüze' : 'Online'}
+                                      </span>
+                                    </div>
+                                    {s.notes && (
+                                      <p className="text-[10px] text-slate-400 italic max-w-[200px] truncate" title={s.notes}>
+                                        {s.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-800 text-xs">₺{s.price}</span>
+                                    <button
+                                      onClick={() => handleMarkSessionAsPaid(s.id)}
+                                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 cursor-pointer transition-all"
+                                      title="Ödendi Olarak İşaretle"
+                                    >
+                                      ✓ Ödendi Yap
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Bulk action */}
+                          <button
+                            onClick={() => handleMarkAllClientSessionsAsPaid(debtor.clientName)}
+                            className="w-full py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[11px] font-bold rounded-xl shadow-xs cursor-pointer transition-colors text-center"
+                          >
+                            Tüm Seansları Ödendi İşaretle (₺{debtor.totalAmount.toLocaleString('tr-TR')})
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.div>
           )}
 

@@ -15,6 +15,7 @@ export interface Session {
   notes?: string;
   isSyncedFromCalendar?: boolean;
   syncedCalendarType?: 'online' | 'face-to-face'; // which calendar it came from
+  paymentStatus?: 'paid' | 'unpaid';
 }
 
 export interface AppSettings {

@@ -34,6 +34,16 @@ export default function SessionModal({
   const [hasOfficeRentFee, setHasOfficeRentFee] = useState(false);
   const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState(defaultOfficeRentFee);
   const [notes, setNotes] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
+
+  // Determine if editing a past session (date is before today)
+  const localTodayStr = (() => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  })();
+  const isPastSession = sessionToEdit ? (sessionToEdit.date < localTodayStr) : false;
 
   useEffect(() => {
     if (isOpen) {
@@ -49,6 +59,7 @@ export default function SessionModal({
         setHasOfficeRentFee(sessionToEdit.hasOfficeRentFee ?? (sessionToEdit.type === 'face-to-face'));
         setOfficeRentFeeAmount(sessionToEdit.officeRentFeeAmount ?? defaultOfficeRentFee);
         setNotes(sessionToEdit.notes || '');
+        setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
       } else {
         // New session
         setClientName('');
@@ -62,6 +73,7 @@ export default function SessionModal({
         setHasOfficeRentFee(false);
         setOfficeRentFeeAmount(defaultOfficeRentFee);
         setNotes('');
+        setPaymentStatus('unpaid');
       }
     }
   }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee]);
@@ -108,7 +120,8 @@ export default function SessionModal({
       officeRentFeeAmount: hasOfficeRentFee ? Number(officeRentFeeAmount) : 0,
       notes: notes.trim(),
       isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
-      syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined
+      syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
+      paymentStatus: type === 'cancelled' ? 'unpaid' : paymentStatus
     };
 
     onSave(sessionData);
@@ -198,6 +211,16 @@ export default function SessionModal({
             </div>
           </div>
 
+          {/* Past session warning */}
+          {isPastSession && (
+            <div className="text-[10px] sm:text-[11px] text-[#b58368] bg-[#fdfbf7] px-3 py-2 rounded-xl border border-[#cb997e]/30 flex items-start gap-1.5">
+              <span className="mt-0.5">⚠️</span>
+              <span>
+                <strong>Geçmiş Seans:</strong> Muhasebeleştiği için tarih ve saat değiştirilemez. Ücret, notlar ve giderleri düzenleyebilirsiniz.
+              </span>
+            </div>
+          )}
+
           {/* Core Fields Grid: 2 rows x 2 columns (Date, Time, Duration, Price) */}
           <div className="grid grid-cols-2 gap-3.5">
             {/* Row 1, Col 1: Tarih */}
@@ -208,9 +231,14 @@ export default function SessionModal({
                 <input
                   type="date"
                   required
+                  disabled={isPastSession}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full pl-8 pr-2 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                  className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                    isPastSession 
+                      ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
+                      : 'bg-[#fdfbf7] border-[#e5e1d8]'
+                  }`}
                 />
               </div>
             </div>
@@ -223,9 +251,14 @@ export default function SessionModal({
                 <input
                   type="time"
                   required
+                  disabled={isPastSession}
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="w-full pl-8 pr-2 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                  className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                    isPastSession 
+                      ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
+                      : 'bg-[#fdfbf7] border-[#e5e1d8]'
+                  }`}
                 />
               </div>
             </div>
@@ -262,6 +295,40 @@ export default function SessionModal({
               </div>
             </div>
           </div>
+
+          {/* Payment Status Selector */}
+          {type !== 'cancelled' && (
+            <div className="space-y-1 bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] flex items-center justify-between animate-fade-in">
+              <div>
+                <span className="text-xs font-bold text-[#6b705c] block">Ödeme Durumu</span>
+                <span className="text-[10px] text-slate-400">Ücret tahsil edildi mi?</span>
+              </div>
+              <div className="flex gap-1 bg-[#f5f5f0] p-0.5 rounded-lg border border-[#e5e1d8]/50">
+                <button
+                  type="button"
+                  onClick={() => setPaymentStatus('unpaid')}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    paymentStatus === 'unpaid'
+                      ? 'bg-red-500 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Ödenmedi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentStatus('paid')}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    paymentStatus === 'paid'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Ödendi
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Expenses Settings */}
           <div className="grid grid-cols-2 gap-3 pt-1">
