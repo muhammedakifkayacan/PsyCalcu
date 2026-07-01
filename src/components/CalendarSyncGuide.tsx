@@ -94,75 +94,62 @@ export default function CalendarSyncGuide({
     showSuccess('Takvim senkronizasyon linkleriniz başarıyla kaydedildi!');
   };
 
-  const handleSyncOnline = () => {
+  const handleSyncOnline = async () => {
     if (!onlineUrl) {
       showToast('Senkronizasyon başarısız: Lütfen önce Online Seanslar Takvim Linki ekleyin.', 'error');
       return;
     }
     setIsOnlineSyncing(true);
-    setTimeout(() => {
-      setIsOnlineSyncing(false);
+    try {
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineUrl)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
+      }
+      const icsText = await response.text();
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online');
       
-      const today = new Date().toISOString().split('T')[0];
-      const simulatedSessions: Session[] = [
-        {
-          id: 'synced_online_1_' + Date.now(),
-          clientName: 'Merve Altın (Takvim - Online)',
-          type: 'online',
-          date: today,
-          time: '14:30',
-          duration: 50,
-          price: defaultPrice,
-          hasBabysitterFee: true,
-          babysitterFeeAmount: defaultBabysitterFee,
-          hasOfficeRentFee: false,
-          officeRentFeeAmount: 0,
-          isSyncedFromCalendar: true,
-          syncedCalendarType: 'online',
-          notes: 'Online takvimden otomatik eşitlendi.'
-        }
-      ];
-
-      onImportSessions(simulatedSessions, 'online');
-      showSuccess('Online Seanslar Takvimi eşitlendi, 1 yeni seans eklendi!');
-    }, 1200);
+      if (parsed.length > 0) {
+        onImportSessions(parsed, 'online');
+        showToast(`Online Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi!`, 'success');
+      } else {
+        showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`Senkronizasyon Hatası: ${err.message || 'Lütfen linkin doğruluğunu ve internet bağlantınızı kontrol edin.'}`, 'error');
+    } finally {
+      setIsOnlineSyncing(false);
+    }
   };
 
-  const handleSyncFaceToFace = () => {
+  const handleSyncFaceToFace = async () => {
     if (!faceToFaceUrl) {
       showToast('Senkronizasyon başarısız: Lütfen önce Yüzyüze Seanslar Takvim Linki ekleyin.', 'error');
       return;
     }
     setIsFaceToFaceSyncing(true);
-    setTimeout(() => {
+    try {
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceUrl)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
+      }
+      const icsText = await response.text();
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face');
+      
+      if (parsed.length > 0) {
+        onImportSessions(parsed, 'face-to-face');
+        showToast(`Yüzyüze Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi!`, 'success');
+      } else {
+        showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`Senkronizasyon Hatası: ${err.message || 'Lütfen linkin doğruluğunu ve internet bağlantınızı kontrol edin.'}`, 'error');
+    } finally {
       setIsFaceToFaceSyncing(false);
-      
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      
-      const simulatedSessions: Session[] = [
-        {
-          id: 'synced_face_1_' + Date.now(),
-          clientName: 'Can Yıldız (Takvim - Ofis)',
-          type: 'face-to-face',
-          date: tomorrowStr,
-          time: '11:00',
-          duration: 50,
-          price: defaultPrice,
-          hasBabysitterFee: true,
-          babysitterFeeAmount: defaultBabysitterFee,
-          hasOfficeRentFee: true,
-          officeRentFeeAmount: defaultOfficeRentFee,
-          isSyncedFromCalendar: true,
-          syncedCalendarType: 'face-to-face',
-          notes: 'Yüzyüze takvimden otomatik eşitlendi. Ofis kira gideri hesaplandı.'
-        }
-      ];
-
-      onImportSessions(simulatedSessions, 'face-to-face');
-      showSuccess('Yüzyüze Seanslar Takvimi eşitlendi, 1 yeni seans eklendi!');
-    }, 1200);
+    }
   };
 
   return (

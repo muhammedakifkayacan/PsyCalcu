@@ -734,6 +734,7 @@ export default function App() {
           onLogout={handleLogout}
           onAuthSuccess={handleAuthSuccess}
           existingSessionsCount={sessions.length}
+          showToast={showToast}
         />
       </div>
     );
@@ -896,6 +897,7 @@ export default function App() {
                   onLogout={handleLogout}
                   onAuthSuccess={handleAuthSuccess}
                   existingSessionsCount={sessions.length}
+                  showToast={showToast}
                 />
 
                 {/* Expense Breakdown Card */}

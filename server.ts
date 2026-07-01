@@ -67,6 +67,42 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
     }
   });
 
+  // Proxy endpoint for calendar (.ics) sync
+  app.get("/api/proxy-ical", async (req, res) => {
+    try {
+      let calendarUrl = req.query.url as string;
+      if (!calendarUrl) {
+        return res.status(400).json({ error: "Lütfen geçerli bir takvim URL'si belirtin." });
+      }
+
+      // Handle webcal:// protocol by switching to https://
+      if (calendarUrl.startsWith("webcal://")) {
+        calendarUrl = "https://" + calendarUrl.substring(9);
+      } else if (calendarUrl.startsWith("webcal:")) {
+        calendarUrl = "https:" + calendarUrl.substring(7);
+      }
+
+      console.log(`Fetching calendar from: ${calendarUrl}`);
+      const fetchResponse = await fetch(calendarUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Accept": "text/calendar, text/plain, */*"
+        }
+      });
+
+      if (!fetchResponse.ok) {
+        throw new Error(`Takvim sunucusu hata döndürdü: ${fetchResponse.status} ${fetchResponse.statusText}`);
+      }
+
+      const icsData = await fetchResponse.text();
+      res.setHeader("Content-Type", "text/calendar");
+      res.send(icsData);
+    } catch (err: any) {
+      console.error("Calendar fetch error:", err);
+      res.status(500).json({ error: `Takvim verisi çekilemedi: ${err?.message || err}` });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

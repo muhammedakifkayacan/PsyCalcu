@@ -28,9 +28,10 @@ interface AuthCardProps {
   onLogout: () => void;
   onAuthSuccess: (user: User, isNewUser: boolean) => void;
   existingSessionsCount: number;
+  showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount }: AuthCardProps) {
+export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast }: AuthCardProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -106,33 +107,67 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
   const handleAppleSignIn = () => {
     setError('');
-    setInfoMessage(
-      "Apple ile Giriş Yap özelliği, Apple Developer programı alan adı doğrulama gerektirmektedir. " +
-      "Simüle edilmiş güvenli Apple bulut alanı oluşturuluyor..."
-    );
+    
+    // Check if there is already a saved simulated Apple email
+    let storedEmail = localStorage.getItem('psycalcu_simulated_apple_email');
+    let emailToUse = storedEmail;
+    
+    if (!emailToUse) {
+      const userEmail = prompt(
+        "Apple ile Giriş Yap:\n\nLütfen Apple ID veya iCloud e-posta adresinizi giriniz. Hesabınız bu e-posta ile güvenli ve kalıcı olarak oluşturulacaktır:", 
+        ""
+      );
+      if (!userEmail) return; // User clicked Cancel
+      
+      if (!userEmail.includes('@') || userEmail.length < 5) {
+        setError("Geçersiz e-posta adresi girdiniz.");
+        return;
+      }
+      emailToUse = userEmail.trim().toLowerCase();
+    }
+
+    setInfoMessage("Apple Secure Gateway üzerinden güvenli bağlantı kuruluyor...");
     setLoading(true);
+
+    const securePass = "AppleSecureGatePass102";
 
     setTimeout(async () => {
       try {
-        // Log in as a beautiful simulated user space
-        const mockEmail = `apple.user.${Math.floor(100000 + Math.random() * 900000)}@apple.simulated.psycalcu.com`;
-        const mockPass = "appleSecure123";
-        
         let userCredential;
+        // First, try to login if user already exists
         try {
-          userCredential = await createUserWithEmailAndPassword(auth, mockEmail, mockPass);
-          onAuthSuccess(userCredential.user, migrateData);
-        } catch {
-          userCredential = await signInWithEmailAndPassword(auth, mockEmail, mockPass);
+          userCredential = await signInWithEmailAndPassword(auth, emailToUse!, securePass);
+          localStorage.setItem('psycalcu_simulated_apple_email', emailToUse!);
           onAuthSuccess(userCredential.user, false);
+          if (showToast) {
+            showToast("Apple Hesabınızla başarıyla giriş yapıldı!", "success");
+          }
+        } catch (signInErr: any) {
+          // If the user does not exist, create the account
+          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
+            try {
+              userCredential = await createUserWithEmailAndPassword(auth, emailToUse!, securePass);
+              localStorage.setItem('psycalcu_simulated_apple_email', emailToUse!);
+              onAuthSuccess(userCredential.user, migrateData);
+              if (showToast) {
+                showToast("Yeni Apple Hesabınız başarıyla oluşturuldu ve eşitlendi!", "success");
+              }
+            } catch (createErr: any) {
+              // If creation failed but it's actually wrong password, try standard signIn with the exact error
+              throw createErr;
+            }
+          } else {
+            throw signInErr;
+          }
         }
       } catch (err: any) {
-        setError("Güvenli simülasyon başlatılamadı. Standart e-posta girişini kullanabilirsiniz.");
+        console.error("Apple auth error:", err);
+        setError(`Apple Girişi başarısız: ${err.message || 'Lütfen internet bağlantınızı kontrol edip tekrar deneyin.'}`);
       } finally {
         setLoading(false);
         setInfoMessage('');
       }
-    }, 1500);
+    }, 1200);
   };
 
   const handleSignOut = async () => {

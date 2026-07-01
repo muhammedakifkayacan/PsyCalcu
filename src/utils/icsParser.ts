@@ -12,12 +12,16 @@ export function parseICS(
   forcedType?: 'online' | 'face-to-face'
 ): Session[] {
   const sessions: Session[] = [];
-  const lines = icsText.split(/\r?\n/);
+  
+  // RFC 5545 Unfolding: Combine lines split by CRLF followed by a space or horizontal tab
+  const unfoldedText = icsText.replace(/\r?\n[ \t]/g, '');
+  const lines = unfoldedText.split(/\r?\n/);
   
   let currentEvent: Partial<Session> & { dtStartRaw?: string; descriptionRaw?: string } | null = null;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
+    if (!line) continue;
     
     if (line === 'BEGIN:VEVENT') {
       currentEvent = {
@@ -85,17 +89,23 @@ export function parseICS(
       sessions.push(currentEvent as Session);
       currentEvent = null;
     } else if (currentEvent) {
-      if (line.startsWith('SUMMARY:')) {
-        let summary = line.substring(8).trim();
-        // Unescape standard ics commas
-        summary = summary.replace(/\\,/g, ',');
-        currentEvent.clientName = summary;
-      } else if (line.startsWith('DTSTART')) {
-        currentEvent.dtStartRaw = line;
-      } else if (line.startsWith('DESCRIPTION:')) {
-        currentEvent.descriptionRaw = line.substring(12).trim().replace(/\\,/g, ',');
-      } else if (line.startsWith('NOTE:') || line.startsWith('COMMENT:')) {
-        currentEvent.notes = line.substring(5).trim();
+      const colonIndex = line.indexOf(':');
+      if (colonIndex !== -1) {
+        const keyPart = line.substring(0, colonIndex);
+        const valPart = line.substring(colonIndex + 1).trim();
+        
+        // Extract base property name (e.g. SUMMARY;CHARSET=UTF-8 -> SUMMARY)
+        const key = keyPart.split(';')[0].toUpperCase();
+        
+        if (key === 'SUMMARY') {
+          currentEvent.clientName = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+        } else if (key === 'DTSTART') {
+          currentEvent.dtStartRaw = line;
+        } else if (key === 'DESCRIPTION') {
+          currentEvent.descriptionRaw = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+        } else if (key === 'NOTE' || key === 'COMMENT') {
+          currentEvent.notes = valPart.replace(/\\,/g, ',').replace(/\\;/g, ';');
+        }
       }
     }
   }
