@@ -12,6 +12,9 @@ interface CalendarSyncGuideProps {
   settings: AppSettings;
   onSaveSettings: (settings: AppSettings) => void;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  sessions?: Session[];
+  onGoToDate?: (date: string) => void;
+  setActiveTab?: (tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings') => void;
 }
 
 export default function CalendarSyncGuide({
@@ -22,6 +25,9 @@ export default function CalendarSyncGuide({
   settings,
   onSaveSettings,
   showToast,
+  sessions = [],
+  onGoToDate,
+  setActiveTab,
 }: CalendarSyncGuideProps) {
   const [dragActive, setDragActive] = useState(false);
   const [importType, setImportType] = useState<'online' | 'face-to-face'>('online');
@@ -111,7 +117,7 @@ export default function CalendarSyncGuide({
       
       if (parsed.length > 0) {
         onImportSessions(parsed, 'online');
-        showToast(`Online Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi!`, 'success');
+        showToast(`Online Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi! (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
       } else {
         showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
       }
@@ -140,7 +146,7 @@ export default function CalendarSyncGuide({
       
       if (parsed.length > 0) {
         onImportSessions(parsed, 'face-to-face');
-        showToast(`Yüzyüze Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi!`, 'success');
+        showToast(`Yüzyüze Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi! (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
       } else {
         showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
       }
@@ -391,6 +397,78 @@ export default function CalendarSyncGuide({
           <span>{successMessage}</span>
         </motion.div>
       )}
+
+      {/* Synced Events Overview & Preview */}
+      {(() => {
+        const syncedSessions = sessions.filter(s => s.isSyncedFromCalendar);
+        if (syncedSessions.length === 0) return null;
+        
+        return (
+          <div className="pt-6 border-t border-[#f5f5f0] space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h4 className="text-sm font-semibold text-[#6b705c] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Sistemdeki Aktif Takvim Verileri ({syncedSessions.length} Seans)
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  iCloud/Google Takvimlerinizden başarıyla çekilmiş ve panele işlenmiş güncel seanslar listelenmektedir.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[#fcfbf9] rounded-2xl border border-[#e5e1d8]/80 p-4">
+              <div className="text-xs text-[#6b705c] mb-2.5 font-bold uppercase tracking-wider">Son Eklenen / Güncellenen 5 Takvim Seansı:</div>
+              <div className="space-y-2">
+                {[...syncedSessions]
+                  .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time))
+                  .slice(0, 5)
+                  .map((session) => (
+                    <div 
+                      key={session.id} 
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-[#6b705c]/30 transition-all text-xs gap-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${session.type === 'face-to-face' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        <div>
+                          <div className="font-bold text-slate-800">{session.clientName}</div>
+                          <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
+                            <span className="font-semibold text-[#6b705c]">{session.date.split('-').reverse().join('.')}</span>
+                            <span>•</span>
+                            <span>{session.time}</span>
+                            <span>•</span>
+                            <span className="uppercase">{session.type === 'online' ? 'Online' : 'Yüzyüze'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {onGoToDate && setActiveTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onGoToDate(session.date);
+                            setActiveTab('agenda');
+                            showToast(`${session.clientName} seansının bulunduğu ${session.date.split('-').reverse().join('.')} tarihine yönlendirildiniz.`, 'info');
+                          }}
+                          className="self-end sm:self-auto px-3 py-1 bg-[#6b705c]/10 hover:bg-[#6b705c] hover:text-white text-[#6b705c] rounded-full text-[10px] font-bold transition-all cursor-pointer"
+                        >
+                          Tarihe Git & Görüntüle
+                        </button>
+                      )}
+                    </div>
+                  ))}
+              </div>
+              
+              <div className="mt-3.5 text-[11px] text-[#cb997e] bg-[#cb997e]/5 p-3 rounded-xl border border-[#cb997e]/10 flex items-start gap-2 leading-relaxed">
+                <AlertCircle className="w-4 h-4 shrink-0 text-[#cb997e] mt-0.5" />
+                <span>
+                  <strong>Bilgi:</strong> Takviminizden gelen seanslar, kendi orijinal tarihlerine yerleşir (örneğin geçmiş aylardaki seanslar kendi günlerine). 
+                  Yukarıdaki <strong>"Tarihe Git & Görüntüle"</strong> butonunu kullanarak o tarihin ajandasına anında zıplayabilir ve seansı inceleyebilirsiniz.
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

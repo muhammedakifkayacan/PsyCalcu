@@ -1547,6 +1547,9 @@ export default function App() {
                 settings={settings}
                 onSaveSettings={(updated) => setSettings(updated)}
                 showToast={showToast}
+                sessions={sessions}
+                onGoToDate={(date) => setSelectedDate(date)}
+                setActiveTab={setActiveTab}
               />
             </motion.div>
           )}
