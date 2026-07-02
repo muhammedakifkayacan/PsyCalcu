@@ -740,12 +740,13 @@ export default function App() {
   const handleImportSessions = (newSessions: Session[]) => {
     setSessions(prev => {
       const sessionsMap = new Map(prev.map(s => [s.id, s]));
+      let hasChanges = false;
       
       newSessions.forEach(ns => {
         if (sessionsMap.has(ns.id)) {
           const existing = sessionsMap.get(ns.id)!;
           // Merge changed calendar fields, preserving custom user edits on price/payment status
-          sessionsMap.set(ns.id, {
+          const updated = {
             ...existing,
             clientName: ns.clientName,
             date: ns.date,
@@ -754,12 +755,22 @@ export default function App() {
             notes: ns.notes || existing.notes,
             price: existing.price !== settings.defaultSessionPrice ? existing.price : ns.price,
             paymentStatus: existing.paymentStatus || ns.paymentStatus,
-          });
+          };
+          
+          // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
+          if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+            sessionsMap.set(ns.id, updated);
+            hasChanges = true;
+          }
         } else {
           sessionsMap.set(ns.id, ns);
+          hasChanges = true;
         }
       });
       
+      if (!hasChanges) {
+        return prev;
+      }
       return Array.from(sessionsMap.values());
     });
   };
@@ -1061,28 +1072,32 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6" id="psycalcu-main">
         {isQuotaExceeded && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-[2rem] text-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm" id="quota-warning-banner">
+          <div className="mb-6 p-5 bg-rose-50 border border-rose-200 rounded-[2rem] text-slate-800 flex flex-col md:flex-row items-start justify-between gap-5 shadow-sm" id="quota-warning-banner">
             <div className="flex gap-3">
               <span className="text-2xl mt-0.5">⚠️</span>
               <div>
-                <h4 className="font-bold text-sm text-amber-950">Günlük Bulut Veritabanı Yazma Limiti Doldu (Bulut Sunucu Yoğunluğu)</h4>
-                <p className="text-xs text-amber-900 mt-1">
-                  Bugün için Firebase veritabanı kapasite limitine (Spark/Free Tier) ulaşıldı. 
-                  <strong className="text-emerald-800 font-semibold"> Güvenlik veya veri kaybı endişeniz olmasın: Tüm seanslarınız, ayarlarınız ve borç kayıtlarınız şu anda tarayıcınızın yerel depolama (Local Storage) birimine tam ve güvenli bir şekilde anlık olarak kaydedilmeye devam etmektedir.</strong>
+                <h4 className="font-bold text-sm text-rose-950">Bulut Kotası Doldu! Lütfen sistem yöneticinizle iletişime geçin.</h4>
+                <p className="text-xs text-rose-900 mt-1">
+                  Bulut veritabanı kotası dolduğu için yeni değişiklikleriniz şu an için buluta kaydedilemiyor ancak tarayıcınızın yerel depolama hafızasında (Local Storage) tam ve güvenli bir şekilde saklanıyor. 
                 </p>
-                <p className="text-[11px] text-amber-800 mt-1 italic leading-tight">
-                  Kotalar her gün otomatik olarak sıfırlanır. Verilerinizi her zaman "Yedek & E-Tablo" sayfasından manuel yedekleyebilir veya Firebase konsolundan kota durumunuzu takip edebilirsiniz.
-                </p>
+                <div className="mt-2 text-xs bg-white/60 p-3 rounded-xl border border-rose-100 space-y-1.5">
+                  <p className="font-semibold text-rose-950">🔒 Veri Güvenliği Bilgilendirmesi:</p>
+                  <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700 leading-normal">
+                    <li><strong className="text-emerald-800">Tarayıcıyı veya bilgisayarı kapatmak:</strong> Verilerinizi <strong>silmez</strong>. Tarayıcıyı kapatıp açtığınızda verileriniz aynen yüklenir.</li>
+                    <li><strong className="text-rose-700">Tarayıcı geçmişini silmek / Çerezleri temizlemek:</strong> "Site verilerini" temizlerseniz veya tarayıcıyı sıfırlarsanız Local Storage verileri <strong>tamamen silinir!</strong></li>
+                    <li><strong className="text-rose-700">Gizli Sekme (Incognito):</strong> Eğer uygulamayı gizli sekmede açtıysanız, sekmeyi kapattığınızda tüm verileriniz <strong>silinir!</strong></li>
+                  </ul>
+                  <p className="text-[11px] text-slate-600 mt-1 italic">
+                    Öneri: Kota yenilenene kadar tarayıcı verilerini temizlemeyin ve tedbir amacıyla <strong className="text-slate-800">"Yedek & E-Tablo"</strong> sayfasından verilerinizi manuel yedek (.json) olarak bilgisayarınıza indirin.
+                  </p>
+                </div>
               </div>
             </div>
-            <a 
-              href="https://console.firebase.google.com/project/gen-lang-client-0612096853/firestore/databases/ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222/data?openUpgradeDialog=true" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-xs font-bold transition-all shadow-xs shrink-0 self-end md:self-center"
-            >
-              Firestore Panelini Aç
-            </a>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0 self-end md:self-start">
+              <span className="px-4 py-2 bg-rose-600 text-white rounded-full text-xs font-bold shadow-xs">
+                Sistem Yöneticisi Uyarısı
+              </span>
+            </div>
           </div>
         )}
         <AnimatePresence mode="wait">
@@ -1899,7 +1914,7 @@ export default function App() {
 
       {/* Aesthetic Footer */}
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.2</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 

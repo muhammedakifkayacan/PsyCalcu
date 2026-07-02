@@ -87,6 +87,16 @@ export function parseICS(
 
       currentEvent.type = finalType;
       
+      // Cutoff check: Only import events from the last 60 days to save on DB writes & performance
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const cutOffDateStr = sixtyDaysAgo.toISOString().split('T')[0];
+
+      if (currentEvent.date && currentEvent.date < cutOffDateStr) {
+        currentEvent = null;
+        continue;
+      }
+      
       // Determine if this is a session in a past month (earlier than the 1st of the current month)
       const now = new Date();
       const currentYear = now.getFullYear();
