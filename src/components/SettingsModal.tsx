@@ -12,9 +12,9 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose, settings, onSave, onClearAllSessions }: SettingsModalProps) {
   const [therapistName, setTherapistName] = useState(settings.therapistName);
-  const [defaultSessionPrice, setDefaultSessionPrice] = useState(settings.defaultSessionPrice);
-  const [defaultBabysitterFee, setDefaultBabysitterFee] = useState(settings.defaultBabysitterFee);
-  const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState(settings.defaultOfficeRentFee);
+  const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
+  const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
+  const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
@@ -88,8 +88,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 type="number"
                 required
                 min="0"
-                value={defaultSessionPrice}
-                onChange={(e) => setDefaultSessionPrice(Number(e.target.value))}
+                value={defaultSessionPrice === 0 ? '' : defaultSessionPrice}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDefaultSessionPrice(val === '' ? '' : Number(val));
+                }}
+                onFocus={(e) => e.target.select()}
                 className="w-full pl-8 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
@@ -105,8 +109,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 type="number"
                 required
                 min="0"
-                value={defaultBabysitterFee}
-                onChange={(e) => setDefaultBabysitterFee(Number(e.target.value))}
+                value={defaultBabysitterFee === 0 ? '' : defaultBabysitterFee}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDefaultBabysitterFee(val === '' ? '' : Number(val));
+                }}
+                onFocus={(e) => e.target.select()}
                 className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
@@ -122,8 +130,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 type="number"
                 required
                 min="0"
-                value={defaultOfficeRentFee}
-                onChange={(e) => setDefaultOfficeRentFee(Number(e.target.value))}
+                value={defaultOfficeRentFee === 0 ? '' : defaultOfficeRentFee}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDefaultOfficeRentFee(val === '' ? '' : Number(val));
+                }}
+                onFocus={(e) => e.target.select()}
                 className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>

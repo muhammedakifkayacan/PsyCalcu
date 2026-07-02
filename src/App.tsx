@@ -333,6 +333,17 @@ export default function App() {
     return dateStr < todayStr;
   };
 
+  const isOlderThan7Days = (dateStr: string) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const sDate = new Date(dateStr);
+    sDate.setHours(0,0,0,0);
+    
+    const diffTime = today.getTime() - sDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 7;
+  };
+
   // Generate date ribbon (7 days centered around selected date or today)
   const dateRibbon = useMemo(() => {
     const ribbon = [];
@@ -484,9 +495,11 @@ export default function App() {
   // CRUD actions
   const handleSaveSession = (savedSession: Session) => {
     const existing = sessions.find(s => s.id === savedSession.id);
-    if (existing && isPastDate(existing.date)) {
-      showToast('Geçmiş tarihlerdeki seanslar düzenlenemez! Muhasebesi yapılmıştır.', 'error');
-      return;
+    if (existing && isOlderThan7Days(existing.date)) {
+      if (existing.date !== savedSession.date || existing.time !== savedSession.time) {
+        showToast('7 günden eski seansların tarihi veya saati değiştirilemez!', 'error');
+        return;
+      }
     }
     setSessions(prev => {
       const exists = prev.some(s => s.id === savedSession.id);
@@ -500,8 +513,8 @@ export default function App() {
 
   const handleDeleteSession = (id: string) => {
     const session = sessions.find(s => s.id === id);
-    if (session && isPastDate(session.date)) {
-      showToast('Geçmiş tarihlerdeki seanslar silinemez! Muhasebesi yapılmıştır.', 'error');
+    if (session && isOlderThan7Days(session.date)) {
+      showToast('7 günden eski seanslar silinemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
     }
     triggerConfirm(
@@ -520,8 +533,8 @@ export default function App() {
 
   const handleToggleType = (id: string, currentType: 'online' | 'face-to-face' | 'cancelled') => {
     const session = sessions.find(s => s.id === id);
-    if (session && isPastDate(session.date)) {
-      showToast('Geçmiş tarihlerdeki seansların tipi değiştirilemez! Muhasebesi yapılmıştır.', 'error');
+    if (session && isOlderThan7Days(session.date)) {
+      showToast('7 günden eski seansların tipi değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
     }
     const nextTypeMap: Record<string, 'online' | 'face-to-face' | 'cancelled'> = {
@@ -558,8 +571,8 @@ export default function App() {
 
   const handleToggleBabysitter = (id: string) => {
     const session = sessions.find(s => s.id === id);
-    if (session && isPastDate(session.date)) {
-      showToast('Geçmiş tarihlerdeki seansların bakıcı ücreti değiştirilemez! Muhasebesi yapılmıştır.', 'error');
+    if (session && isOlderThan7Days(session.date)) {
+      showToast('7 günden eski seansların bakıcı ücreti değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
     }
     setSessions(prev => prev.map(s => {

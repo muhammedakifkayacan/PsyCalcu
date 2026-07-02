@@ -28,11 +28,11 @@ export default function SessionModal({
   const [date, setDate] = useState(selectedDate);
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState(50);
-  const [price, setPrice] = useState(defaultPrice);
+  const [price, setPrice] = useState<number | string>(defaultPrice);
   const [hasBabysitterFee, setHasBabysitterFee] = useState(true);
-  const [babysitterFeeAmount, setBabysitterFeeAmount] = useState(defaultBabysitterFee);
+  const [babysitterFeeAmount, setBabysitterFeeAmount] = useState<number | string>(defaultBabysitterFee);
   const [hasOfficeRentFee, setHasOfficeRentFee] = useState(false);
-  const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState(defaultOfficeRentFee);
+  const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState<number | string>(defaultOfficeRentFee);
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
 
@@ -44,6 +44,19 @@ export default function SessionModal({
     return localDate.toISOString().split('T')[0];
   })();
   const isPastSession = sessionToEdit ? (sessionToEdit.date < localTodayStr) : false;
+
+  // Check if session is older than 7 days
+  const isOlderThan7Days = (dateStr: string) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const sDate = new Date(dateStr);
+    sDate.setHours(0,0,0,0);
+    
+    const diffTime = today.getTime() - sDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 7;
+  };
+  const isDateTimeLocked = sessionToEdit ? isOlderThan7Days(sessionToEdit.date) : false;
 
   useEffect(() => {
     if (isOpen) {
@@ -213,11 +226,17 @@ export default function SessionModal({
 
           {/* Past session warning */}
           {isPastSession && (
-            <div className="text-[10px] sm:text-[11px] text-[#b58368] bg-[#fdfbf7] px-3 py-2 rounded-xl border border-[#cb997e]/30 flex items-start gap-1.5">
+            <div className="text-[10px] sm:text-[11px] text-[#b58368] bg-[#fdfbf7] px-3 py-2 rounded-xl border border-[#cb997e]/30 flex items-start gap-1.5 animate-fade-in">
               <span className="mt-0.5">⚠️</span>
-              <span>
-                <strong>Geçmiş Seans:</strong> Muhasebeleştiği için tarih ve saat değiştirilemez. Ücret, notlar ve giderleri düzenleyebilirsiniz.
-              </span>
+              {isDateTimeLocked ? (
+                <span>
+                  <strong>Geçmiş Seans (7 Günden Eski):</strong> Muhasebeleştiği için tarih ve saat değiştirilemez. Ancak fiyat, ödeme durumu ve notları her zaman düzenleyebilirsiniz.
+                </span>
+              ) : (
+                <span>
+                  <strong>Geçmiş Seans (Son 1 Hafta):</strong> Tarih ve saat dahil tüm alanları düzenleyebilirsiniz.
+                </span>
+              )}
             </div>
           )}
 
@@ -231,11 +250,11 @@ export default function SessionModal({
                 <input
                   type="date"
                   required
-                  disabled={isPastSession}
+                  disabled={isDateTimeLocked}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
-                    isPastSession 
+                    isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
                   }`}
@@ -251,11 +270,11 @@ export default function SessionModal({
                 <input
                   type="time"
                   required
-                  disabled={isPastSession}
+                  disabled={isDateTimeLocked}
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
-                    isPastSession 
+                    isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
                   }`}
@@ -288,8 +307,12 @@ export default function SessionModal({
                   type="number"
                   required
                   min="0"
-                  value={price}
-                  onChange={(e) => setPrice(Number(e.target.value))}
+                  value={price === 0 ? '' : price}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPrice(val === '' ? '' : Number(val));
+                  }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full pl-7 pr-2 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
@@ -354,8 +377,12 @@ export default function SessionModal({
                   <input
                     type="number"
                     min="0"
-                    value={babysitterFeeAmount}
-                    onChange={(e) => setBabysitterFeeAmount(Number(e.target.value))}
+                    value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBabysitterFeeAmount(val === '' ? '' : Number(val));
+                    }}
+                    onFocus={(e) => e.target.select()}
                     className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
                   <span className="text-[9px] text-slate-500">₺</span>
@@ -385,8 +412,12 @@ export default function SessionModal({
                   <input
                     type="number"
                     min="0"
-                    value={officeRentFeeAmount}
-                    onChange={(e) => setOfficeRentFeeAmount(Number(e.target.value))}
+                    value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOfficeRentFeeAmount(val === '' ? '' : Number(val));
+                    }}
+                    onFocus={(e) => e.target.select()}
                     className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
                   <span className="text-[9px] text-slate-500">₺</span>
