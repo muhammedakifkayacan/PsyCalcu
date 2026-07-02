@@ -200,7 +200,7 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="text-xs font-bold bg-[#fcfbf9] border border-[#e5e1d8] rounded-xl px-3 py-2 text-slate-700 outline-none focus:border-[#6b705c] transition-all cursor-pointer"
+            className="text-base sm:text-xs font-bold bg-[#fcfbf9] border border-[#e5e1d8] rounded-xl px-3 py-2 text-slate-700 outline-none focus:border-[#6b705c] transition-all cursor-pointer"
           >
             {availableMonths.map((m) => (
               <option key={m} value={m}>

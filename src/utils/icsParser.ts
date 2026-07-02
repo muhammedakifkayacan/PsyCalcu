@@ -137,6 +137,7 @@ export function parseICS(
           currentEvent.dtStartRaw = line;
         } else if (key === 'DESCRIPTION') {
           currentEvent.descriptionRaw = cleanVal;
+          currentEvent.notes = cleanVal;
         } else if (key === 'NOTE' || key === 'COMMENT') {
           currentEvent.notes = cleanVal;
         }

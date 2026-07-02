@@ -73,7 +73,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 required
                 value={therapistName}
                 onChange={(e) => setTherapistName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
                 placeholder="Örn. Dr. Melis Kaya"
               />
             </div>
@@ -94,7 +94,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                   setDefaultSessionPrice(val === '' ? '' : Number(val));
                 }}
                 onFocus={(e) => e.target.select()}
-                className="w-full pl-8 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
             <p className="text-[10px] text-slate-600 font-medium">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
@@ -115,7 +115,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                   setDefaultBabysitterFee(val === '' ? '' : Number(val));
                 }}
                 onFocus={(e) => e.target.select()}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
             <p className="text-[10px] text-slate-600 font-medium">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
@@ -136,7 +136,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                   setDefaultOfficeRentFee(val === '' ? '' : Number(val));
                 }}
                 onFocus={(e) => e.target.select()}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
             <p className="text-[10px] text-slate-600 font-medium">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>

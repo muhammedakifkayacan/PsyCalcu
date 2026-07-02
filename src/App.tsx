@@ -1775,8 +1775,8 @@ export default function App() {
       />
 
       {/* Aesthetic Footer */}
-      <footer className="border-t border-[#e5e1d8] bg-white mt-12 py-6 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+      <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.4.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 

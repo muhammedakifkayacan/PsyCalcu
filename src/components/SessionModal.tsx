@@ -177,7 +177,7 @@ export default function SessionModal({
                 required
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
                 placeholder="Örn. Ahmet Yılmaz"
               />
             </div>
@@ -259,7 +259,7 @@ export default function SessionModal({
                   disabled={isDateTimeLocked}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                  className={`w-full pl-8 pr-2 py-2 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
                     isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
@@ -279,7 +279,7 @@ export default function SessionModal({
                   disabled={isDateTimeLocked}
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className={`w-full pl-8 pr-2 py-2 text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                  className={`w-full pl-8 pr-2 py-2 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
                     isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
@@ -294,7 +294,7 @@ export default function SessionModal({
               <select
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full px-2.5 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] h-[34px]"
+                className="w-full px-2.5 py-2 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] h-[34px]"
               >
                 <option value="30">30 Dakika</option>
                 <option value="45">45 Dakika</option>
@@ -319,7 +319,7 @@ export default function SessionModal({
                     setPrice(val === '' ? '' : Number(val));
                   }}
                   onFocus={(e) => e.target.select()}
-                  className="w-full pl-7 pr-2 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full pl-7 pr-2 py-1.5 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
             </div>
@@ -389,7 +389,7 @@ export default function SessionModal({
                       setBabysitterFeeAmount(val === '' ? '' : Number(val));
                     }}
                     onFocus={(e) => e.target.select()}
-                    className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
                   <span className="text-[9px] text-slate-500">₺</span>
                 </div>
@@ -424,7 +424,7 @@ export default function SessionModal({
                       setOfficeRentFeeAmount(val === '' ? '' : Number(val));
                     }}
                     onFocus={(e) => e.target.select()}
-                    className="w-full px-1.5 py-0.5 text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
                   />
                   <span className="text-[9px] text-slate-500">₺</span>
                 </div>
@@ -441,7 +441,7 @@ export default function SessionModal({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={1}
-                className="w-full pl-10 pr-4 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none"
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none"
                 placeholder="Geçmiş terapi notları, ödeme planı veya oda bilgisi..."
               />
             </div>
