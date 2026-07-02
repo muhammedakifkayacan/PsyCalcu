@@ -312,6 +312,24 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [showNotes, setShowNotes] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_show_notes');
+      return saved !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const toggleShowNotes = () => {
+    setShowNotes(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('psycalcu_show_notes', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
   
   // Google Sheets state
   const [sheetLinkInput, setSheetLinkInput] = useState('');
@@ -1144,16 +1162,30 @@ export default function App() {
                       <p className="text-xs text-slate-600 mt-1 font-medium">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
                     </div>
                     
-                    <button 
-                      onClick={() => {
-                        setEditingSession(null);
-                        setIsSessionModalOpen(true);
-                      }}
-                      className="px-5 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Yeni Seans Ekle
-                    </button>
+                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                      {/* Show/Hide Notes Switch */}
+                      <button
+                        onClick={toggleShowNotes}
+                        className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none"
+                        title={showNotes ? "Notları Gizle" : "Notları Göster"}
+                      >
+                        <span className="text-xs font-medium text-slate-500 group-hover:text-[#6b705c] transition-colors">Notları Göster</span>
+                        <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                          <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                        </div>
+                      </button>
+
+                      <button 
+                        onClick={() => {
+                          setEditingSession(null);
+                          setIsSessionModalOpen(true);
+                        }}
+                        className="px-5 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Yeni Seans Ekle
+                      </button>
+                    </div>
                   </div>
 
                   {/* Session List */}
@@ -1230,9 +1262,11 @@ export default function App() {
                                 )}
                               </div>
                               
-                              <p className="text-xs text-slate-700 mt-1 font-semibold italic">
-                                {session.notes || 'Açıklama girilmemiş.'}
-                              </p>
+                              {showNotes && (
+                                <p className="text-xs text-slate-700 mt-1 font-semibold italic animate-fade-in">
+                                  {session.notes || 'Açıklama girilmemiş.'}
+                                </p>
+                              )}
                             </div>
 
                             {/* Financial item state */}
@@ -1572,7 +1606,7 @@ export default function App() {
                                         {isFaceToFace ? 'Yüzyüze' : 'Online'}
                                       </span>
                                     </div>
-                                    {s.notes && (
+                                    {showNotes && s.notes && (
                                       <p className="text-[10px] text-slate-400 italic max-w-[200px] truncate" title={s.notes}>
                                         {s.notes}
                                       </p>
