@@ -51,7 +51,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
         <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]">
           <div>
             <h3 className="text-lg font-serif text-[#6b705c] italic">Finansal Parametreler</h3>
-            <p className="text-xs text-slate-400 font-sans">Varsayılan muhasebe ayarlarını düzenleyin</p>
+            <p className="text-xs text-slate-600 font-sans font-medium">Varsayılan muhasebe ayarlarını düzenleyin</p>
           </div>
           <button 
             onClick={onClose}
@@ -65,7 +65,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
         <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto font-sans">
           {/* Therapist Name */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Psikolog Adı</label>
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Psikolog Adı</label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -81,7 +81,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
 
           {/* Session Price */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Varsayılan Seans Ücreti (₺)</label>
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Seans Ücreti (₺)</label>
             <div className="relative">
               <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
               <input
@@ -93,12 +93,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-8 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-400">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
+            <p className="text-[10px] text-slate-600 font-medium">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
           </div>
 
           {/* Babysitter Fee */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Başı Bakıcı Ücreti (₺)</label>
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Başı Bakıcı Ücreti (₺)</label>
             <div className="relative">
               <Baby className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -110,12 +110,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-400">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
+            <p className="text-[10px] text-slate-600 font-medium">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
           </div>
 
           {/* Office Rent Fee */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider block">Seans Başı Ofis Kira Gideri (₺)</label>
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Başı Ofis Kira Gideri (₺)</label>
             <div className="relative">
               <Landmark className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -127,7 +127,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-10 pr-4 py-2 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-400">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            <p className="text-[10px] text-slate-600 font-medium">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
           </div>
 
           {/* Tip */}
@@ -135,7 +135,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
             <ShieldAlert className="w-5 h-5 text-[#cb997e] shrink-0 mt-0.5" />
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-slate-700 font-sans">Otomatik Hesaplama Algoritması</h4>
-              <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+              <p className="text-[10px] text-slate-600 leading-relaxed font-sans font-medium">
                 Uygulama, seans gelirlerinizden seans başı bakıcı ücretini otomatik düşer. Yüzyüze seanslarda ise ek olarak seans başı ofis kira gideri de düşülerek net kârınız anlık hesaplanır. Online seanslarda ofis kirası kesilmez.
               </p>
             </div>

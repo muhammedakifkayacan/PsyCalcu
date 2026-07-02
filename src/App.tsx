@@ -950,7 +950,7 @@ export default function App() {
           )}
           <div className="text-right hidden sm:block">
             <p className="text-xs font-medium text-slate-700">{settings.therapistName}</p>
-            <p className="text-[10px] text-slate-400">{headerDateStr}</p>
+            <p className="text-[10px] text-slate-600 font-semibold">{headerDateStr}</p>
           </div>
           
           <button
@@ -1022,7 +1022,7 @@ export default function App() {
                         <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600 text-sm">🏠</div>
                         <div>
                           <span className="text-xs font-semibold block">Ofis Kira Gideri</span>
-                          <span className="text-[9px] text-slate-400">Seans başı biriken</span>
+                          <span className="text-[9px] text-slate-600 font-medium">Seans başı biriken</span>
                         </div>
                       </div>
                       <span className="font-bold text-sm text-slate-700">₺{monthlyMetrics.officeRentExpenses.toLocaleString('tr-TR')}</span>
@@ -1034,7 +1034,7 @@ export default function App() {
                         <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 text-sm">👶</div>
                         <div>
                           <span className="text-xs font-semibold block">Bakıcı Ücretleri</span>
-                          <span className="text-[9px] text-slate-400">Seans başı ödenen</span>
+                          <span className="text-[9px] text-slate-600 font-medium">Seans başı ödenen</span>
                         </div>
                       </div>
                       <span className="font-bold text-sm text-blue-600">₺{monthlyMetrics.babysitterFees.toLocaleString('tr-TR')}</span>
@@ -1061,7 +1061,7 @@ export default function App() {
                             }}
                           ></div>
                         </div>
-                        <p className="text-[9px] text-slate-400 leading-tight mt-2 italic">
+                        <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium">
                           * Bakıcı seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultBabysitterFee}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultOfficeRentFee}</span> üzerinden hesaplanır.
                         </p>
                       </div>
@@ -1101,7 +1101,7 @@ export default function App() {
                               : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] border border-[#e5e1d8]/60 text-slate-600'
                           }`}
                         >
-                          <span className={`text-[9px] uppercase tracking-widest font-semibold ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                          <span className={`text-[9px] uppercase tracking-widest font-bold ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
                             {day.dayName}
                           </span>
                           <span className="text-lg font-serif font-bold mt-0.5">
@@ -1124,11 +1124,11 @@ export default function App() {
                     <div>
                       <h3 className="text-xl font-serif text-[#6b705c] flex items-center gap-2">
                         Günlük Ajanda
-                        <span className="text-xs bg-[#f5f5f0] text-slate-500 font-sans font-normal px-2.5 py-0.5 rounded-full border border-slate-200">
+                        <span className="text-xs bg-[#f5f5f0] text-slate-700 font-sans font-semibold px-2.5 py-0.5 rounded-full border border-slate-300">
                           {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                         </span>
                       </h3>
-                      <p className="text-xs text-slate-400 mt-1">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
+                      <p className="text-xs text-slate-600 mt-1 font-medium">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
                     </div>
                     
                     <button 
@@ -1175,7 +1175,7 @@ export default function App() {
                                 <Clock className="w-3.5 h-3.5 text-slate-400 inline sm:hidden" />
                                 {session.time}
                               </p>
-                              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mt-0.5">
+                              <p className="text-[10px] text-slate-600 uppercase tracking-wider font-bold mt-0.5">
                                 {isCancelled ? 'İptal' : `${session.duration} dk`}
                               </p>
                             </div>
@@ -1217,7 +1217,7 @@ export default function App() {
                                 )}
                               </div>
                               
-                              <p className="text-xs text-slate-500 mt-1 font-medium italic">
+                              <p className="text-xs text-slate-700 mt-1 font-semibold italic">
                                 {session.notes || 'Açıklama girilmemiş.'}
                               </p>
                             </div>
@@ -1252,7 +1252,7 @@ export default function App() {
                             </div>
 
                             {/* Quick Actions (Hover visible on desktop, always visible on mobile) */}
-                            <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0">
+                            <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0 flex-wrap">
                               {/* Toggle Type */}
                               <button
                                 onClick={() => {
@@ -1262,14 +1262,14 @@ export default function App() {
                                   }
                                   handleToggleType(session.id, session.type);
                                 }}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-colors cursor-pointer border md:border-transparent ${
                                   isPastDate(session.date)
-                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
-                                    : 'text-slate-400 hover:text-[#6b705c] hover:bg-slate-50'
+                                    ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
+                                    : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-[#6b705c] hover:bg-slate-200/60 md:bg-transparent md:text-slate-500 md:hover:bg-slate-50'
                                 }`}
                                 title={isPastDate(session.date) ? 'Geçmiş seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
                               >
-                                <RefreshCw className="w-3.5 h-3.5" />
+                                <RefreshCw className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>
 
                               {/* Toggle Babysitter */}
@@ -1281,36 +1281,28 @@ export default function App() {
                                   }
                                   handleToggleBabysitter(session.id);
                                 }}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-all cursor-pointer border md:border-transparent ${
                                   isPastDate(session.date)
-                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
+                                    ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : session.hasBabysitterFee 
-                                    ? 'text-blue-500 bg-blue-50/50 hover:bg-blue-50' 
-                                    : 'text-slate-300 hover:text-blue-400'
+                                    ? 'text-blue-700 bg-blue-100/80 border-blue-200 hover:bg-blue-100 md:bg-blue-50/50 md:text-blue-500 md:hover:bg-blue-50' 
+                                    : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-blue-600 hover:bg-blue-50 md:bg-transparent md:text-slate-400'
                                 }`}
                                 title={isPastDate(session.date) ? 'Geçmiş seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
                               >
-                                <span className="text-xs font-bold font-serif">👶</span>
+                                <span className="text-xs font-bold font-serif leading-none">👶</span>
                               </button>
 
                               {/* Edit */}
                               <button
                                 onClick={() => {
-                                  if (isPastDate(session.date)) {
-                                    showToast('Geçmiş tarihlerdeki seanslar düzenlenemez! (Muhasebe yapılmıştır)', 'error');
-                                    return;
-                                  }
                                   setEditingSession(session);
                                   setIsSessionModalOpen(true);
                                 }}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                  isPastDate(session.date)
-                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
-                                    : 'text-slate-400 hover:text-amber-600 hover:bg-slate-50'
-                                }`}
-                                title={isPastDate(session.date) ? 'Geçmiş seanslar düzenlenemez' : 'Seansı Düzenle'}
+                                className="p-2.5 md:p-1.5 rounded-xl md:rounded-lg bg-amber-100/80 md:bg-transparent border border-amber-200/50 md:border-transparent text-amber-900 md:text-slate-500 hover:text-amber-700 hover:bg-amber-100 md:hover:bg-slate-50 transition-all cursor-pointer font-bold"
+                                title="Seansı Düzenle"
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
+                                <Edit3 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>
 
                               {/* Delete */}
@@ -1322,14 +1314,14 @@ export default function App() {
                                   }
                                   handleDeleteSession(session.id);
                                 }}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-colors cursor-pointer border md:border-transparent ${
                                   isPastDate(session.date)
-                                    ? 'text-slate-200 cursor-not-allowed opacity-40'
-                                    : 'text-slate-300 hover:text-rose-600 hover:bg-slate-50'
+                                    ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
+                                    : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-rose-600 hover:bg-rose-50 md:bg-transparent md:text-slate-400 md:hover:bg-slate-50'
                                 }`}
                                 title={isPastDate(session.date) ? 'Geçmiş seanslar silinemez' : 'Seansı Sil'}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>
                             </div>
                           </div>
