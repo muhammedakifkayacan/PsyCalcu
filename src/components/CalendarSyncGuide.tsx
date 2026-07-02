@@ -15,6 +15,7 @@ interface CalendarSyncGuideProps {
   sessions?: Session[];
   onGoToDate?: (date: string) => void;
   setActiveTab?: (tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings') => void;
+  showExplanations?: boolean;
 }
 
 export default function CalendarSyncGuide({
@@ -28,6 +29,7 @@ export default function CalendarSyncGuide({
   sessions = [],
   onGoToDate,
   setActiveTab,
+  showExplanations = true,
 }: CalendarSyncGuideProps) {
   const [dragActive, setDragActive] = useState(false);
   const [importType, setImportType] = useState<'online' | 'face-to-face'>('online');
@@ -185,40 +187,42 @@ export default function CalendarSyncGuide({
       </div>
 
       {/* Explanation of Dual Calendar Flow */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#f5f5f0] p-6 rounded-2xl border border-[#e5e1d8]/60 text-slate-700">
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-[#6b705c] font-semibold">
-            <HelpCircle className="w-5 h-5 shrink-0" />
-            <h4>Neden İki Ayrı Takvim?</h4>
+      {showExplanations && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#f5f5f0] p-6 rounded-2xl border border-[#e5e1d8]/60 text-slate-700 animate-fade-in">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-[#6b705c] font-semibold">
+              <HelpCircle className="w-5 h-5 shrink-0" />
+              <h4>Neden İki Ayrı Takvim?</h4>
+            </div>
+            <p className="text-xs leading-relaxed">
+              Takviminizde <strong>online seanslarınızı</strong> ve <strong>yüz yüze (ofis) seanslarınızı</strong> ayrı takvim kategorilerinde tutuyor olabilirsiniz. Bu ajanda, iki takvimi de ayrı ayrı bağlamanıza olanak tanır.
+            </p>
+            <p className="text-xs leading-relaxed">
+              Böylece, yüz yüze takviminden gelen seanslar için <strong>Seans Başı Ofis Gideri</strong> otomatik olarak kesilirken, online takvimden gelen seanslarda ofis gideri kesilmez.
+            </p>
           </div>
-          <p className="text-xs leading-relaxed">
-            Takviminizde <strong>online seanslarınızı</strong> ve <strong>yüz yüze (ofis) seanslarınızı</strong> ayrı takvim kategorilerinde tutuyor olabilirsiniz. Bu ajanda, iki takvimi de ayrı ayrı bağlamanıza olanak tanır.
-          </p>
-          <p className="text-xs leading-relaxed">
-            Böylece, yüz yüze takviminden gelen seanslar için <strong>Seans Başı Ofis Gideri</strong> otomatik olarak kesilirken, online takvimden gelen seanslarda ofis gideri kesilmez.
-          </p>
-        </div>
 
-        <div className="space-y-3 border-t md:border-t-0 md:border-l border-[#e5e1d8] pt-4 md:pt-0 md:pl-6">
-          <div className="flex items-center gap-2 text-[#cb997e] font-semibold">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <h4>Finansal Otomasyon</h4>
+          <div className="space-y-3 border-t md:border-t-0 md:border-l border-[#e5e1d8] pt-4 md:pt-0 md:pl-6">
+            <div className="flex items-center gap-2 text-[#cb997e] font-semibold">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <h4>Finansal Otomasyon</h4>
+            </div>
+            <ul className="text-xs space-y-1.5 text-slate-600">
+              <li className="flex items-center gap-1.5">
+                <Laptop className="w-3.5 h-3.5 text-emerald-600" />
+                <span><strong>Online Takvimi:</strong> Sadece bakıcı ücreti kesilir, ofis kirası kesilmez.</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                <span><strong>Yüzyüze Takvimi:</strong> Hem bakıcı ücreti hem de seans başı ofis kirası kesilir.</span>
+              </li>
+            </ul>
+            <p className="text-xs text-slate-500 leading-relaxed pt-1">
+              Bu sayede her seansı tek tek elinizle düzenlemek zorunda kalmaz, takvimden çektiğiniz gibi tüm hesap-kitap tablonuzu hazır bulursunuz.
+            </p>
           </div>
-          <ul className="text-xs space-y-1.5 text-slate-600">
-            <li className="flex items-center gap-1.5">
-              <Laptop className="w-3.5 h-3.5 text-emerald-600" />
-              <span><strong>Online Takvimi:</strong> Sadece bakıcı ücreti kesilir, ofis kirası kesilmez.</span>
-            </li>
-            <li className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-amber-500" />
-              <span><strong>Yüzyüze Takvimi:</strong> Hem bakıcı ücreti hem de seans başı ofis kirası kesilir.</span>
-            </li>
-          </ul>
-          <p className="text-xs text-slate-500 leading-relaxed pt-1">
-            Bu sayede her seansı tek tek elinizle düzenlemek zorunda kalmaz, takvimden çektiğiniz gibi tüm hesap-kitap tablonuzu hazır bulursunuz.
-          </p>
         </div>
-      </div>
+      )}
 
       {/* ICS File Importer with Type Selector */}
       <div className="space-y-4">
@@ -227,9 +231,11 @@ export default function CalendarSyncGuide({
             <h4 className="text-sm font-semibold text-[#6b705c]">
               Yöntem A: Takvim (.ics) Dosyasından Seans Yükle
             </h4>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Google Takvim, Apple Takvim veya Outlook'tan indirdiğiniz .ics dosyasını seans tipini seçerek içeri aktarın.
-            </p>
+            {showExplanations && (
+              <p className="text-xs text-slate-500 mt-0.5 animate-fade-in">
+                Google Takvim, Apple Takvim veya Outlook'tan indirdiğiniz .ics dosyasını seans tipini seçerek içeri aktarın.
+              </p>
+            )}
           </div>
           
           {/* Segmented Controller */}
@@ -304,9 +310,11 @@ export default function CalendarSyncGuide({
           <h4 className="text-sm font-semibold text-[#6b705c]">
             Yöntem B: Canlı Takvim WebCal Adreslerini Bağla
           </h4>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Google, iCloud veya Outlook üzerinde herkese açık paylaştığınız takvimlerin webcal:// ile başlayan abonelik linklerini girin.
-          </p>
+          {showExplanations && (
+            <p className="text-xs text-slate-500 mt-0.5 animate-fade-in">
+              Google, iCloud veya Outlook üzerinde herkese açık paylaştığınız takvimlerin webcal:// ile başlayan abonelik linklerini girin.
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSaveUrls} className="space-y-4">
@@ -470,13 +478,15 @@ export default function CalendarSyncGuide({
                   ))}
               </div>
               
-              <div className="mt-3.5 text-[11px] text-[#cb997e] bg-[#cb997e]/5 p-3 rounded-xl border border-[#cb997e]/10 flex items-start gap-2 leading-relaxed">
-                <AlertCircle className="w-4 h-4 shrink-0 text-[#cb997e] mt-0.5" />
-                <span>
-                  <strong>Bilgi:</strong> Takviminizden gelen seanslar, kendi orijinal tarihlerine yerleşir (örneğin geçmiş aylardaki seanslar kendi günlerine). 
-                  Yukarıdaki <strong>"Tarihe Git & Görüntüle"</strong> butonunu kullanarak o tarihin ajandasına anında zıplayabilir ve seansı inceleyebilirsiniz.
-                </span>
-              </div>
+              {showExplanations && (
+                <div className="mt-3.5 text-[11px] text-[#cb997e] bg-[#cb997e]/5 p-3 rounded-xl border border-[#cb997e]/10 flex items-start gap-2 leading-relaxed animate-fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-[#cb997e] mt-0.5" />
+                  <span>
+                    <strong>Bilgi:</strong> Takviminizden gelen seanslar, kendi orijinal tarihlerine yerleşir (örneğin geçmiş aylardaki seanslar kendi günlerine). 
+                    Yukarıdaki <strong>"Tarihe Git & Görüntüle"</strong> butonunu kullanarak o tarihin ajandasına anında zıplayabilir ve seansı inceleyebilirsiniz.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         );

@@ -329,6 +329,25 @@ export default function App() {
       return next;
     });
   };
+
+  const [showExplanations, setShowExplanations] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_show_explanations');
+      return saved !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const toggleShowExplanations = () => {
+    setShowExplanations(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('psycalcu_show_explanations', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
   
   // Google Sheets state
   const [sheetLinkInput, setSheetLinkInput] = useState('');
@@ -391,8 +410,28 @@ export default function App() {
 
   // Debt Calculations
   const debtsData = useMemo(() => {
-    // Filter non-cancelled and unpaid sessions
-    const unpaidSessions = sessions.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid');
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const nowStr = `${year}-${month}-${day}T${hours}:${minutes}`;
+
+    const padTime = (timeStr: string) => {
+      if (!timeStr) return "00:00";
+      const parts = timeStr.split(':');
+      const h = parts[0].padStart(2, '0');
+      const m = (parts[1] || '00').padStart(2, '0');
+      return `${h}:${m}`;
+    };
+
+    // Filter non-cancelled, unpaid, and realized (past or present) sessions
+    const unpaidSessions = sessions.filter(s => {
+      if (s.type === 'cancelled' || s.paymentStatus === 'paid') return false;
+      const sessionDateTime = `${s.date}T${padTime(s.time)}`;
+      return sessionDateTime <= nowStr;
+    });
     
     // Total unpaid amount
     const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
@@ -1077,6 +1116,18 @@ export default function App() {
           </div>
           
           <button
+            onClick={toggleShowExplanations}
+            className={`w-10 h-10 rounded-full border border-[#e5e1d8] flex items-center justify-center transition-all cursor-pointer ${
+              showExplanations 
+                ? 'bg-[#6b705c] text-white hover:bg-[#585c4c]' 
+                : 'bg-[#fdfbf7] text-slate-500 hover:bg-[#f5f5f0]'
+            }`}
+            title={showExplanations ? "Yardımcı Açıklamaları Gizle" : "Yardımcı Açıklamaları Göster"}
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-10 h-10 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#6b705c] hover:bg-[#f5f5f0] transition-all cursor-pointer"
             title="Ayarlar"
@@ -1097,17 +1148,19 @@ export default function App() {
                 <p className="text-xs text-rose-900 mt-1">
                   Bulut veritabanı kotası dolduğu için yeni değişiklikleriniz şu an için buluta kaydedilemiyor ancak tarayıcınızın yerel depolama hafızasında (Local Storage) tam ve güvenli bir şekilde saklanıyor. 
                 </p>
-                <div className="mt-2 text-xs bg-white/60 p-3 rounded-xl border border-rose-100 space-y-1.5">
-                  <p className="font-semibold text-rose-950">🔒 Veri Güvenliği Bilgilendirmesi:</p>
-                  <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700 leading-normal">
-                    <li><strong className="text-emerald-800">Tarayıcıyı veya bilgisayarı kapatmak:</strong> Verilerinizi <strong>silmez</strong>. Tarayıcıyı kapatıp açtığınızda verileriniz aynen yüklenir.</li>
-                    <li><strong className="text-rose-700">Tarayıcı geçmişini silmek / Çerezleri temizlemek:</strong> "Site verilerini" temizlerseniz veya tarayıcıyı sıfırlarsanız Local Storage verileri <strong>tamamen silinir!</strong></li>
-                    <li><strong className="text-rose-700">Gizli Sekme (Incognito):</strong> Eğer uygulamayı gizli sekmede açtıysanız, sekmeyi kapattığınızda tüm verileriniz <strong>silinir!</strong></li>
-                  </ul>
-                  <p className="text-[11px] text-slate-600 mt-1 italic">
-                    Öneri: Kota yenilenene kadar tarayıcı verilerini temizlemeyin ve tedbir amacıyla <strong className="text-slate-800">"Yedek & E-Tablo"</strong> sayfasından verilerinizi manuel yedek (.json) olarak bilgisayarınıza indirin.
-                  </p>
-                </div>
+                {showExplanations && (
+                  <div className="mt-2 text-xs bg-white/60 p-3 rounded-xl border border-rose-100 space-y-1.5 animate-fade-in">
+                    <p className="font-semibold text-rose-950">🔒 Veri Güvenliği Bilgilendirmesi:</p>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700 leading-normal">
+                      <li><strong className="text-emerald-800">Tarayıcıyı veya bilgisayarı kapatmak:</strong> Verilerinizi <strong>silmez</strong>. Tarayıcıyı kapatıp açtığınızda verileriniz aynen yüklenir.</li>
+                      <li><strong className="text-rose-700">Tarayıcı geçmişini silmek / Çerezleri temizlemek:</strong> "Site verilerini" temizlerseniz veya tarayıcıyı sıfırlarsanız Local Storage verileri <strong>tamamen silinir!</strong></li>
+                      <li><strong className="text-rose-700">Gizli Sekme (Incognito):</strong> Eğer uygulamayı gizli sekmede açtıysanız, sekmeyi kapattığınızda tüm verileriniz <strong>silinir!</strong></li>
+                    </ul>
+                    <p className="text-[11px] text-slate-600 mt-1 italic">
+                      Öneri: Kota yenilenene kadar tarayıcı verilerini temizlemeyin ve tedbir amacıyla <strong className="text-slate-800">"Yedek & E-Tablo"</strong> sayfasından verilerinizi manuel yedek (.json) olarak bilgisayarınıza indirin.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 shrink-0 self-end md:self-start">
@@ -1213,9 +1266,11 @@ export default function App() {
                             }}
                           ></div>
                         </div>
-                        <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium">
-                          * Bakıcı seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultBabysitterFee}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultOfficeRentFee}</span> üzerinden hesaplanır.
-                        </p>
+                        {showExplanations && (
+                          <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium animate-fade-in">
+                            * Bakıcı seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultBabysitterFee}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultOfficeRentFee}</span> üzerinden hesaplanır.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1293,6 +1348,18 @@ export default function App() {
                         <span className="text-xs font-medium text-slate-500 group-hover:text-[#6b705c] transition-colors">Notları Göster</span>
                         <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
                           <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                        </div>
+                      </button>
+
+                      {/* Show/Hide Explanations Switch */}
+                      <button
+                        onClick={toggleShowExplanations}
+                        className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none"
+                        title={showExplanations ? "Açıklamaları Gizle" : "Açıklamaları Göster"}
+                      >
+                        <span className="text-xs font-medium text-slate-500 group-hover:text-[#6b705c] transition-colors">Açıklamaları Göster</span>
+                        <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                          <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showExplanations ? 'translate-x-3.5' : 'translate-x-0'}`} />
                         </div>
                       </button>
 
@@ -1798,6 +1865,7 @@ export default function App() {
                 sessions={sessions}
                 onGoToDate={(date) => setSelectedDate(date)}
                 setActiveTab={setActiveTab}
+                showExplanations={showExplanations}
               />
             </motion.div>
           )}
@@ -1835,11 +1903,13 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="space-y-2 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8]">
-                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                      💡 <span className="text-[#6b705c] font-bold">Pratik Yapıştırma Yöntemi:</span> Aşağıdaki butona tıklayıp Google Sheets veya Excel'i açarak dilediğiniz hücreye tıklayın ve <kbd className="bg-white px-1 py-0.5 border border-slate-200 rounded text-[9px] font-mono shadow-xs">Ctrl+V</kbd> (Mac'te <kbd className="bg-white px-1 py-0.5 border border-slate-200 rounded text-[9px] font-mono shadow-xs">Cmd+V</kbd>) tuşlarına basın. Tüm verileriniz anında sütunlara ayrışır!
-                    </p>
-                  </div>
+                  {showExplanations && (
+                    <div className="space-y-2 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] animate-fade-in">
+                      <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                        💡 <span className="text-[#6b705c] font-bold">Pratik Yapıştırma Yöntemi:</span> Aşağıdaki butona tıklayıp Google Sheets veya Excel'i açarak dilediğiniz hücreye tıklayın ve <kbd className="bg-white px-1 py-0.5 border border-slate-200 rounded text-[9px] font-mono shadow-xs">Ctrl+V</kbd> (Mac'te <kbd className="bg-white px-1 py-0.5 border border-slate-200 rounded text-[9px] font-mono shadow-xs">Cmd+V</kbd>) tuşlarına basın. Tüm verileriniz anında sütunlara ayrışır!
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-2 pt-2">
                     {/* Clipboard Copy Button */}
@@ -1903,11 +1973,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="space-y-2 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8]">
-                    <p className="text-[10px] text-slate-400 leading-relaxed">
-                      * Verileriniz internete gönderilmez, tamamen cihazınızda yerel yedeklenir. Bilgisayar değiştirdiğinizde veya geçmişi temizlediğinizde bu yedek dosyasını yükleyebilirsiniz.
-                    </p>
-                  </div>
+                  {showExplanations && (
+                    <div className="space-y-2 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] animate-fade-in">
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        * Verileriniz internete gönderilmez, tamamen cihazınızda yerel yedeklenir. Bilgisayar değiştirdiğinizde veya geçmişi temizlediğinizde bu yedek dosyasını yükleyebilirsiniz.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1930,6 +2002,8 @@ export default function App() {
         settings={settings}
         onSave={(updated) => setSettings(updated)}
         onClearAllSessions={handleClearAllSessions}
+        showExplanations={showExplanations}
+        onToggleExplanations={toggleShowExplanations}
       />
 
       {/* Session Add/Edit Modal Component */}

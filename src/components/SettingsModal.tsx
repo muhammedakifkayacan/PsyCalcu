@@ -8,9 +8,19 @@ interface SettingsModalProps {
   settings: AppSettings;
   onSave: (settings: AppSettings) => void;
   onClearAllSessions: () => void;
+  showExplanations: boolean;
+  onToggleExplanations: () => void;
 }
 
-export default function SettingsModal({ isOpen, onClose, settings, onSave, onClearAllSessions }: SettingsModalProps) {
+export default function SettingsModal({ 
+  isOpen, 
+  onClose, 
+  settings, 
+  onSave, 
+  onClearAllSessions,
+  showExplanations,
+  onToggleExplanations
+}: SettingsModalProps) {
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
@@ -97,7 +107,9 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-600 font-medium">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
+            )}
           </div>
 
           {/* Babysitter Fee */}
@@ -118,7 +130,9 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-600 font-medium">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
+            )}
           </div>
 
           {/* Office Rent Fee */}
@@ -139,19 +153,48 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onCle
                 className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
               />
             </div>
-            <p className="text-[10px] text-slate-600 font-medium">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            )}
+          </div>
+
+          {/* Toggle Explanations Switch */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
+              <div className="space-y-0.5 max-w-[75%]">
+                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Yardımcı Açıklamaları Göster</label>
+                <p className="text-[10px] text-slate-500 leading-tight">Arayüzdeki rehber, uyarı ve bilgilendirici metinleri gösterir.</p>
+              </div>
+              <button
+                type="button"
+                onClick={onToggleExplanations}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'
+                }`}
+                role="switch"
+                aria-checked={showExplanations}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    showExplanations ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Tip */}
-          <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex gap-3 items-start">
-            <ShieldAlert className="w-5 h-5 text-[#cb997e] shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <h4 className="text-xs font-semibold text-slate-700 font-sans">Otomatik Hesaplama Algoritması</h4>
-              <p className="text-[10px] text-slate-600 leading-relaxed font-sans font-medium">
-                Uygulama, seans gelirlerinizden seans başı bakıcı ücretini otomatik düşer. Yüzyüze seanslarda ise ek olarak seans başı ofis kira gideri de düşülerek net kârınız anlık hesaplanır. Online seanslarda ofis kirası kesilmez.
-              </p>
+          {showExplanations && (
+            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex gap-3 items-start animate-fade-in">
+              <ShieldAlert className="w-5 h-5 text-[#cb997e] shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold text-slate-700 font-sans">Otomatik Hesaplama Algoritması</h4>
+                <p className="text-[10px] text-slate-600 leading-relaxed font-sans font-medium">
+                  Uygulama, seans gelirlerinizden seans başı bakıcı ücretini otomatik düşer. Yüzyüze seanslarda ise ek olarak seans başı ofis kira gideri de düşülerek net kârınız anlık hesaplanır. Online seanslarda ofis kirası kesilmez.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Danger Zone */}
           {showConfirm ? (
