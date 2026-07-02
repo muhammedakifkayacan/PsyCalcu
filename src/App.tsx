@@ -1269,18 +1269,18 @@ export default function App() {
                               {/* Toggle Type */}
                               <button
                                 onClick={() => {
-                                  if (isPastDate(session.date)) {
-                                    showToast('Geçmiş seansların tipi değiştirilemez! (Muhasebe yapılmıştır)', 'error');
+                                  if (isOlderThan7Days(session.date)) {
+                                    showToast('7 günden eski seansların tipi değiştirilemez! (Muhasebe kilitlenmiştir)', 'error');
                                     return;
                                   }
                                   handleToggleType(session.id, session.type);
                                 }}
                                 className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-colors cursor-pointer border md:border-transparent ${
-                                  isPastDate(session.date)
+                                  isOlderThan7Days(session.date)
                                     ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-[#6b705c] hover:bg-slate-200/60 md:bg-transparent md:text-slate-500 md:hover:bg-slate-50'
                                 }`}
-                                title={isPastDate(session.date) ? 'Geçmiş seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
+                                title={isOlderThan7Days(session.date) ? '7 günden eski seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
                               >
                                 <RefreshCw className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>
@@ -1288,20 +1288,20 @@ export default function App() {
                               {/* Toggle Babysitter */}
                               <button
                                 onClick={() => {
-                                  if (isPastDate(session.date)) {
-                                    showToast('Geçmiş seansların bakıcı ücreti değiştirilemez! (Muhasebe yapılmıştır)', 'error');
+                                  if (isOlderThan7Days(session.date)) {
+                                    showToast('7 günden eski seansların bakıcı ücreti değiştirilemez! (Muhasebe kilitlenmiştir)', 'error');
                                     return;
                                   }
                                   handleToggleBabysitter(session.id);
                                 }}
                                 className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-all cursor-pointer border md:border-transparent ${
-                                  isPastDate(session.date)
+                                  isOlderThan7Days(session.date)
                                     ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : session.hasBabysitterFee 
                                     ? 'text-blue-700 bg-blue-100/80 border-blue-200 hover:bg-blue-100 md:bg-blue-50/50 md:text-blue-500 md:hover:bg-blue-50' 
                                     : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-blue-600 hover:bg-blue-50 md:bg-transparent md:text-slate-400'
                                 }`}
-                                title={isPastDate(session.date) ? 'Geçmiş seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
+                                title={isOlderThan7Days(session.date) ? '7 günden eski seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
                               >
                                 <span className="text-xs font-bold font-serif leading-none">👶</span>
                               </button>
@@ -1321,18 +1321,18 @@ export default function App() {
                               {/* Delete */}
                               <button
                                 onClick={() => {
-                                  if (isPastDate(session.date)) {
-                                    showToast('Geçmiş tarihlerdeki seanslar silinemez! (Muhasebe yapılmıştır)', 'error');
+                                  if (isOlderThan7Days(session.date)) {
+                                    showToast('7 günden eski seanslar silinemez! (Muhasebe kilitlenmiştir)', 'error');
                                     return;
                                   }
                                   handleDeleteSession(session.id);
                                 }}
                                 className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-colors cursor-pointer border md:border-transparent ${
-                                  isPastDate(session.date)
+                                  isOlderThan7Days(session.date)
                                     ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-rose-600 hover:bg-rose-50 md:bg-transparent md:text-slate-400 md:hover:bg-slate-50'
                                 }`}
-                                title={isPastDate(session.date) ? 'Geçmiş seanslar silinemez' : 'Seansı Sil'}
+                                title={isOlderThan7Days(session.date) ? '7 günden eski seanslar silinemez' : 'Seansı Sil'}
                               >
                                 <Trash2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>

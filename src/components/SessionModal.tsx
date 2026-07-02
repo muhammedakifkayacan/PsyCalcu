@@ -56,7 +56,9 @@ export default function SessionModal({
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 7;
   };
-  const isDateTimeLocked = sessionToEdit ? isOlderThan7Days(sessionToEdit.date) : false;
+  const isDateTimeLocked = sessionToEdit 
+    ? (sessionToEdit.isSyncedFromCalendar || isOlderThan7Days(sessionToEdit.date)) 
+    : false;
 
   useEffect(() => {
     if (isOpen) {
@@ -224,11 +226,15 @@ export default function SessionModal({
             </div>
           </div>
 
-          {/* Past session warning */}
-          {isPastSession && (
+          {/* Calendar synced or past session warning */}
+          {(sessionToEdit?.isSyncedFromCalendar || isPastSession) && (
             <div className="text-[10px] sm:text-[11px] text-[#b58368] bg-[#fdfbf7] px-3 py-2 rounded-xl border border-[#cb997e]/30 flex items-start gap-1.5 animate-fade-in">
               <span className="mt-0.5">⚠️</span>
-              {isDateTimeLocked ? (
+              {sessionToEdit?.isSyncedFromCalendar ? (
+                <span>
+                  <strong>Takvim Seansı:</strong> Tarih ve saat takviminizden otomatik eşitlenmiştir. Tarih veya saati değiştirmek için takvim uygulamanızı kullanın. Ücret, ödeme durumu ve notları buradan düzenleyebilirsiniz.
+                </span>
+              ) : isDateTimeLocked ? (
                 <span>
                   <strong>Geçmiş Seans (7 Günden Eski):</strong> Muhasebeleştiği için tarih ve saat değiştirilemez. Ancak fiyat, ödeme durumu ve notları her zaman düzenleyebilirsiniz.
                 </span>
