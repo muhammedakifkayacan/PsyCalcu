@@ -36,7 +36,7 @@ import SessionModal from './components/SessionModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import { auth, onAuthStateChanged, User } from './lib/firebase';
-import { fetchUserData, saveUserData, migrateLocalDataToFirestore } from './lib/firestoreService';
+import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 
 export default function App() {
   // Load settings from localStorage or set defaults
@@ -85,7 +85,9 @@ export default function App() {
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const hasSyncedRef = useRef<string | null>(null);
+  const lastSavedRef = useRef<{ settings: string; sessions: string }>({ settings: '', sessions: '' });
 
   // Toast Notification State
   const [toast, setToast] = useState<{
@@ -137,6 +139,11 @@ export default function App() {
           if (cloudData) {
             setSessions(cloudData.sessions || []);
             setSettings(cloudData.settings);
+            // Mark as synchronized to avoid writing it straight back
+            lastSavedRef.current = {
+              settings: JSON.stringify(cloudData.settings),
+              sessions: JSON.stringify(cloudData.sessions || [])
+            };
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           } else {
             // First time registered user, sync existing local data to their new cloud database if it's real
@@ -152,16 +159,34 @@ export default function App() {
             }
             if (hasRealLocalSessions) {
               await saveUserData(currentUser.uid, settings, sessions);
+              lastSavedRef.current = {
+                settings: JSON.stringify(settings),
+                sessions: JSON.stringify(sessions)
+              };
               showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
             } else {
               await saveUserData(currentUser.uid, settings, []);
               setSessions([]);
+              lastSavedRef.current = {
+                settings: JSON.stringify(settings),
+                sessions: '[]'
+              };
               showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
             }
           }
         } catch (error: any) {
           console.error("Bulut verisi çekilirken hata:", error);
           
+          const isQuota = error?.message === 'quota-exceeded' || 
+                          error?.message?.toLowerCase().includes('quota') || 
+                          error?.code?.toLowerCase().includes('quota') ||
+                          error?.message?.toLowerCase().includes('resource-exhausted') ||
+                          error?.code?.toLowerCase().includes('resource-exhausted');
+          
+          if (isQuota) {
+            setIsQuotaExceeded(true);
+          }
+
           // Graceful fallback to local storage on offline/network errors
           const savedSessions = localStorage.getItem('psycalcu_sessions');
           const savedSettings = localStorage.getItem('psycalcu_settings');
@@ -176,7 +201,9 @@ export default function App() {
                               error?.code?.toLowerCase().includes('offline') || 
                               !navigator.onLine;
                               
-          if (isOfflineErr) {
+          if (isQuota) {
+            showToast('Bulut günlük kotaları doldu. Yerel verileriniz kullanılıyor; seanslarınız güvendedir.', 'info');
+          } else if (isOfflineErr) {
             showToast('Şu anda çevrimdışısınız. Yerel verileriniz yüklendi; bağlantı geldiğinde bulut ile eşitlenecektir.', 'info');
           } else {
             showToast('Bulut verileri eşitlenirken bir sorun oluştu, yerel verileriniz kullanılıyor.', 'error');
@@ -187,6 +214,7 @@ export default function App() {
       } else {
         setUser(null);
         hasSyncedRef.current = null;
+        lastSavedRef.current = { settings: '', sessions: '' };
         // Load local storage if they log out
         const savedSessions = localStorage.getItem('psycalcu_sessions');
         const savedSettings = localStorage.getItem('psycalcu_settings');
@@ -205,20 +233,47 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Save settings & sessions to local & cloud on changes
+  // Save settings & sessions to local & cloud on changes with debouncing and change-detection
   useEffect(() => {
     localStorage.setItem('psycalcu_settings', JSON.stringify(settings));
-    if (user && !isAuthSyncing) {
-      saveUserData(user.uid, settings, sessions).catch(console.error);
-    }
-  }, [settings, user, isAuthSyncing]);
-
-  useEffect(() => {
     localStorage.setItem('psycalcu_sessions', JSON.stringify(sessions));
-    if (user && !isAuthSyncing) {
-      saveUserData(user.uid, settings, sessions).catch(console.error);
+
+    if (!user || isAuthSyncing || isQuotaExceeded) {
+      return;
     }
-  }, [sessions, user, isAuthSyncing]);
+
+    const currentSettingsStr = JSON.stringify(settings);
+    const currentSessionsStr = JSON.stringify(sessions);
+
+    // Skip saving to cloud if data hasn't changed since last cloud synchronization or save
+    if (currentSettingsStr === lastSavedRef.current.settings &&
+        currentSessionsStr === lastSavedRef.current.sessions) {
+      return;
+    }
+
+    // Debounce cloud save by 2000ms
+    const timer = setTimeout(() => {
+      saveUserData(user.uid, settings, sessions).then(() => {
+        lastSavedRef.current = {
+          settings: currentSettingsStr,
+          sessions: currentSessionsStr
+        };
+      }).catch((err: any) => {
+        const isQuota = err?.message === 'quota-exceeded' || 
+                        err?.message?.toLowerCase().includes('quota') || 
+                        err?.code?.toLowerCase().includes('quota') ||
+                        err?.message?.toLowerCase().includes('resource-exhausted') ||
+                        err?.code?.toLowerCase().includes('resource-exhausted');
+        if (isQuota) {
+          setIsQuotaExceeded(true);
+        } else {
+          console.error("Bulut kayıt hatası:", err);
+        }
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [settings, sessions, user, isAuthSyncing, isQuotaExceeded]);
 
   // Automatic Background Calendar Sync on App Load
   const hasAutoSyncedRef = useRef(false);
@@ -960,11 +1015,20 @@ export default function App() {
           {/* Bulut Senkronizasyon Durumu Pill */}
           {user && (
             <div className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
-              isAuthSyncing 
-                ? 'text-amber-700 bg-amber-50 border-amber-100' 
-                : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+              isQuotaExceeded
+                ? 'text-amber-700 bg-amber-50 border-amber-100'
+                : isAuthSyncing 
+                  ? 'text-amber-700 bg-amber-50 border-amber-100' 
+                  : 'text-emerald-700 bg-emerald-50 border-emerald-100'
             }`} id="cloud-sync-status-pill">
-              {isAuthSyncing ? (
+              {isQuotaExceeded ? (
+                <>
+                  <div className="p-0.5 bg-amber-100 text-amber-700 rounded-full">
+                    <span className="text-xs">⚠️</span>
+                  </div>
+                  <span className="font-semibold text-amber-800">Kota Doldu (Yerel Aktif)</span>
+                </>
+              ) : isAuthSyncing ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
                   <span className="font-semibold">Bulut Senkronizasyonu Sürüyor...</span>
@@ -996,6 +1060,31 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6" id="psycalcu-main">
+        {isQuotaExceeded && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-[2rem] text-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm" id="quota-warning-banner">
+            <div className="flex gap-3">
+              <span className="text-2xl mt-0.5">⚠️</span>
+              <div>
+                <h4 className="font-bold text-sm text-amber-950">Günlük Bulut Veritabanı Yazma Limiti Doldu (Bulut Sunucu Yoğunluğu)</h4>
+                <p className="text-xs text-amber-900 mt-1">
+                  Bugün için Firebase veritabanı kapasite limitine (Spark/Free Tier) ulaşıldı. 
+                  <strong className="text-emerald-800 font-semibold"> Güvenlik veya veri kaybı endişeniz olmasın: Tüm seanslarınız, ayarlarınız ve borç kayıtlarınız şu anda tarayıcınızın yerel depolama (Local Storage) birimine tam ve güvenli bir şekilde anlık olarak kaydedilmeye devam etmektedir.</strong>
+                </p>
+                <p className="text-[11px] text-amber-800 mt-1 italic leading-tight">
+                  Kotalar her gün otomatik olarak sıfırlanır. Verilerinizi her zaman "Yedek & E-Tablo" sayfasından manuel yedekleyebilir veya Firebase konsolundan kota durumunuzu takip edebilirsiniz.
+                </p>
+              </div>
+            </div>
+            <a 
+              href="https://console.firebase.google.com/project/gen-lang-client-0612096853/firestore/databases/ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222/data?openUpgradeDialog=true" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-xs font-bold transition-all shadow-xs shrink-0 self-end md:self-center"
+            >
+              Firestore Panelini Aç
+            </a>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {activeTab === 'agenda' && (
             <motion.div
@@ -1810,7 +1899,7 @@ export default function App() {
 
       {/* Aesthetic Footer */}
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.4.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 

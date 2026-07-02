@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, disableNetwork } from 'firebase/firestore';
 import { Session, AppSettings } from '../types';
 
 interface UserData {
@@ -7,10 +7,39 @@ interface UserData {
   sessions: Session[];
 }
 
+export let isFirestoreQuotaExceeded = false;
+
+export function checkIsQuotaError(error: any): boolean {
+  if (!error) return false;
+  const errMsg = error.message || String(error);
+  const errCode = error.code || '';
+  return (
+    errCode === 'resource-exhausted' ||
+    errCode === 'quota-exceeded' ||
+    errMsg.toLowerCase().includes('quota') ||
+    errMsg.toLowerCase().includes('resource-exhausted') ||
+    errMsg.toLowerCase().includes('quota exceeded')
+  );
+}
+
+// Utility to cleanly disable network on quota limit
+async function handleQuotaExceeded() {
+  isFirestoreQuotaExceeded = true;
+  try {
+    await disableNetwork(db);
+    console.warn("Firestore network communication has been disabled due to quota limits.");
+  } catch (err) {
+    console.error("Failed to disable Firestore network:", err);
+  }
+}
+
 /**
  * Fetch all user data (sessions and settings) from Firestore
  */
 export async function fetchUserData(userId: string): Promise<UserData | null> {
+  if (isFirestoreQuotaExceeded) {
+    throw new Error('quota-exceeded');
+  }
   try {
     const docRef = doc(db, 'users', userId);
     const docSnap = await getDoc(docRef);
@@ -22,7 +51,11 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
       };
     }
     return null;
-  } catch (error) {
+  } catch (error: any) {
+    if (checkIsQuotaError(error)) {
+      await handleQuotaExceeded();
+      throw new Error('quota-exceeded');
+    }
     console.error("Error fetching user data from Firestore: ", error);
     throw error;
   }
@@ -32,10 +65,17 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
  * Save all user data (sessions and settings) to Firestore
  */
 export async function saveUserData(userId: string, settings: AppSettings, sessions: Session[]): Promise<void> {
+  if (isFirestoreQuotaExceeded) {
+    throw new Error('quota-exceeded');
+  }
   try {
     const docRef = doc(db, 'users', userId);
     await setDoc(docRef, { settings, sessions }, { merge: true });
-  } catch (error) {
+  } catch (error: any) {
+    if (checkIsQuotaError(error)) {
+      await handleQuotaExceeded();
+      throw new Error('quota-exceeded');
+    }
     console.error("Error saving user data to Firestore: ", error);
     throw error;
   }
