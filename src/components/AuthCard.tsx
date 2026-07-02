@@ -29,9 +29,10 @@ interface AuthCardProps {
   onAuthSuccess: (user: User, isNewUser: boolean) => void;
   existingSessionsCount: number;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  showExplanations?: boolean;
 }
 
-export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast }: AuthCardProps) {
+export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true }: AuthCardProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -203,16 +204,18 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
           </button>
         </div>
 
-        <div className="bg-white/10 rounded-2xl p-4 border border-white/5 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#ffe8d6]">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Bulut Senkronizasyonu Aktif
+        {showExplanations && (
+          <div className="bg-white/10 rounded-2xl p-4 border border-white/5 space-y-2 animate-fade-in">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#ffe8d6]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Bulut Senkronizasyonu Aktif
+            </div>
+            <p className="text-[10px] text-white/80 leading-relaxed">
+              Seans verileriniz, takvim ayarlarınız ve muhasebe dökümleriniz güvenle Google Firestore veritabanına yedekleniyor. 
+              Cihazınızı değiştirseniz veya tarayıcı geçmişini temizleseniz dahi kaybolmaz.
+            </p>
           </div>
-          <p className="text-[10px] text-white/80 leading-relaxed">
-            Seans verileriniz, takvim ayarlarınız ve muhasebe dökümleriniz güvenle Google Firestore veritabanına yedekleniyor. 
-            Cihazınızı değiştirseniz veya tarayıcı geçmişini temizleseniz dahi kaybolmaz.
-          </p>
-        </div>
+        )}
       </div>
     );
   }

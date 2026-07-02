@@ -23,7 +23,9 @@ import {
   Check,
   Search,
   Wallet,
-  Users
+  Users,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -348,6 +350,12 @@ export default function App() {
       return next;
     });
   };
+
+  const [showAiDetails, setShowAiDetails] = useState<boolean>(false);
+
+  useEffect(() => {
+    setShowAiDetails(false);
+  }, [selectedDate]);
   
   // Google Sheets state
   const [sheetLinkInput, setSheetLinkInput] = useState('');
@@ -686,6 +694,7 @@ export default function App() {
 
   const handleGenerateSummary = async () => {
     setIsSummaryLoading(true);
+    setShowAiDetails(true);
     try {
       const response = await fetch("/api/gemini/summarize", {
         method: "POST",
@@ -1214,6 +1223,7 @@ export default function App() {
                   onAuthSuccess={handleAuthSuccess}
                   existingSessionsCount={sessions.length}
                   showToast={showToast}
+                  showExplanations={showExplanations}
                 />
 
                 {/* Expense Breakdown Card */}
@@ -1335,7 +1345,9 @@ export default function App() {
                           {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                         </span>
                       </h3>
-                      <p className="text-xs text-slate-600 mt-1 font-medium">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
+                      {showExplanations && (
+                        <p className="text-xs text-slate-600 mt-1 font-medium animate-fade-in">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
+                      )}
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
@@ -1600,74 +1612,114 @@ export default function App() {
                 </div>
 
                 {/* AI Summary Card */}
-                <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f5f5f0] pb-5">
-                    <div>
-                      <h3 className="text-lg font-serif text-[#6b705c] flex items-center gap-2">
+                {!showAiDetails ? (
+                  <div className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-sm p-4 mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-[#fdfbf7] rounded-xl flex items-center justify-center text-[#cb997e] shrink-0 border border-[#e5e1d8]/50">
                         <Sparkles className="w-5 h-5 text-[#cb997e]" />
-                        Yapay Zeka Günlük Değerlendirmesi
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Günün seanslarını, finansal dengesini ve klinik yoğunluğunu analiz edin.
-                      </p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-700">Yapay Zeka Günlük Değerlendirmesi</h4>
+                        {showExplanations && (
+                          <p className="text-xs text-slate-400 font-medium animate-fade-in">Günün seanslarını, finansal dengesini ve klinik yoğunluğunu analiz edin.</p>
+                        )}
+                      </div>
                     </div>
-                    
                     <button
-                      onClick={handleGenerateSummary}
-                      disabled={isSummaryLoading}
-                      className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
-                        isSummaryLoading 
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                          : 'bg-[#cb997e] hover:bg-[#b58368] text-white'
-                      }`}
+                      onClick={() => {
+                        setShowAiDetails(true);
+                        if (!aiSummaries[selectedDate]) {
+                          handleGenerateSummary();
+                        }
+                      }}
+                      className="px-5 py-2.5 bg-[#cb997e] hover:bg-[#b58368] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
                     >
-                      {isSummaryLoading ? (
-                        <>
-                          <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                          Özetleniyor...
-                        </>
-                      ) : aiSummaries[selectedDate] ? (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Analizi Yenile
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Yapay Zeka ile Analiz Et
-                        </>
-                      )}
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {aiSummaries[selectedDate] ? 'Analizi Detaylıca Göster' : 'Yapay Zeka ile Analiz Et'}
                     </button>
                   </div>
+                ) : (
+                  <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f5f5f0] pb-5">
+                      <div>
+                        <h3 className="text-lg font-serif text-[#6b705c] flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-[#cb997e]" />
+                          Yapay Zeka Günlük Değerlendirmesi
+                        </h3>
+                        {showExplanations && (
+                          <p className="text-xs text-slate-400 mt-1 animate-fade-in">
+                            Günün seanslarını, finansal dengesini ve klinik yoğunluğunu analiz edin.
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end">
+                        <button
+                          onClick={() => setShowAiDetails(false)}
+                          className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border border-[#e5e1d8]"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                          Detayları Gizle
+                        </button>
 
-                  <div className="mt-6">
-                    {isSummaryLoading ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-                        <div className="relative w-10 h-10">
-                          <div className="absolute inset-0 rounded-full border-2 border-[#cb997e]/20 animate-ping" />
-                          <div className="absolute inset-0 rounded-full border-2 border-t-[#cb997e] animate-spin" />
-                        </div>
-                        <p className="text-xs text-slate-500 animate-pulse font-medium">
-                          Gün seansları analiz ediliyor ve klinik rapor oluşturuluyor...
-                        </p>
+                        <button
+                          onClick={handleGenerateSummary}
+                          disabled={isSummaryLoading}
+                          className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                            isSummaryLoading 
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                              : 'bg-[#cb997e] hover:bg-[#b58368] text-white'
+                          }`}
+                        >
+                          {isSummaryLoading ? (
+                            <>
+                              <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                              Özetleniyor...
+                            </>
+                          ) : aiSummaries[selectedDate] ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              Analizi Yenile
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Yapay Zeka ile Analiz Et
+                            </>
+                          )}
+                        </button>
                       </div>
-                    ) : aiSummaries[selectedDate] ? (
-                      <div className="prose prose-sm max-w-none text-slate-600 leading-relaxed text-sm markdown-body">
-                        <ReactMarkdown>{aiSummaries[selectedDate]}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400 space-y-3">
-                        <Sparkles className="w-10 h-10 text-[#a5a58d]/40 stroke-[1.5]" />
-                        <div>
-                          <h4 className="text-sm font-semibold text-slate-600">Henüz Değerlendirme Yapılmadı</h4>
-                          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                            Günün seans dengesini, gelir-gider oranlarını ve yapay zeka klinik asistanınızın önerilerini görmek için yukarıdaki butona tıklayın.
+                    </div>
+
+                    <div className="mt-6">
+                      {isSummaryLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                          <div className="relative w-10 h-10">
+                            <div className="absolute inset-0 rounded-full border-2 border-[#cb997e]/20 animate-ping" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-[#cb997e] animate-spin" />
+                          </div>
+                          <p className="text-xs text-slate-500 animate-pulse font-medium">
+                            Gün seansları analiz ediliyor ve klinik rapor oluşturuluyor...
                           </p>
                         </div>
-                      </div>
-                    )}
+                      ) : aiSummaries[selectedDate] ? (
+                        <div className="prose prose-sm max-w-none text-slate-600 leading-relaxed text-sm markdown-body">
+                          <ReactMarkdown>{aiSummaries[selectedDate]}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400 space-y-3">
+                          <Sparkles className="w-10 h-10 text-[#a5a58d]/40 stroke-[1.5]" />
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-600">Henüz Değerlendirme Yapılmadı</h4>
+                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                              Günün seans dengesini, gelir-gider oranlarını ve yapay zeka klinik asistanınızın önerilerini görmek için yukarıdaki butona tıklayın.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
               </div>
             </motion.div>
@@ -1681,7 +1733,7 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.2 }}
             >
-              <StatsDashboard sessions={sessions} settings={settings} />
+              <StatsDashboard sessions={sessions} settings={settings} showExplanations={showExplanations} />
             </motion.div>
           )}
 
@@ -1700,9 +1752,11 @@ export default function App() {
                 <div className="max-w-2xl">
                   <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold uppercase tracking-wider">Tahsilat Takip</span>
                   <h2 className="text-3xl font-serif mt-3">Borç & Ödeme Takip Sayfası</h2>
-                  <p className="text-sm opacity-90 mt-2 leading-relaxed">
-                    Danışanlarınızın henüz ödenmemiş seans ücretlerini buradan takip edebilirsiniz. Ödeme durumunu güncellediğinizde aylık kazanç raporunuz otomatik olarak güncellenir.
-                  </p>
+                  {showExplanations && (
+                    <p className="text-sm opacity-90 mt-2 leading-relaxed animate-fade-in">
+                      Danışanlarınızın henüz ödenmemiş seans ücretlerini buradan takip edebilirsiniz. Ödeme durumunu güncellediğinizde aylık kazanç raporunuz otomatik olarak güncellenir.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1745,7 +1799,9 @@ export default function App() {
                 <div className="p-6 md:p-8 border-b border-[#f5f5f0] flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#fdfbf7]">
                   <div>
                     <h3 className="text-lg font-serif text-[#6b705c] italic">Borç Listesi</h3>
-                    <p className="text-xs text-slate-400">Danışan bazında gruplanmış bekleyen bakiyeler</p>
+                    {showExplanations && (
+                      <p className="text-xs text-slate-400 animate-fade-in">Danışan bazında gruplanmış bekleyen bakiyeler</p>
+                    )}
                   </div>
 
                   <div className="relative w-full sm:w-64">
@@ -1989,6 +2045,7 @@ export default function App() {
                 settings={settings}
                 showToast={showToast}
                 userEmail={user?.email || undefined}
+                showExplanations={showExplanations}
               />
             </motion.div>
           )}

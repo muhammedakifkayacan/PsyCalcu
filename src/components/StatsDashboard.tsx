@@ -6,9 +6,10 @@ import { Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar
 interface StatsDashboardProps {
   sessions: Session[];
   settings: AppSettings;
+  showExplanations?: boolean;
 }
 
-export default function StatsDashboard({ sessions, settings }: StatsDashboardProps) {
+export default function StatsDashboard({ sessions, settings, showExplanations = true }: StatsDashboardProps) {
   const [preset, setPreset] = useState<string>('all');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -163,7 +164,9 @@ export default function StatsDashboard({ sessions, settings }: StatsDashboardPro
             </div>
             <div>
               <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider">Muhasebe Tarih Aralığı</h4>
-              <p className="text-xs text-slate-400">Raporları ve grafikleri dilediğiniz tarih aralığına göre süzün</p>
+              {showExplanations && (
+                <p className="text-xs text-slate-400 animate-fade-in">Raporları ve grafikleri dilediğiniz tarih aralığına göre süzün</p>
+              )}
             </div>
           </div>
 
@@ -276,7 +279,9 @@ export default function StatsDashboard({ sessions, settings }: StatsDashboardPro
             <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider">
               {preset === 'all' ? 'Genel' : 'Dönemlik'} Muhasebe Trendi
             </h4>
-            <p className="text-xs text-slate-400">Güne göre brüt gelir ve seans başı bakıcı/ofis gideri dağılımı</p>
+            {showExplanations && (
+              <p className="text-xs text-slate-400 animate-fade-in">Güne göre brüt gelir ve seans başı bakıcı/ofis gideri dağılımı</p>
+            )}
           </div>
           
           <div className="h-64 w-full" id="accounting-recharts-bar">
@@ -308,7 +313,9 @@ export default function StatsDashboard({ sessions, settings }: StatsDashboardPro
         <div className="lg:col-span-4 bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
           <div>
             <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider mb-1">Seans Dağılımları</h4>
-            <p className="text-xs text-slate-400 font-sans">Seçili dönemdeki seans türlerinin oranları</p>
+            {showExplanations && (
+              <p className="text-xs text-slate-400 font-sans animate-fade-in">Seçili dönemdeki seans türlerinin oranları</p>
+            )}
           </div>
 
           <div className="flex-1 flex items-center justify-center h-48 py-2">

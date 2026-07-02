@@ -7,9 +7,10 @@ interface EmailReportGeneratorProps {
   settings: AppSettings;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
   userEmail?: string;
+  showExplanations?: boolean;
 }
 
-export default function EmailReportGenerator({ sessions, settings, showToast, userEmail }: EmailReportGeneratorProps) {
+export default function EmailReportGenerator({ sessions, settings, showToast, userEmail, showExplanations = true }: EmailReportGeneratorProps) {
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -190,9 +191,11 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
             <Mail className="w-5 h-5 text-[#cb997e]" />
             E-posta Rapor Şablonları & Gönderimi
           </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Seçtiğiniz ayın haftalık seans, gelir-gider ve net kâr dökümünü e-posta şablonu haline getirin ve kendinize iletin.
-          </p>
+          {showExplanations && (
+            <p className="text-xs text-slate-500 mt-1 animate-fade-in">
+              Seçtiğiniz ayın haftalık seans, gelir-gider ve net kâr dökümünü e-posta şablonu haline getirin ve kendinize iletin.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
