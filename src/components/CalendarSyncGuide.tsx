@@ -5,7 +5,7 @@ import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings } from '../types';
 
 interface CalendarSyncGuideProps {
-  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face') => void;
+  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face') => { addedCount: number; updatedCount: number; totalParsed: number };
   defaultPrice: number;
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number;
@@ -72,9 +72,13 @@ export default function CalendarSyncGuide({
         try {
           const parsed = parseICS(text, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, type);
           if (parsed.length > 0) {
-            onImportSessions(parsed, type);
+            const stats = onImportSessions(parsed, type);
             const typeLabel = type === 'online' ? 'Online' : 'Yüzyüze';
-            showToast(`${parsed.length} adet ${typeLabel} seansı başarıyla takvim (.ics) dosyasından içe aktarıldı!`, 'success');
+            if (stats.addedCount > 0 || stats.updatedCount > 0) {
+              showToast(`${typeLabel} takvim (.ics) dosyası başarıyla içeri aktarıldı: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi.`, 'success');
+            } else {
+              showToast(`${typeLabel} takvim (.ics) dosyası içeri aktarıldı: Zaten güncel, yeni seans veya değişiklik bulunamadı.`, 'info');
+            }
           } else {
             showToast('Dosya içinde geçerli bir seans (VEVENT) bulunamadı. Lütfen Google, Apple veya Outlook takviminizden dışa aktardığınızdan emin olun.', 'error');
           }
@@ -116,8 +120,12 @@ export default function CalendarSyncGuide({
       const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online');
       
       if (parsed.length > 0) {
-        onImportSessions(parsed, 'online');
-        showToast(`Online Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi! (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        const stats = onImportSessions(parsed, 'online');
+        if (stats.addedCount > 0 || stats.updatedCount > 0) {
+          showToast(`Online Seanslar Takvimi eşitlendi: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi. (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        } else {
+          showToast(`Online Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
+        }
       } else {
         showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
       }
@@ -145,8 +153,12 @@ export default function CalendarSyncGuide({
       const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face');
       
       if (parsed.length > 0) {
-        onImportSessions(parsed, 'face-to-face');
-        showToast(`Yüzyüze Seanslar Takvimi eşitlendi, ${parsed.length} seans başarıyla güncellendi/eklendi! (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        const stats = onImportSessions(parsed, 'face-to-face');
+        if (stats.addedCount > 0 || stats.updatedCount > 0) {
+          showToast(`Yüzyüze Seanslar Takvimi eşitlendi: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi. (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        } else {
+          showToast(`Yüzyüze Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
+        }
       } else {
         showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
       }

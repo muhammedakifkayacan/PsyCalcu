@@ -86,6 +86,7 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>({ settings: '', sessions: '' });
 
@@ -282,66 +283,9 @@ export default function App() {
       if (hasAutoSyncedRef.current) return;
       hasAutoSyncedRef.current = true;
 
-      const autoSync = async () => {
-        const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled } = settings;
-        if (!calendarSyncEnabled) return;
-
-        let totalNewSessions: Session[] = [];
-        let hasFetchedOnline = false;
-        let hasFetchedFaceToFace = false;
-
-        // Sync Online Calendar
-        if (onlineCalendarWebcalUrl) {
-          try {
-            const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
-            if (response.ok) {
-              const icsText = await response.text();
-              const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online');
-              if (parsed.length > 0) {
-                totalNewSessions = [...totalNewSessions, ...parsed];
-                hasFetchedOnline = true;
-              }
-            }
-          } catch (err) {
-            console.error("Auto-sync online calendar failed:", err);
-          }
-        }
-
-        // Sync Face-to-Face Calendar
-        if (faceToFaceCalendarWebcalUrl) {
-          try {
-            const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
-            if (response.ok) {
-              const icsText = await response.text();
-              const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face');
-              if (parsed.length > 0) {
-                totalNewSessions = [...totalNewSessions, ...parsed];
-                hasFetchedFaceToFace = true;
-              }
-            }
-          } catch (err) {
-            console.error("Auto-sync face-to-face calendar failed:", err);
-          }
-        }
-
-        if (totalNewSessions.length > 0) {
-          handleImportSessions(totalNewSessions);
-          
-          let syncMsg = "Takvimleriniz arka planda otomatik eşitlendi: ";
-          if (hasFetchedOnline && hasFetchedFaceToFace) {
-            syncMsg += "Online ve Yüzyüze seanslar güncellendi.";
-          } else if (hasFetchedOnline) {
-            syncMsg += "Online seanslar güncellendi.";
-          } else if (hasFetchedFaceToFace) {
-            syncMsg += "Yüzyüze seanslar güncellendi.";
-          }
-          showToast(syncMsg, 'info');
-        }
-      };
-
       // Run with a slight delay so startup animation & layout render first
       const timer = setTimeout(() => {
-        autoSync();
+        handleManualCalendarSync(false);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -738,41 +682,114 @@ export default function App() {
   };
 
   const handleImportSessions = (newSessions: Session[]) => {
-    setSessions(prev => {
-      const sessionsMap = new Map(prev.map(s => [s.id, s]));
-      let hasChanges = false;
-      
-      newSessions.forEach(ns => {
-        if (sessionsMap.has(ns.id)) {
-          const existing = sessionsMap.get(ns.id)!;
-          // Merge changed calendar fields, preserving custom user edits on price/payment status
-          const updated = {
-            ...existing,
-            clientName: ns.clientName,
-            date: ns.date,
-            time: ns.time,
-            duration: ns.duration,
-            notes: ns.notes || existing.notes,
-            price: existing.price !== settings.defaultSessionPrice ? existing.price : ns.price,
-            paymentStatus: existing.paymentStatus || ns.paymentStatus,
-          };
-          
-          // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
-          if (JSON.stringify(existing) !== JSON.stringify(updated)) {
-            sessionsMap.set(ns.id, updated);
-            hasChanges = true;
-          }
-        } else {
-          sessionsMap.set(ns.id, ns);
-          hasChanges = true;
+    const sessionsMap = new Map(sessions.map(s => [s.id, s]));
+    let addedCount = 0;
+    let updatedCount = 0;
+    const toUpdate: Session[] = [];
+
+    newSessions.forEach(ns => {
+      if (sessionsMap.has(ns.id)) {
+        const existing = sessionsMap.get(ns.id)!;
+        // Merge changed calendar fields, preserving custom user edits on price/payment status
+        const updated = {
+          ...existing,
+          clientName: ns.clientName,
+          date: ns.date,
+          time: ns.time,
+          duration: ns.duration,
+          notes: ns.notes || existing.notes,
+          price: existing.price !== settings.defaultSessionPrice ? existing.price : ns.price,
+          paymentStatus: existing.paymentStatus || ns.paymentStatus,
+        };
+        
+        // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
+        if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+          toUpdate.push(updated);
+          updatedCount++;
         }
-      });
-      
-      if (!hasChanges) {
-        return prev;
+      } else {
+        toUpdate.push(ns);
+        addedCount++;
       }
-      return Array.from(sessionsMap.values());
     });
+
+    if (toUpdate.length > 0) {
+      setSessions(prev => {
+        const prevMap = new Map(prev.map(s => [s.id, s]));
+        toUpdate.forEach(u => prevMap.set(u.id, u));
+        return Array.from(prevMap.values());
+      });
+    }
+
+    return { addedCount, updatedCount, totalParsed: newSessions.length };
+  };
+
+  const handleManualCalendarSync = async (showNotificationOnNoChanges = true) => {
+    const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled } = settings;
+    if (!calendarSyncEnabled) {
+      if (showNotificationOnNoChanges) {
+        showToast('Takvim senkronizasyonu ayarlardan devre dışı bırakılmış!', 'error');
+      }
+      return;
+    }
+    if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl) {
+      if (showNotificationOnNoChanges) {
+        showToast('Henüz bir takvim linki bağlamamışsınız. Lütfen "Takvim Entegrasyonu" sayfasından link ekleyin.', 'info');
+      }
+      return;
+    }
+
+    setIsManualSyncing(true);
+    let totalNewSessions: Session[] = [];
+    let hasFetchedOnline = false;
+    let hasFetchedFaceToFace = false;
+
+    // Sync Online Calendar
+    if (onlineCalendarWebcalUrl) {
+      try {
+        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
+        if (response.ok) {
+          const icsText = await response.text();
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online');
+          if (parsed.length > 0) {
+            totalNewSessions = [...totalNewSessions, ...parsed];
+            hasFetchedOnline = true;
+          }
+        }
+      } catch (err) {
+        console.error("Online calendar sync failed:", err);
+      }
+    }
+
+    // Sync Face-to-Face Calendar
+    if (faceToFaceCalendarWebcalUrl) {
+      try {
+        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
+        if (response.ok) {
+          const icsText = await response.text();
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face');
+          if (parsed.length > 0) {
+            totalNewSessions = [...totalNewSessions, ...parsed];
+            hasFetchedFaceToFace = true;
+          }
+        }
+      } catch (err) {
+        console.error("Face-to-face calendar sync failed:", err);
+      }
+    }
+
+    setIsManualSyncing(false);
+
+    if (totalNewSessions.length > 0) {
+      const stats = handleImportSessions(totalNewSessions);
+      if (stats.addedCount > 0 || stats.updatedCount > 0) {
+        showToast(`Takvim senkronizasyonu tamamlandı: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi.`, 'success');
+      } else if (showNotificationOnNoChanges) {
+        showToast('Takvimleriniz zaten güncel, yeni bir değişiklik bulunamadı.', 'info');
+      }
+    } else if (showNotificationOnNoChanges) {
+      showToast('Takvimlerden seans bilgisi alınamadı veya takvim linkleri boş.', 'error');
+    }
   };
 
   // Reset demo data
@@ -1266,7 +1283,7 @@ export default function App() {
                       <p className="text-xs text-slate-600 mt-1 font-medium">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
                     </div>
                     
-                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                    <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                       {/* Show/Hide Notes Switch */}
                       <button
                         onClick={toggleShowNotes}
@@ -1277,6 +1294,21 @@ export default function App() {
                         <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
                           <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
                         </div>
+                      </button>
+
+                      {/* Sync Button */}
+                      <button
+                        onClick={() => handleManualCalendarSync(true)}
+                        disabled={isManualSyncing}
+                        className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer border ${
+                          isManualSyncing
+                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                            : 'bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8] hover:border-[#6b705c]/40'
+                        }`}
+                        title="Tüm iCloud/Google takvim seanslarını şimdi eşitle"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin' : ''}`} />
+                        {isManualSyncing ? 'Eşitleniyor...' : 'Takvimi Eşitle'}
                       </button>
 
                       <button 
