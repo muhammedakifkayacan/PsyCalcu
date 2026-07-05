@@ -92,6 +92,7 @@ export default function App() {
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [isCloudSaving, setIsCloudSaving] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>({ settings: '', sessions: '' });
 
@@ -143,38 +144,90 @@ export default function App() {
           setIsAuthSyncing(true);
           const cloudData = await fetchUserData(currentUser.uid);
           if (cloudData) {
-            setSessions(cloudData.sessions || []);
-            setSettings(cloudData.settings);
-            // Mark as synchronized to avoid writing it straight back
-            lastSavedRef.current = {
-              settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(cloudData.sessions || [])
-            };
+            // Get local sessions to perform conflict-free merging
+            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+            let localSessions: Session[] = [];
+            if (savedSessionsStr) {
+              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
+            
+            const cloudSessions = cloudData.sessions || [];
+            
+            // Merge local and cloud sessions using updatedAt field
+            const localMap = new Map(localSessions.map(s => [s.id, s]));
+            const cloudIds = new Set(cloudSessions.map(s => s.id));
+            
+            // Keep local-only sessions (e.g. offline edits) if they are not mock sessions
+            const localOnly = localSessions.filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
+            
+            const mergedSessions = cloudSessions.map(cs => {
+              const ls = localMap.get(cs.id);
+              if (ls) {
+                const localTime = ls.updatedAt || 0;
+                const cloudTime = cs.updatedAt || 0;
+                // If local has a newer update, merge/use the local session
+                if (localTime > cloudTime) {
+                  return ls;
+                }
+              }
+              return cs;
+            });
+            
+            const finalSessions = [...mergedSessions, ...localOnly];
+            
+            // If the merged sessions list differs from cloud sessions, trigger a save back to the cloud
+            if (JSON.stringify(cloudSessions) !== JSON.stringify(finalSessions)) {
+              setSessions(finalSessions);
+              setSettings(cloudData.settings);
+              // Save the merged data to the cloud
+              await saveUserData(currentUser.uid, cloudData.settings, finalSessions);
+              lastSavedRef.current = {
+                settings: JSON.stringify(cloudData.settings),
+                sessions: JSON.stringify(finalSessions)
+              };
+            } else {
+              setSessions(cloudSessions);
+              setSettings(cloudData.settings);
+              lastSavedRef.current = {
+                settings: JSON.stringify(cloudData.settings),
+                sessions: JSON.stringify(cloudSessions)
+              };
+            }
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           } else {
             // First time registered user, sync existing local data to their new cloud database if it's real
             const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
-            let hasRealLocalSessions = false;
+            const savedSettingsStr = localStorage.getItem('psycalcu_settings');
+            let sessionsToSave = sessions;
+            let settingsToSave = settings;
+            
             if (savedSessionsStr) {
-              try {
-                const parsed = JSON.parse(savedSessionsStr);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  hasRealLocalSessions = !parsed.every((s: any) => s.id && s.id.startsWith('mock_'));
-                }
-              } catch (e) {}
+              try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
             }
+            if (savedSettingsStr) {
+              try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
+            }
+            
+            let hasRealLocalSessions = false;
+            if (sessionsToSave && sessionsToSave.length > 0) {
+              hasRealLocalSessions = !sessionsToSave.every(s => s.id && s.id.startsWith('mock_'));
+            }
+            
             if (hasRealLocalSessions) {
-              await saveUserData(currentUser.uid, settings, sessions);
+              await saveUserData(currentUser.uid, settingsToSave, sessionsToSave);
+              setSessions(sessionsToSave);
+              setSettings(settingsToSave);
               lastSavedRef.current = {
-                settings: JSON.stringify(settings),
-                sessions: JSON.stringify(sessions)
+                settings: JSON.stringify(settingsToSave),
+                sessions: JSON.stringify(sessionsToSave)
               };
               showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
             } else {
-              await saveUserData(currentUser.uid, settings, []);
+              await saveUserData(currentUser.uid, settingsToSave, []);
               setSessions([]);
+              setSettings(settingsToSave);
               lastSavedRef.current = {
-                settings: JSON.stringify(settings),
+                settings: JSON.stringify(settingsToSave),
                 sessions: '[]'
               };
               showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
@@ -239,6 +292,36 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Refs to track latest values for safe unmount/unload saving
+  const sessionsRef = useRef(sessions);
+  const settingsRef = useRef(settings);
+  
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+  
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  // Flush any pending save on browser close/reload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (user && !isQuotaExceeded) {
+        const currentSettingsStr = JSON.stringify(settingsRef.current);
+        const currentSessionsStr = JSON.stringify(sessionsRef.current);
+        if (currentSettingsStr !== lastSavedRef.current.settings ||
+            currentSessionsStr !== lastSavedRef.current.sessions) {
+          saveUserData(user.uid, settingsRef.current, sessionsRef.current).catch(err => {
+            console.error("beforeunload save error:", err);
+          });
+        }
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [user, isQuotaExceeded]);
+
   // Save settings & sessions to local & cloud on changes with debouncing and change-detection
   useEffect(() => {
     localStorage.setItem('psycalcu_settings', JSON.stringify(settings));
@@ -257,14 +340,19 @@ export default function App() {
       return;
     }
 
-    // Debounce cloud save by 2000ms
+    // Set saving indicator to true
+    setIsCloudSaving(true);
+
+    // Debounce cloud save by 500ms for high responsiveness
     const timer = setTimeout(() => {
       saveUserData(user.uid, settings, sessions).then(() => {
         lastSavedRef.current = {
           settings: currentSettingsStr,
           sessions: currentSessionsStr
         };
+        setIsCloudSaving(false);
       }).catch((err: any) => {
+        setIsCloudSaving(false);
         const isQuota = err?.message === 'quota-exceeded' || 
                         err?.message?.toLowerCase().includes('quota') || 
                         err?.code?.toLowerCase().includes('quota') ||
@@ -276,7 +364,7 @@ export default function App() {
           console.error("Bulut kayıt hatası:", err);
         }
       });
-    }, 2000);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [settings, sessions, user, isAuthSyncing, isQuotaExceeded]);
@@ -583,12 +671,13 @@ export default function App() {
         return;
       }
     }
+    const withTimestamp = { ...savedSession, updatedAt: Date.now(), isManuallyEdited: true };
     setSessions(prev => {
       const exists = prev.some(s => s.id === savedSession.id);
       if (exists) {
-        return prev.map(s => s.id === savedSession.id ? savedSession : s);
+        return prev.map(s => s.id === savedSession.id ? withTimestamp : s);
       } else {
-        return [...prev, savedSession];
+        return [...prev, withTimestamp];
       }
     });
   };
@@ -627,7 +716,7 @@ export default function App() {
     const nextType = nextTypeMap[currentType];
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
-        const updated = { ...s, type: nextType };
+        const updated = { ...s, type: nextType, updatedAt: Date.now(), isManuallyEdited: true };
         if (nextType === 'online') {
           updated.price = settings.defaultSessionPrice;
           updated.hasOfficeRentFee = false;
@@ -663,7 +752,9 @@ export default function App() {
         return {
           ...s,
           hasBabysitterFee: hasFee,
-          babysitterFeeAmount: hasFee ? settings.defaultBabysitterFee : 0
+          babysitterFeeAmount: hasFee ? settings.defaultBabysitterFee : 0,
+          updatedAt: Date.now(),
+          isManuallyEdited: true
         };
       }
       return s;
@@ -676,7 +767,9 @@ export default function App() {
         const nextStatus = s.paymentStatus === 'paid' ? 'unpaid' : 'paid';
         return {
           ...s,
-          paymentStatus: nextStatus
+          paymentStatus: nextStatus,
+          updatedAt: Date.now(),
+          isManuallyEdited: true
         };
       }
       return s;
@@ -689,7 +782,9 @@ export default function App() {
       if (s.id === id) {
         return {
           ...s,
-          paymentStatus: 'paid'
+          paymentStatus: 'paid',
+          updatedAt: Date.now(),
+          isManuallyEdited: true
         };
       }
       return s;
@@ -702,7 +797,9 @@ export default function App() {
       if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
         return {
           ...s,
-          paymentStatus: 'paid'
+          paymentStatus: 'paid',
+          updatedAt: Date.now(),
+          isManuallyEdited: true
         };
       }
       return s;
@@ -756,6 +853,12 @@ export default function App() {
     newSessions.forEach(ns => {
       if (sessionsMap.has(ns.id)) {
         const existing = sessionsMap.get(ns.id)!;
+        
+        // CRITICAL FIX: If the user manually edited this session, do NOT let calendar sync overwrite its details!
+        if (existing.isManuallyEdited) {
+          return;
+        }
+
         // Merge changed calendar fields, preserving custom user edits on price/payment status
         const updated = {
           ...existing,
@@ -770,11 +873,13 @@ export default function App() {
         
         // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
         if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+          updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
           toUpdate.push(updated);
           updatedCount++;
         }
       } else {
-        toUpdate.push(ns);
+        const nsWithTimestamp = { ...ns, updatedAt: Date.now() };
+        toUpdate.push(nsWithTimestamp);
         addedCount++;
       }
     });
@@ -1130,7 +1235,7 @@ export default function App() {
             <div className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
               isQuotaExceeded
                 ? 'text-amber-700 bg-amber-50 border-amber-100'
-                : isAuthSyncing 
+                : (isAuthSyncing || isCloudSaving)
                   ? 'text-amber-700 bg-amber-50 border-amber-100' 
                   : 'text-emerald-700 bg-emerald-50 border-emerald-100'
             }`} id="cloud-sync-status-pill">
@@ -1145,6 +1250,11 @@ export default function App() {
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
                   <span className="font-semibold">Bulut Senkronizasyonu Sürüyor...</span>
+                </>
+              ) : isCloudSaving ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                  <span className="font-semibold">Buluta Kaydediliyor...</span>
                 </>
               ) : (
                 <>

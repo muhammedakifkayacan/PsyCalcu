@@ -16,6 +16,8 @@ export interface Session {
   isSyncedFromCalendar?: boolean;
   syncedCalendarType?: 'online' | 'face-to-face'; // which calendar it came from
   paymentStatus?: 'paid' | 'unpaid';
+  updatedAt?: number; // timestamp in ms for conflict-free sync
+  isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
 }
 
 export interface AppSettings {
