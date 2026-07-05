@@ -20,7 +20,8 @@ import {
   AlertCircle,
   RefreshCw,
   Sparkles,
-  Lock
+  Lock,
+  HelpCircle
 } from 'lucide-react';
 
 interface AuthCardProps {
@@ -30,9 +31,10 @@ interface AuthCardProps {
   existingSessionsCount: number;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   showExplanations?: boolean;
+  onOpenFaq?: () => void;
 }
 
-export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true }: AuthCardProps) {
+export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true, onOpenFaq }: AuthCardProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -383,6 +385,17 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
               ? "Henüz bir hesabınız yok mu? Yeni Hesap Oluşturun" 
               : "Zaten bir hesabınız var mı? Giriş Yapın"}
           </button>
+
+          {onOpenFaq && (
+            <button
+              type="button"
+              onClick={onOpenFaq}
+              className="w-full text-center text-[11px] text-[#cb997e] hover:text-[#b58368] font-bold flex items-center justify-center gap-1.5 transition-colors py-2 border-t border-dashed border-[#e5e1d8] mt-3 cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              PsyCalcu Nedir? Nasıl Kullanılır? (Yardım & SSS)
+            </button>
+          )}
         </div>
       </form>
     </div>

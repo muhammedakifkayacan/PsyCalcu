@@ -25,7 +25,8 @@ import {
   Wallet,
   Users,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -37,6 +38,8 @@ import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
+import FAQModal from './components/FAQModal';
+import InteractiveTour from './components/InteractiveTour';
 import { auth, onAuthStateChanged, User } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 
@@ -352,6 +355,21 @@ export default function App() {
   };
 
   const [showAiDetails, setShowAiDetails] = useState<boolean>(false);
+  const [isFaqOpen, setIsFaqOpen] = useState<boolean>(false);
+  const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+
+  // Auto trigger tour for first-time logged-in users
+  useEffect(() => {
+    if (user) {
+      const isCompleted = localStorage.getItem('psycalcu_tour_completed');
+      if (!isCompleted) {
+        const timer = setTimeout(() => {
+          setIsTourOpen(true);
+        }, 1500); // 1.5s delay for smooth transitions after auth
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     setShowAiDetails(false);
@@ -1001,14 +1019,28 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#fdfbf7] p-6" id="auth-portal-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[#fdfbf7] p-6 relative overflow-hidden" id="auth-portal-screen">
+        {/* Floating Help / FAQ Button */}
+        <button
+          onClick={() => setIsFaqOpen(true)}
+          className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-xs z-30"
+          title="Yardım Merkezi & Sıkça Sorulan Sorular"
+        >
+          <HelpCircle className="w-4 h-4 text-[#cb997e]" />
+          <span>Yardım & SSS</span>
+        </button>
+
         <AuthCard
           user={null}
           onLogout={handleLogout}
           onAuthSuccess={handleAuthSuccess}
           existingSessionsCount={sessions.length}
           showToast={showToast}
+          onOpenFaq={() => setIsFaqOpen(true)}
         />
+
+        {/* FAQ Modal */}
+        <FAQModal isOpen={isFaqOpen} onClose={() => setIsFaqOpen(false)} />
       </div>
     );
   }
@@ -1029,6 +1061,7 @@ export default function App() {
         {/* Navigation Tabs */}
         <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
+            id="tab-agenda"
             onClick={() => setActiveTab('agenda')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'agenda' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
@@ -1037,6 +1070,7 @@ export default function App() {
             Günlük Ajanda
           </button>
           <button
+            id="tab-stats"
             onClick={() => setActiveTab('stats')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'stats' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
@@ -1045,6 +1079,7 @@ export default function App() {
             Muhasebe Raporu
           </button>
           <button
+            id="tab-debts"
             onClick={() => setActiveTab('debts')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
@@ -1053,6 +1088,7 @@ export default function App() {
             Borç Takip
           </button>
           <button
+            id="tab-sync"
             onClick={() => setActiveTab('sync')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'sync' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
@@ -1061,6 +1097,7 @@ export default function App() {
             Takvim Entegrasyonu
           </button>
           <button
+            id="tab-backup"
             onClick={() => setActiveTab('backup')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
               activeTab === 'backup' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
@@ -1125,6 +1162,7 @@ export default function App() {
           </div>
           
           <button
+            id="toggle-explanations-btn"
             onClick={toggleShowExplanations}
             className={`w-10 h-10 rounded-full border border-[#e5e1d8] flex items-center justify-center transition-all cursor-pointer ${
               showExplanations 
@@ -1133,10 +1171,20 @@ export default function App() {
             }`}
             title={showExplanations ? "Yardımcı Açıklamaları Gizle" : "Yardımcı Açıklamaları Göster"}
           >
+            <Lightbulb className="w-4 h-4" />
+          </button>
+
+          <button
+            id="faq-btn"
+            onClick={() => setIsFaqOpen(true)}
+            className="w-10 h-10 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#cb997e] hover:bg-[#f5f5f0] transition-all cursor-pointer"
+            title="Yardım Merkezi & Sıkça Sorulan Sorular"
+          >
             <HelpCircle className="w-4 h-4" />
           </button>
 
           <button
+            id="settings-btn"
             onClick={() => setIsSettingsOpen(true)}
             className="w-10 h-10 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#6b705c] hover:bg-[#f5f5f0] transition-all cursor-pointer"
             title="Ayarlar"
@@ -1289,7 +1337,7 @@ export default function App() {
                 </div>
 
               {/* RIGHT Column: Agenda & Calendar Sync */}
-              <div className="lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2">
+              <div className="lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2" id="daily-agenda-section">
                 
                 {/* Horizontal Date Ribbon Picker */}
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">
@@ -1391,6 +1439,7 @@ export default function App() {
                       </button>
 
                       <button 
+                        id="add-session-btn"
                         onClick={() => {
                           setEditingSession(null);
                           setIsSessionModalOpen(true);
@@ -1613,7 +1662,7 @@ export default function App() {
 
                 {/* AI Summary Card */}
                 {!showAiDetails ? (
-                  <div className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-sm p-4 mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div id="ai-summary-card" className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-sm p-4 mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-[#fdfbf7] rounded-xl flex items-center justify-center text-[#cb997e] shrink-0 border border-[#e5e1d8]/50">
                         <Sparkles className="w-5 h-5 text-[#cb997e]" />
@@ -1639,7 +1688,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6 animate-fade-in">
+                  <div id="ai-summary-card" className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6 animate-fade-in">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f5f5f0] pb-5">
                       <div>
                         <h3 className="text-lg font-serif text-[#6b705c] flex items-center gap-2">
@@ -2073,6 +2122,25 @@ export default function App() {
         defaultBabysitterFee={settings.defaultBabysitterFee}
         defaultOfficeRentFee={settings.defaultOfficeRentFee}
         selectedDate={selectedDate}
+      />
+
+      {/* FAQ Modal Component */}
+      <FAQModal
+        isOpen={isFaqOpen}
+        onClose={() => setIsFaqOpen(false)}
+        onStartTour={() => setIsTourOpen(true)}
+      />
+
+      {/* Interactive Onboarding Tour */}
+      <InteractiveTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        setActiveTab={(tab) => {
+          if (['agenda', 'stats', 'sync', 'backup', 'debts', 'settings'].includes(tab)) {
+            setActiveTab(tab as any);
+          }
+        }}
+        showToast={showToast}
       />
 
       {/* Aesthetic Footer */}
