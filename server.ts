@@ -56,10 +56,24 @@ Lütfen yanıtını Türkçe olarak yaz. Yanıtın son derece kompakt, okunması
 
 Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+        });
+      } catch (firstErr: any) {
+        console.warn("Primary model (gemini-3.5-flash) failed, trying fallback model (gemini-3.1-flash-lite):", firstErr);
+        try {
+          response = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: prompt,
+          });
+        } catch (fallbackErr: any) {
+          console.error("Fallback model also failed:", fallbackErr);
+          throw new Error("Yapay zeka servisleri şu anda yoğun talep altında. Lütfen birkaç saniye sonra tekrar deneyin.");
+        }
+      }
 
       res.json({ text: response.text });
     } catch (error: any) {

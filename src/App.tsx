@@ -823,13 +823,28 @@ export default function App() {
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Yapay zeka özeti alınamadı.");
+      const responseText = await response.text();
+      let responseData: any = {};
+      
+      if (responseText) {
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.error("JSON parse error:", responseText, parseErr);
+          throw new Error("Sunucudan geçersiz bir yanıt alındı. Lütfen daha sonra tekrar deneyin.");
+        }
+      } else {
+        throw new Error("Sunucudan boş bir yanıt alındı. Lütfen internet bağlantınızı veya API anahtarınızı kontrol edin.");
       }
 
-      const data = await response.json();
-      const summaryText = data.text;
+      if (!response.ok) {
+        throw new Error(responseData.error || "Yapay zeka özeti alınamadı.");
+      }
+
+      const summaryText = responseData.text;
+      if (!summaryText) {
+        throw new Error("Yapay zeka boş bir analiz yanıtı döndürdü.");
+      }
 
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: summaryText };
