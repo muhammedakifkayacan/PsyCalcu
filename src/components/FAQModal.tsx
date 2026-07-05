@@ -204,7 +204,7 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
                 </div>
                 <div>
                   <h3 className="text-lg font-serif italic text-[#6b705c] font-bold">Yardım & Bilgi Merkezi</h3>
-                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Sıkça Sorulan Sorular ve Kullanım Kılavuzu</p>
+                  <p className="text-[10px] text-slate-400 font-semibold tracking-wider">SIKÇA SORULAN SORULAR VE KULLANIM KILAVUZU</p>
                 </div>
               </div>
               <button

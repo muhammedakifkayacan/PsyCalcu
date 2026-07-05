@@ -39,3 +39,9 @@ export interface DaySummary {
   totalExpenses: number;
   netIncome: number;
 }
+
+export function toTurkishUpper(str: string): string {
+  if (!str) return '';
+  return str.toLocaleUpperCase('tr-TR');
+}
+

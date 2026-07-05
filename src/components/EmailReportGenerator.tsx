@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Mail, Copy, Check, Calendar, ArrowRight, Sparkles, TrendingUp, DollarSign, Clock } from 'lucide-react';
-import { Session, AppSettings } from '../types';
+import { Session, AppSettings, toTurkishUpper } from '../types';
 
 interface EmailReportGeneratorProps {
   sessions: Session[];
@@ -50,6 +50,7 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
 
   // Compute stats for selected month & its weeks
   const reportData = useMemo(() => {
+    const todayStr = new Date().toLocaleDateString('sv-SE');
     const monthSessions = sessions.filter(s => s.date.startsWith(selectedMonth));
     
     let grossIncome = 0;
@@ -58,6 +59,9 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
     let onlineCount = 0;
     let faceToFaceCount = 0;
     let cancelledCount = 0;
+    let pendingReceivables = 0;
+    let paidSessionsCount = 0;
+    let unpaidSessionsCount = 0;
 
     // We split into 4 standard weeks:
     // Week 1: 01-07
@@ -65,10 +69,10 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
     // Week 3: 15-21
     // Week 4: 22-end of month
     const weeks = [
-      { name: '1. Hafta (01 - 07)', start: 1, end: 7, sessions: [] as Session[], gross: 0, expenses: 0 },
-      { name: '2. Hafta (08 - 14)', start: 8, end: 14, sessions: [] as Session[], gross: 0, expenses: 0 },
-      { name: '3. Hafta (15 - 21)', start: 15, end: 21, sessions: [] as Session[], gross: 0, expenses: 0 },
-      { name: '4. Hafta (22 - 31)', start: 22, end: 31, sessions: [] as Session[], gross: 0, expenses: 0 },
+      { name: '1. Hafta (01 - 07)', start: 1, end: 7, sessions: [] as Session[], gross: 0, expenses: 0, pending: 0 },
+      { name: '2. Hafta (08 - 14)', start: 8, end: 14, sessions: [] as Session[], gross: 0, expenses: 0, pending: 0 },
+      { name: '3. Hafta (15 - 21)', start: 15, end: 21, sessions: [] as Session[], gross: 0, expenses: 0, pending: 0 },
+      { name: '4. Hafta (22 - 31)', start: 22, end: 31, sessions: [] as Session[], gross: 0, expenses: 0, pending: 0 },
     ];
 
     monthSessions.forEach(s => {
@@ -82,14 +86,20 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
       if (s.type === 'cancelled') {
         cancelledCount++;
       } else {
-        grossIncome += price;
-        babysitterFees += babyFee;
-        officeRentExpenses += officeFee;
-
         if (s.type === 'online') {
           onlineCount++;
         } else if (s.type === 'face-to-face') {
           faceToFaceCount++;
+        }
+
+        if (s.paymentStatus === 'paid') {
+          grossIncome += price;
+          babysitterFees += babyFee;
+          officeRentExpenses += officeFee;
+          paidSessionsCount++;
+        } else if (s.date <= todayStr) {
+          pendingReceivables += price;
+          unpaidSessionsCount++;
         }
       }
 
@@ -104,8 +114,12 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
 
       assignedWeek.sessions.push(s);
       if (s.type !== 'cancelled') {
-        assignedWeek.gross += price;
-        assignedWeek.expenses += totalFees;
+        if (s.paymentStatus === 'paid') {
+          assignedWeek.gross += price;
+          assignedWeek.expenses += totalFees;
+        } else if (s.date <= todayStr) {
+          assignedWeek.pending += price;
+        }
       }
     });
 
@@ -123,6 +137,9 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
       officeRentExpenses,
       totalExpenses,
       netIncome,
+      pendingReceivables,
+      paidSessionsCount,
+      unpaidSessionsCount,
       weeks,
     };
   }, [sessions, selectedMonth]);
@@ -138,16 +155,19 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
     body += `Danışman: ${settings.therapistName || 'Psikolog'}\n`;
     body += `Tarih: ${new Date().toLocaleDateString('tr-TR')}\n\n`;
 
-    body += `📈 GENEL ÖZET:\n`;
+    body += `📈 GENEL ÖZET (ÖDEMESİ TAMAMLANANLAR):\n`;
     body += `${subDivider}\n`;
     body += `• Toplam Seans Sayısı: ${reportData.totalSessions} adet\n`;
-    body += `  - Tamamlanan Seanslar: ${reportData.activeSessions} adet (${reportData.onlineCount} Online, ${reportData.faceToFaceCount} Yüzyüze)\n`;
+    body += `  - Aktif Seanslar: ${reportData.activeSessions} adet (${reportData.onlineCount} Online, ${reportData.faceToFaceCount} Yüzyüze)\n`;
+    body += `    - Ödemesi Alınan: ${reportData.paidSessionsCount} adet\n`;
+    body += `    - Bekleyen/Ödenmemiş: ${reportData.unpaidSessionsCount} adet\n`;
     body += `  - İptal Edilen Seanslar: ${reportData.cancelledCount} adet\n`;
-    body += `• Brüt Gelir: ${reportData.grossIncome.toLocaleString('tr-TR')} TL\n`;
-    body += `• Toplam Gider: ${reportData.totalExpenses.toLocaleString('tr-TR')} TL\n`;
+    body += `• Ödenen Brüt Gelir: ${reportData.grossIncome.toLocaleString('tr-TR')} TL\n`;
+    body += `• Bekleyen Alacak (Ödenmemiş): ${reportData.pendingReceivables.toLocaleString('tr-TR')} TL\n`;
+    body += `• Toplam Gider (Ödenen Seansların): ${reportData.totalExpenses.toLocaleString('tr-TR')} TL\n`;
     body += `  - Bakıcı Ödemeleri: ${reportData.babysitterFees.toLocaleString('tr-TR')} TL\n`;
     body += `  - Ofis Kira Ödemeleri: ${reportData.officeRentExpenses.toLocaleString('tr-TR')} TL\n`;
-    body += `• NET GELİR (KAZANÇ): ${reportData.netIncome.toLocaleString('tr-TR')} TL\n\n`;
+    body += `• NET GELİR (ÖDENEN KAZANÇ): ${reportData.netIncome.toLocaleString('tr-TR')} TL\n\n`;
 
     body += `📅 HAFTALIK BÖLÜM RAPORU:\n`;
     body += `${subDivider}\n`;
@@ -155,12 +175,15 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
       const activeCount = w.sessions.filter(s => s.type !== 'cancelled').length;
       const cancelledCount = w.sessions.filter(s => s.type === 'cancelled').length;
       const net = Math.max(0, w.gross - w.expenses);
+      const paidCount = w.sessions.filter(s => s.type !== 'cancelled' && s.paymentStatus === 'paid').length;
+      const unpaidCount = w.sessions.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid').length;
       
       body += `📍 ${w.name}\n`;
-      body += `  - Seanslar: ${w.sessions.length} seans (${activeCount} tamamlandı, ${cancelledCount} iptal)\n`;
-      body += `  - Gelir: ${w.gross.toLocaleString('tr-TR')} TL\n`;
-      body += `  - Giderler: ${w.expenses.toLocaleString('tr-TR')} TL\n`;
-      body += `  - Net Kazanç: ${net.toLocaleString('tr-TR')} TL\n\n`;
+      body += `  - Seanslar: ${w.sessions.length} seans (${activeCount} aktif [${paidCount} ödenen, ${unpaidCount} bekleyen], ${cancelledCount} iptal)\n`;
+      body += `  - Ödenen Gelir: ${w.gross.toLocaleString('tr-TR')} TL\n`;
+      body += `  - Bekleyen Alacak: ${w.pending.toLocaleString('tr-TR')} TL\n`;
+      body += `  - Giderler (Ödenen Seansların): ${w.expenses.toLocaleString('tr-TR')} TL\n`;
+      body += `  - Net Kazanç (Ödenen): ${net.toLocaleString('tr-TR')} TL\n\n`;
     });
 
     body += `Bu rapor PsyCalcu akıllı asistanı tarafından otomatik oluşturulmuştur.`;
@@ -217,21 +240,21 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Statistics Preview Cards */}
         <div className="lg:col-span-5 space-y-3.5">
-          <div className="text-xs text-[#6b705c] font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+          <div className="text-xs text-[#6b705c] font-bold tracking-wider mb-1 flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            {getMonthLabel(selectedMonth)} Özet Verileri
+            {toTurkishUpper(`${getMonthLabel(selectedMonth)} ÖZET VERİLERİ`)}
           </div>
           
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-[#fcfbf9] p-3.5 rounded-2xl border border-slate-100 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Brüt Gelir</span>
+              <span className="text-[10px] font-bold text-[#6b705c] tracking-wider">ÖDENEN BRÜT</span>
               <span className="text-base font-extrabold text-[#6b705c] mt-1">
                 ₺{reportData.grossIncome.toLocaleString('tr-TR')}
               </span>
             </div>
             
             <div className="bg-[#fcfbf9] p-3.5 rounded-2xl border border-slate-100 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Net Kazanç</span>
+              <span className="text-[10px] font-bold text-[#cb997e] tracking-wider">NET KAZANÇ</span>
               <span className="text-base font-extrabold text-[#cb997e] mt-1">
                 ₺{reportData.netIncome.toLocaleString('tr-TR')}
               </span>
@@ -241,22 +264,24 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
           <div className="bg-[#fcfbf9] p-4 rounded-2xl border border-slate-100 space-y-2.5 text-xs text-slate-600">
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
               <span className="font-medium text-slate-500">Toplam Seans:</span>
-              <span className="font-extrabold text-slate-700">{reportData.totalSessions} Seans</span>
+              <span className="font-extrabold text-slate-700">{reportData.totalSessions} Seans ({reportData.activeSessions} Aktif)</span>
             </div>
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
-              <span className="font-medium text-slate-500">Online Seanslar:</span>
-              <span className="font-bold text-emerald-600">{reportData.onlineCount} Seans</span>
+              <span className="font-medium text-slate-500">Ödenen / Bekleyen Seans:</span>
+              <span className="font-bold text-slate-700">
+                <span className="text-emerald-600">{reportData.paidSessionsCount} Ödendi</span> / <span className="text-amber-600">{reportData.unpaidSessionsCount} Bekliyor</span>
+              </span>
             </div>
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
-              <span className="font-medium text-slate-500">Yüzyüze Seanslar:</span>
-              <span className="font-bold text-amber-500">{reportData.faceToFaceCount} Seans</span>
+              <span className="font-medium text-slate-500">Bekleyen Alacak:</span>
+              <span className="font-extrabold text-amber-600">₺{reportData.pendingReceivables.toLocaleString('tr-TR')}</span>
             </div>
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
-              <span className="font-medium text-slate-500">Bakıcı Ödemesi:</span>
+              <span className="font-medium text-slate-500">Bakıcı Gideri (Ödenenler):</span>
               <span className="font-semibold text-rose-500">₺{reportData.babysitterFees.toLocaleString('tr-TR')}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="font-medium text-slate-500">Ofis Kirası:</span>
+              <span className="font-medium text-slate-500">Ofis Kirası (Ödenenler):</span>
               <span className="font-semibold text-rose-500">₺{reportData.officeRentExpenses.toLocaleString('tr-TR')}</span>
             </div>
           </div>
@@ -292,8 +317,8 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
 
         {/* Text Preview of the Report */}
         <div className="lg:col-span-7 flex flex-col h-full min-h-[300px]">
-          <div className="text-xs text-[#6b705c] font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-            <span>Hazırlanan E-posta Metni Önizlemesi</span>
+          <div className="text-xs text-[#6b705c] font-bold tracking-wider mb-2 flex items-center gap-1">
+            <span>HAZIRLANAN E-POSTA METNİ ÖNİZLEMESİ</span>
           </div>
           
           <div className="flex-1 bg-slate-50 rounded-2xl border border-slate-200/60 p-4 font-mono text-[11px] leading-relaxed text-slate-700 overflow-y-auto max-h-[320px] whitespace-pre-wrap select-all">

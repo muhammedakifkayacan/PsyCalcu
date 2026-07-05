@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings } from './types';
+import { Session, AppSettings, toTurkishUpper } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -1161,7 +1161,7 @@ export default function App() {
           <div className="w-10 h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">P</div>
           <div>
             <h1 className="text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
-            <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase mt-1">Psikolog Seans & Bütçe Ajandası</p>
+            <p className="text-[10px] text-slate-400 font-semibold tracking-wider mt-1">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
           </div>
         </div>
 
@@ -1358,7 +1358,7 @@ export default function App() {
                   <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-28 h-28 bg-white/5 rounded-full pointer-events-none" />
                   
                   <div className="flex justify-between items-start mb-2">
-                    <p className="text-xs uppercase tracking-wider opacity-80 font-semibold">{monthlyMetrics.monthName} Tahmini Net Kâr</p>
+                    <p className="text-xs tracking-wider opacity-80 font-semibold">{toTurkishUpper(monthlyMetrics.monthName)} TAHMİNİ NET KÂR</p>
                     <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Aylık Rapor</span>
                   </div>
                   
@@ -1366,11 +1366,11 @@ export default function App() {
                   
                   <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/20 pt-4 text-xs">
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest opacity-70">Aylık Brüt Gelir</p>
+                      <p className="text-[10px] tracking-widest opacity-70">AYLIK BRÜT GELİR</p>
                       <p className="text-lg font-semibold mt-0.5">₺{monthlyMetrics.grossIncome.toLocaleString('tr-TR')}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest opacity-70">Aylık Toplam Gider</p>
+                      <p className="text-[10px] tracking-widest opacity-70">AYLIK TOPLAM GİDER</p>
                       <p className="text-lg font-semibold mt-0.5">₺{monthlyMetrics.totalExpenses.toLocaleString('tr-TR')}</p>
                     </div>
                   </div>
@@ -1389,7 +1389,7 @@ export default function App() {
                 {/* Expense Breakdown Card */}
                 <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] flex-1 flex flex-col justify-between" id="expense-breakdown-card">
                   <div className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-[#a5a58d] mb-4">Aylık Gider Detayları</h3>
+                    <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] mb-4">AYLIK GİDER DETAYLARI</h3>
                     
                     {/* Office Rent Item */}
                     <div className="flex justify-between items-center bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8]/50">
@@ -1454,7 +1454,7 @@ export default function App() {
                 {/* Horizontal Date Ribbon Picker */}
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">
                   <div className="flex justify-between items-center mb-3 px-2">
-                    <span className="text-xs font-bold text-[#a5a58d] uppercase tracking-wider">Tarih Seçimi</span>
+                    <span className="text-xs font-bold text-[#a5a58d] tracking-wider">TARİH SEÇİMİ</span>
                     <input 
                       type="date" 
                       value={selectedDate}
@@ -1478,8 +1478,8 @@ export default function App() {
                               : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] border border-[#e5e1d8]/60 text-slate-600'
                           }`}
                         >
-                          <span className={`text-[9px] uppercase tracking-widest font-bold ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
-                            {day.dayName}
+                          <span className={`text-[9px] tracking-widest font-bold ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                            {toTurkishUpper(day.dayName)}
                           </span>
                           <span className="text-lg font-serif font-bold mt-0.5">
                             {day.dayNum}
@@ -1600,8 +1600,8 @@ export default function App() {
                                 <Clock className="w-3.5 h-3.5 text-slate-400 inline sm:hidden" />
                                 {session.time}
                               </p>
-                              <p className="text-[10px] text-slate-600 uppercase tracking-wider font-bold mt-0.5">
-                                {isCancelled ? 'İptal' : `${session.duration} dk`}
+                              <p className="text-[10px] text-slate-600 tracking-wider font-bold mt-0.5">
+                                {isCancelled ? 'İPTAL' : `${session.duration} DK`}
                               </p>
                             </div>
 
@@ -1621,16 +1621,16 @@ export default function App() {
                                 
                                 {/* Status badge */}
                                 {isCancelled ? (
-                                  <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-0.5">
+                                  <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <Ban className="w-2.5 h-2.5" /> İPTAL
                                   </span>
                                 ) : isFaceToFace ? (
-                                  <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-0.5">
+                                  <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <MapPin className="w-2.5 h-2.5" /> YÜZYÜZE
                                   </span>
                                 ) : (
-                                  <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-0.5">
-                                    <Laptop className="w-2.5 h-2.5" /> ONLINE
+                                  <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
+                                    <Laptop className="w-2.5 h-2.5" /> ONLİNE
                                   </span>
                                 )}
 
@@ -1670,14 +1670,14 @@ export default function App() {
                               {!isCancelled && (
                                 <button
                                   onClick={() => handleTogglePaymentStatus(session.id)}
-                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all border shrink-0 text-center cursor-pointer ${
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
                                     session.paymentStatus === 'paid'
                                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                       : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                                   }`}
                                   title={session.paymentStatus === 'paid' ? 'Ödenmedi olarak işaretle' : 'Ödendi olarak işaretle'}
                                 >
-                                  {session.paymentStatus === 'paid' ? '● Ödendi' : '○ Ödenmedi'}
+                                  {session.paymentStatus === 'paid' ? '● ÖDENDİ' : '○ ÖDENMEDİ'}
                                 </button>
                               )}
                             </div>
@@ -1779,16 +1779,16 @@ export default function App() {
                   <div className="p-6 bg-[#f5f5f0] border-t border-[#e5e1d8]/40 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="flex gap-8 w-full sm:w-auto justify-around sm:justify-start">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Günün Seansları</span>
+                        <span className="text-[10px] text-slate-400 font-bold tracking-widest">GÜNÜN SEANSLARI</span>
                         <span className="text-lg font-serif italic font-bold text-[#6b705c]">{dailySummary.count} Seans</span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Günlük Net Kâr</span>
+                        <span className="text-[10px] text-slate-400 font-bold tracking-widest">GÜNLÜK NET KÂR</span>
                         <span className="text-lg font-serif italic font-bold text-emerald-700">₺{dailySummary.net.toLocaleString('tr-TR')}</span>
                       </div>
                     </div>
                     <div className="text-center sm:text-right">
-                      <span className="text-[10px] text-slate-400 block uppercase tracking-widest">Canlı Takvim Durumu</span>
+                      <span className="text-[10px] text-slate-400 block tracking-widest">CANLI TAKVİM DURUMU</span>
                       <span className="text-xs text-slate-600 italic">Son senkronizasyon: Şimdi</span>
                     </div>
                   </div>
@@ -1933,7 +1933,7 @@ export default function App() {
               <div className="bg-[#cb997e] p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
                 <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
                 <div className="max-w-2xl">
-                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold uppercase tracking-wider">Tahsilat Takip</span>
+                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold tracking-wider">TAHSİLAT TAKİP</span>
                   <h2 className="text-3xl font-serif mt-3">Borç & Ödeme Takip Sayfası</h2>
                   {showExplanations && (
                     <p className="text-sm opacity-90 mt-2 leading-relaxed animate-fade-in">
@@ -1950,7 +1950,7 @@ export default function App() {
                     ₺
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Toplam Alacak</span>
+                    <span className="text-[10px] text-slate-400 font-bold tracking-wider block">TOPLAM ALACAK</span>
                     <span className="text-xl font-bold text-slate-800">₺{debtsData.totalUnpaidAmount.toLocaleString('tr-TR')}</span>
                   </div>
                 </div>
@@ -1960,7 +1960,7 @@ export default function App() {
                     <Clock className="w-6 h-6" />
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Ödenmemiş Seans</span>
+                    <span className="text-[10px] text-slate-400 font-bold tracking-wider block">ÖDENMEMİŞ SEANS</span>
                     <span className="text-xl font-bold text-slate-800">{debtsData.unpaidSessions.length} Seans</span>
                   </div>
                 </div>
@@ -1970,7 +1970,7 @@ export default function App() {
                     <Users className="w-5 h-5 text-[#6b705c]" />
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Borçlu Danışan</span>
+                    <span className="text-[10px] text-slate-400 font-bold tracking-wider block">BORÇLU DANIŞAN</span>
                     <span className="text-xl font-bold text-slate-800">{debtsData.debtorCount} Kişi</span>
                   </div>
                 </div>
@@ -2028,7 +2028,7 @@ export default function App() {
                             </div>
                             <div className="text-right">
                               <span className="text-lg font-bold text-red-600 block">₺{debtor.totalAmount.toLocaleString('tr-TR')}</span>
-                              <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider">ÖDENMEDİ</span>
+                              <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full tracking-wider">ÖDENMEDİ</span>
                             </div>
                           </div>
 
@@ -2042,10 +2042,10 @@ export default function App() {
                                     <div className="flex items-center gap-1.5 font-medium text-slate-700">
                                       <span className="text-[11px]">{new Date(s.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
                                       <span className="text-[10px] text-slate-400">{s.time}</span>
-                                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold uppercase tracking-wider ${
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold tracking-wider ${
                                         isFaceToFace ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                       }`}>
-                                        {isFaceToFace ? 'Yüzyüze' : 'Online'}
+                                        {isFaceToFace ? 'YÜZYÜZE' : 'ONLİNE'}
                                       </span>
                                     </div>
                                     {showNotes && s.notes && (
@@ -2121,7 +2121,7 @@ export default function App() {
               <div className="bg-[#6b705c] p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
                 <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
                 <div className="max-w-2xl">
-                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold uppercase tracking-wider">Veri Yönetimi</span>
+                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold tracking-wider">VERİ YÖNETİMİ</span>
                   <h2 className="text-3xl font-serif mt-3">Yedekleme & E-Tablo Entegrasyonu</h2>
                   <p className="text-sm opacity-90 mt-2 leading-relaxed">
                     Uygulamadaki seanslarınızı dilediğiniz zaman bilgisayarınıza yedekleyebilir, silebilir veya Google E-Tablo / Excel formatında dışa aktararak profesyonel muhasebe raporlarınızı oluşturabilirsiniz.
@@ -2133,7 +2133,7 @@ export default function App() {
                 {/* Google Sheets & Excel Integration Card */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[#e5e1d8] shadow-xs flex flex-col justify-between space-y-4" id="google-sheets-integration-card">
                   <div className="space-y-2">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-[#6b705c] flex items-center gap-2">
+                    <h3 className="text-sm font-bold tracking-widest text-[#6b705c] flex items-center gap-2">
                       <FileSpreadsheet className="w-5 h-5" />
                       E-Tablo & Excel Entegrasyonu
                     </h3>
@@ -2176,7 +2176,7 @@ export default function App() {
                 {/* Offline Secure Backup Card */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[#e5e1d8] shadow-xs flex flex-col justify-between space-y-4" id="offline-backup-card">
                   <div className="space-y-2">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-[#6b705c] flex items-center gap-2">
+                    <h3 className="text-sm font-bold tracking-widest text-[#6b705c] flex items-center gap-2">
                       <Database className="w-5 h-5" />
                       Bulutsuz Güvenli Yedekleme
                     </h3>
@@ -2279,7 +2279,7 @@ export default function App() {
 
       {/* Aesthetic Footer */}
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.5</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.6</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 

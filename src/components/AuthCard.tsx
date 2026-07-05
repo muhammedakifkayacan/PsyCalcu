@@ -191,7 +191,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
               <ShieldCheck className="w-5 h-5 text-[#ffe8d6]" />
             </div>
             <div>
-              <span className="text-[10px] uppercase tracking-widest text-white/70 block font-semibold">Aktif Kullanıcı</span>
+              <span className="text-[10px] tracking-widest text-white/70 block font-semibold">AKTİF KULLANICI</span>
               <h4 className="text-sm font-bold font-mono truncate max-w-[200px]" title={user.email || ''}>
                 {user.email}
               </h4>
@@ -231,7 +231,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
         </div>
         <div className="space-y-1">
           <h2 className="text-2xl font-serif italic text-[#6b705c]">PsyCalcu</h2>
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Güvenli Bulut Giriş Portalı</p>
+          <p className="text-xs text-slate-400 font-semibold tracking-wider">GÜVENLİ BULUT GİRİŞ PORTALI</p>
         </div>
       </div>
 
@@ -278,7 +278,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
       <div className="flex items-center justify-center gap-3">
         <div className="h-px bg-[#e5e1d8] flex-1"></div>
-        <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Veya e-posta ile</span>
+        <span className="text-[10px] tracking-widest text-slate-400 font-bold">VEYA E-POSTA İLE</span>
         <div className="h-px bg-[#e5e1d8] flex-1"></div>
       </div>
 
@@ -286,7 +286,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-wider block">E-Posta Adresiniz</label>
+            <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">E-POSTA ADRESİNİZ</label>
             <div className="relative">
               <Mail className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
               <input
@@ -301,7 +301,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-wider block">Şifreniz</label>
+            <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">ŞİFRENİZ</label>
             <div className="relative">
               <KeyRound className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
               <input

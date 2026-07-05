@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Session, AppSettings } from '../types';
-import { Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock } from 'lucide-react';
 
 interface StatsDashboardProps {
   sessions: Session[];
@@ -10,7 +10,7 @@ interface StatsDashboardProps {
 }
 
 export default function StatsDashboard({ sessions, settings, showExplanations = true }: StatsDashboardProps) {
-  const [preset, setPreset] = useState<string>('all');
+  const [preset, setPreset] = useState<string>('thisMonth');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
@@ -69,12 +69,14 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
 
   // Compute analytics
   const analytics = useMemo(() => {
+    const todayStr = new Date().toLocaleDateString('sv-SE');
     let grossIncome = 0;
     let babysitterFees = 0;
     let officeRentExpenses = 0;
     let onlineCount = 0;
     let faceToFaceCount = 0;
     let cancelledCount = 0;
+    let pendingReceivables = 0;
     
     // Group by date for line chart
     const dateGroups: Record<string, { date: string; gross: number; expenses: number; net: number }> = {};
@@ -87,13 +89,18 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       if (s.type === 'cancelled') {
         cancelledCount++;
       } else {
-        grossIncome += sPrice;
-        babysitterFees += sBabyFee;
-        officeRentExpenses += sOfficeFee;
         if (s.type === 'online') {
           onlineCount++;
         } else {
           faceToFaceCount++;
+        }
+
+        if (s.paymentStatus === 'paid') {
+          grossIncome += sPrice;
+          babysitterFees += sBabyFee;
+          officeRentExpenses += sOfficeFee;
+        } else if (s.date <= todayStr) {
+          pendingReceivables += sPrice;
         }
       }
 
@@ -104,11 +111,10 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       }
       
       if (s.type !== 'cancelled') {
-        dateGroups[dLabel].gross += sPrice;
-        dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee);
-      } else {
-        // Cancelled sessions might still consume baby sitter or office booking if not flagged off
-        dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee);
+        if (s.paymentStatus === 'paid') {
+          dateGroups[dLabel].gross += sPrice;
+          dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee);
+        }
       }
     });
 
@@ -144,6 +150,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       officeRentExpenses,
       totalExpenses,
       netIncome,
+      pendingReceivables,
       onlineCount,
       faceToFaceCount,
       cancelledCount,
@@ -163,7 +170,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider">Muhasebe Tarih Aralığı</h4>
+              <h4 className="text-sm font-bold text-[#6b705c] tracking-wider">MUHASEBE TARİH ARALIĞI</h4>
               {showExplanations && (
                 <p className="text-xs text-slate-400 animate-fade-in">Raporları ve grafikleri dilediğiniz tarih aralığına göre süzün</p>
               )}
@@ -203,7 +210,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         {preset === 'custom' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8]/60 max-w-xl animate-fadeIn">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-wider block">Başlangıç Tarihi</label>
+              <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">BAŞLANGIÇ TARİHİ</label>
               <input
                 type="date"
                 value={customStartDate}
@@ -212,7 +219,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-wider block">Bitiş Tarihi</label>
+              <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">BİTİŞ TARİHİ</label>
               <input
                 type="date"
                 value={customEndDate}
@@ -225,25 +232,39 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       </div>
 
       {/* Financial Scorecards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Gross Income Card */}
         <div className="bg-white p-5 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase tracking-wider text-[#a5a58d] font-bold">Dönem Brüt Gelir</span>
+            <span className="text-[10px] tracking-wider text-[#a5a58d] font-bold">ÖDENEN BRÜT GELİR</span>
             <span className="p-1 rounded-full bg-emerald-50 text-emerald-600">
               <ArrowUpRight className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2">
             <h3 className="text-2xl font-serif text-[#6b705c]">₺{analytics.grossIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Seçili dönemdeki brüt seans cirosu</p>
+            <p className="text-[10px] text-slate-400 mt-1">Ödemesi tamamlanmış seans cirosu</p>
+          </div>
+        </div>
+
+        {/* Pending Receivables Card */}
+        <div className="bg-white p-5 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] tracking-wider text-amber-600 font-bold">BEKLEYEN ALACAK</span>
+            <span className="p-1 rounded-full bg-amber-50 text-amber-600">
+              <Clock className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2">
+            <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+            <p className="text-[10px] text-slate-400 mt-1">Henüz ödenmemiş seansların tutarı</p>
           </div>
         </div>
 
         {/* Total Expenses Card */}
         <div className="bg-white p-5 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase tracking-wider text-[#a5a58d] font-bold">Dönem Toplam Gider</span>
+            <span className="text-[10px] tracking-wider text-[#a5a58d] font-bold">ÖDENEN GİDERLER</span>
             <span className="p-1 rounded-full bg-orange-50 text-orange-600">
               <ArrowDownRight className="w-4 h-4" />
             </span>
@@ -259,14 +280,14 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         {/* Net Profit Card */}
         <div className="bg-[#6b705c] p-5 rounded-[2rem] text-white shadow-md flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase tracking-wider text-white/80 font-bold">Dönem Net Kâr (Tahmini)</span>
+            <span className="text-[10px] tracking-wider text-white/80 font-bold">DÖNEM NET KÂR</span>
             <span className="p-1 rounded-full bg-white/15 text-white">
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2">
             <h3 className="text-2xl font-serif">₺{analytics.netIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-white/70 mt-1">Giderler düşüldükten sonra kalan net kazanç</p>
+            <p className="text-[10px] text-white/70 mt-1">Ödenen seansların net kazancı</p>
           </div>
         </div>
       </div>
@@ -276,8 +297,8 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         {/* Revenue over time Chart */}
         <div className="lg:col-span-8 bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm">
           <div className="mb-4">
-            <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider">
-              {preset === 'all' ? 'Genel' : 'Dönemlik'} Muhasebe Trendi
+            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider">
+              {preset === 'all' ? 'GENEL' : 'DÖNEMLİK'} MUHASEBE TRENDİ
             </h4>
             {showExplanations && (
               <p className="text-xs text-slate-400 animate-fade-in">Güne göre brüt gelir ve seans başı bakıcı/ofis gideri dağılımı</p>
@@ -312,7 +333,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         {/* Session Distributions Chart */}
         <div className="lg:col-span-4 bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
           <div>
-            <h4 className="text-sm font-bold text-[#6b705c] uppercase tracking-wider mb-1">Seans Dağılımları</h4>
+            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider mb-1">SEANS DAĞILIMLARI</h4>
             {showExplanations && (
               <p className="text-xs text-slate-400 font-sans animate-fade-in">Seçili dönemdeki seans türlerinin oranları</p>
             )}
@@ -346,7 +367,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
                   <span className="block text-2xl font-serif text-[#6b705c] font-bold">
                     {filteredSessions.filter(s => s.type !== 'cancelled').length}
                   </span>
-                  <span className="text-[9px] uppercase text-[#a5a58d] tracking-widest font-bold">Dönem Aktif</span>
+                  <span className="text-[9px] text-[#a5a58d] tracking-widest font-bold">DÖNEM AKTİF</span>
                 </div>
               </div>
             )}

@@ -457,7 +457,7 @@ export default function CalendarSyncGuide({
                             <span>•</span>
                             <span>{session.time}</span>
                             <span>•</span>
-                            <span className="uppercase">{session.type === 'online' ? 'Online' : 'Yüzyüze'}</span>
+                            <span>{session.type === 'online' ? 'ONLİNE' : 'YÜZYÜZE'}</span>
                           </div>
                         </div>
                       </div>

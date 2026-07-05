@@ -170,7 +170,7 @@ export default function SessionModal({
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-3.5 flex-1 overflow-y-auto">
           {/* Client Name */}
           <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Danışan Adı Soyadı</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">DANIŞAN ADI SOYADI</label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -186,7 +186,7 @@ export default function SessionModal({
 
           {/* Session Type Selector */}
           <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Tipi</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SEANS TİPİ</label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
@@ -251,7 +251,7 @@ export default function SessionModal({
           <div className="grid grid-cols-2 gap-3.5">
             {/* Row 1, Col 1: Tarih */}
             <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Tarih</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">TARİH</label>
               <div className="relative">
                 <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
                 <input
@@ -271,7 +271,7 @@ export default function SessionModal({
 
             {/* Row 1, Col 2: Saat */}
             <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Saat</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SAAT</label>
               <div className="relative">
                 <Clock className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
                 <input
@@ -291,7 +291,7 @@ export default function SessionModal({
 
             {/* Row 2, Col 1: Süre */}
             <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Süre</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SÜRE</label>
               <select
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
@@ -307,7 +307,7 @@ export default function SessionModal({
 
             {/* Row 2, Col 2: Seans Ücreti */}
             <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Ücreti (₺)</label>
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SEANS ÜCRETİ (₺)</label>
               <div className="relative">
                 <span className="absolute left-3 top-2 text-xs font-bold text-[#a5a58d]">₺</span>
                 <input
@@ -435,7 +435,7 @@ export default function SessionModal({
 
           {/* Notes */}
           <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Notları (Özel)</label>
+            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SEANS NOTLARI (ÖZEL)</label>
             <div className="relative">
               <FileText className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <textarea
