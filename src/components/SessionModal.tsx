@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building } from 'lucide-react';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building } from 'lucide-react';
 import { Session, SessionType } from '../types';
+import { downloadSessionAsICS } from '../utils/icsGenerator';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -448,20 +449,54 @@ export default function SessionModal({
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t border-[#f5f5f0] flex gap-3 justify-end shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
-            >
-              Vazgeç
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Kaydet
-            </button>
+          <div className="pt-3 border-t border-[#f5f5f0] flex gap-3 justify-between items-center shrink-0">
+            {sessionToEdit && !sessionToEdit.isSyncedFromCalendar ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const currentSessionData: Session = {
+                    id: sessionToEdit.id,
+                    clientName: clientName.trim() || 'Danışan',
+                    type,
+                    date,
+                    time,
+                    duration: Number(duration),
+                    price: Number(price),
+                    hasBabysitterFee,
+                    babysitterFeeAmount: hasBabysitterFee ? Number(babysitterFeeAmount) : 0,
+                    hasOfficeRentFee,
+                    officeRentFeeAmount: hasOfficeRentFee ? Number(officeRentFeeAmount) : 0,
+                    notes: notes.trim(),
+                    isSyncedFromCalendar: sessionToEdit.isSyncedFromCalendar,
+                    syncedCalendarType: sessionToEdit.syncedCalendarType,
+                    paymentStatus
+                  };
+                  downloadSessionAsICS(currentSessionData);
+                }}
+                className="px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Bu seansı cihazınızın takvimine kaydetmek için .ics dosyası indirin"
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                Takvime Ekle (Cihaz)
+              </button>
+            ) : (
+              <div />
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Kaydet
+              </button>
+            </div>
           </div>
         </form>
       </div>

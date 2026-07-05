@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, 
+  CalendarPlus,
   Settings as SettingsIcon, 
   Plus, 
   Trash2, 
@@ -32,6 +33,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Session, AppSettings } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
+import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
 import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
@@ -1583,9 +1585,13 @@ export default function App() {
                             className={`group flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-2xl border transition-all ${
                               isCancelled 
                                 ? 'bg-red-50/20 border-red-100 opacity-60' 
+                                : session.isSyncedFromCalendar
+                                ? isFaceToFace 
+                                  ? 'bg-amber-50/10 border-dashed border-[#cb997e]/60 hover:border-[#cb997e] hover:shadow-xs' 
+                                  : 'bg-indigo-50/10 border-dashed border-indigo-200/60 hover:border-indigo-400 hover:shadow-xs'
                                 : isFaceToFace 
-                                ? 'bg-amber-50/20 border-[#ddbea9]/40 hover:border-[#ddbea9]' 
-                                : 'bg-white border-slate-100 hover:border-[#ddbea9]'
+                                ? 'bg-amber-50/20 border-solid border-[#ddbea9]/40 hover:border-[#ddbea9]' 
+                                : 'bg-white border-solid border-slate-100 hover:border-[#ddbea9]'
                             }`}
                           >
                             {/* Time */}
@@ -1628,10 +1634,14 @@ export default function App() {
                                   </span>
                                 )}
 
-                                {/* Apple calendar flag */}
-                                {session.isSyncedFromCalendar && (
-                                  <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-semibold">
-                                    Takvimden
+                                {/* Apple calendar vs Panel flag */}
+                                {session.isSyncedFromCalendar ? (
+                                  <span className="text-[9px] bg-indigo-50/80 text-indigo-700 border border-indigo-100/60 px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shadow-3xs">
+                                    📅 Takvimden
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-200/50 px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shadow-3xs">
+                                    ✍️ Panelden
                                   </span>
                                 )}
                               </div>
@@ -1713,6 +1723,20 @@ export default function App() {
                               >
                                 <span className="text-xs font-bold font-serif leading-none">👶</span>
                               </button>
+
+                              {/* Add to Device Calendar (Only for panel-created sessions) */}
+                              {!session.isSyncedFromCalendar && (
+                                <button
+                                  onClick={() => {
+                                    downloadSessionAsICS(session);
+                                    showToast(`${session.clientName} seansı takvim dosyası indirildi.`, 'success');
+                                  }}
+                                  className="p-2.5 md:p-1.5 rounded-xl md:rounded-lg bg-indigo-50/80 md:bg-transparent border border-indigo-100 md:border-transparent text-indigo-700 md:text-indigo-500 hover:text-indigo-900 hover:bg-indigo-100 md:hover:bg-indigo-50 transition-all cursor-pointer font-bold"
+                                  title="Cihaz Takvimine Ekle"
+                                >
+                                  <CalendarPlus className="w-4 h-4 md:w-3.5 md:h-3.5" />
+                                </button>
+                              )}
 
                               {/* Edit */}
                               <button
@@ -2255,7 +2279,7 @@ export default function App() {
 
       {/* Aesthetic Footer */}
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.3</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.5</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 
