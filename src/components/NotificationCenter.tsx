@@ -89,7 +89,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       {/* Dropdown Box */}
       {isOpen && (
         <div 
-          className="absolute right-0 mt-3 w-80 sm:w-96 max-h-[500px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-[2rem] shadow-xl z-50 flex flex-col animate-scale-up"
+          className="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 mt-3 sm:w-96 max-h-[500px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-[2rem] shadow-xl z-50 flex flex-col animate-scale-up"
           id="notification-dropdown-menu"
         >
           {/* Header */}
