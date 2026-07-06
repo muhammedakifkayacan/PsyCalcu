@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User settings and details",
+      "type": "object",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "description": "User application settings"
+        },
+        "sessions": {
+          "type": "array",
+          "description": "User sessions array"
+        }
+      }
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Global admin announcements for all users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "author": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores therapist settings and local sessions backup"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Global administrator notifications and system-wide announcements"
+    }
+  }
+}

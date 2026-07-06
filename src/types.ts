@@ -40,6 +40,16 @@ export interface DaySummary {
   netIncome: number;
 }
 
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'success' | 'error' | 'info' | 'system' | 'announcement';
+  timestamp: number; // ms timestamp
+  read: boolean;
+  author?: string;
+}
+
 export function toTurkishUpper(str: string): string {
   if (!str) return '';
   return str.toLocaleUpperCase('tr-TR');

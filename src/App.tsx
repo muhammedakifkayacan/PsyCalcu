@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings, toTurkishUpper } from './types';
+import { Session, AppSettings, toTurkishUpper, AppNotification } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -42,8 +42,10 @@ import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
 import InteractiveTour from './components/InteractiveTour';
-import { auth, onAuthStateChanged, User } from './lib/firebase';
+import { auth, onAuthStateChanged, User, db } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
+import { collection, onSnapshot, query, limit, orderBy, addDoc } from 'firebase/firestore';
+import { NotificationCenter } from './components/NotificationCenter';
 
 export default function App() {
   // Load settings from localStorage or set defaults
@@ -98,6 +100,115 @@ export default function App() {
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>({ settings: '', sessions: '' });
 
+  // Notification States
+  const [localNotifications, setLocalNotifications] = useState<AppNotification[]>(() => {
+    const saved = localStorage.getItem('psycalcu_local_notifications');
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [announcements, setAnnouncements] = useState<AppNotification[]>([]);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('psycalcu_read_announcement_ids');
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Real-time listener for admin announcements in Firestore
+  useEffect(() => {
+    if (!user) {
+      setAnnouncements([]);
+      return;
+    }
+    try {
+      const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(50));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loadedAnnouncements: AppNotification[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const timestamp = data.createdAt ? new Date(data.createdAt).getTime() : Date.now();
+          loadedAnnouncements.push({
+            id: doc.id,
+            title: data.title || 'Duyuru',
+            message: data.message || '',
+            type: 'announcement',
+            timestamp,
+            read: false, // determined dynamically in memoized value below
+            author: data.author || 'Yönetici'
+          });
+        });
+        setAnnouncements(loadedAnnouncements);
+      }, (error) => {
+        console.warn("Firestore announcements sub error (gracefully handled):", error);
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn("Firestore query creation error:", err);
+    }
+  }, [user]);
+
+  const allNotifications = useMemo<AppNotification[]>(() => {
+    const annotsWithReadState = announcements.map(ann => ({
+      ...ann,
+      read: readAnnouncementIds.includes(ann.id)
+    }));
+    const merged = [...localNotifications, ...annotsWithReadState];
+    return merged.sort((a, b) => b.timestamp - a.timestamp);
+  }, [localNotifications, announcements, readAnnouncementIds]);
+
+  const handleMarkAllAsRead = () => {
+    setLocalNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, read: true }));
+      localStorage.setItem('psycalcu_local_notifications', JSON.stringify(updated));
+      return updated;
+    });
+    
+    const allAnnotIds = announcements.map(ann => ann.id);
+    setReadAnnouncementIds(prev => {
+      const updated = Array.from(new Set([...prev, ...allAnnotIds]));
+      localStorage.setItem('psycalcu_read_announcement_ids', JSON.stringify(updated));
+      return updated;
+    });
+    
+    // Explicitly update only toast without adding another notification loop
+    setToast({ message: 'Bütün bildirimler okundu olarak işaretlendi.', type: 'info' });
+  };
+
+  const handleClearAllNotifications = () => {
+    setLocalNotifications([]);
+    localStorage.removeItem('psycalcu_local_notifications');
+    
+    const allAnnotIds = announcements.map(ann => ann.id);
+    setReadAnnouncementIds(prev => {
+      const updated = Array.from(new Set([...prev, ...allAnnotIds]));
+      localStorage.setItem('psycalcu_read_announcement_ids', JSON.stringify(updated));
+      return updated;
+    });
+    
+    setToast({ message: 'Bildirim geçmişi temizlendi.', type: 'info' });
+  };
+
+  const handleAddAnnouncement = async (title: string, message: string, type: 'info' | 'success' | 'error' | 'system') => {
+    try {
+      await addDoc(collection(db, 'announcements'), {
+        title,
+        message,
+        type,
+        createdAt: new Date().toISOString(),
+        author: 'Yönetici'
+      });
+    } catch (err) {
+      console.error("Error creating announcement in Firestore:", err);
+      throw err;
+    }
+  };
+
   // Toast Notification State
   const [toast, setToast] = useState<{
     message: string;
@@ -106,6 +217,22 @@ export default function App() {
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
+
+    // Auto-log a notification
+    const newNotif: AppNotification = {
+      id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      title: type === 'success' ? 'Başarılı İşlem' : type === 'error' ? 'Sistem Hatası' : 'Bilgilendirme',
+      message,
+      type: type === 'success' ? 'success' : type === 'error' ? 'error' : 'info',
+      timestamp: Date.now(),
+      read: false
+    };
+
+    setLocalNotifications(prev => {
+      const updated = [newNotif, ...prev].slice(0, 100);
+      localStorage.setItem('psycalcu_local_notifications', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -1348,6 +1475,13 @@ export default function App() {
             <p className="text-[10px] text-slate-600 font-semibold">{headerDateStr}</p>
           </div>
           
+          <NotificationCenter
+            notifications={allNotifications}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onClearAll={handleClearAllNotifications}
+            showToast={showToast}
+          />
+
           <button
             id="toggle-explanations-btn"
             onClick={toggleShowExplanations}
