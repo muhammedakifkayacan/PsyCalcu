@@ -5,6 +5,73 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import "dotenv/config";
 
+function generateSmartFallbackSummary(date: string, sessions: any[], dailyMetrics: any, isKeyMissing: boolean): string {
+  const activeSessions = sessions ? sessions.filter((s: any) => s.type !== 'cancelled') : [];
+  const cancelledSessions = sessions ? sessions.filter((s: any) => s.type === 'cancelled') : [];
+  const onlineCount = activeSessions.filter((s: any) => s.type === 'online').length;
+  const f2fCount = activeSessions.filter((s: any) => s.type === 'face-to-face').length;
+  const unpaidCount = activeSessions.filter((s: any) => s.paymentStatus !== 'paid').length;
+  const totalUnpaid = activeSessions.filter((s: any) => s.paymentStatus !== 'paid').reduce((sum: number, s: any) => sum + (Number(s.price) || 0), 0);
+
+  let evaluation = "";
+  
+  // Section 1: Günün Değerlendirmesi
+  evaluation += `- **Günün Değerlendirmesi:** `;
+  if (activeSessions.length === 0) {
+    evaluation += `${date} tarihinde aktif seansınız bulunmamaktadır. Dinlenmek ve klinik hazırlık yapmak için harika bir gün.`;
+  } else {
+    evaluation += `Bugün toplam ${activeSessions.length} aktif seans gerçekleştirdiniz (${onlineCount} Online, ${f2fCount} Yüzyüze). `;
+    if (cancelledSessions.length > 0) {
+      evaluation += `${cancelledSessions.length} adet seans iptali gerçekleşti; iptal politikalarınızı gözden geçirmek seans sadakatini artırabilir. `;
+    } else {
+      evaluation += `Seans katılım oranı %100; planlamalarınız son derece verimli geçti. `;
+    }
+    if (activeSessions.length >= 5) {
+      evaluation += `Klinik yoğunluğunuz yüksek seviyededir; seans aralarında zihinsel dinlenmeye özen göstermelisiniz.`;
+    } else if (activeSessions.length >= 3) {
+      evaluation += `Dengeli ve sürdürülebilir bir klinik iş yükü dağılımı sağlandı.`;
+    } else {
+      evaluation += `Sakin bir gün; danışan takipleri ve idari hazırlıklar için yeterli vakit kaldı.`;
+    }
+  }
+  evaluation += `\n\n`;
+
+  // Section 2: Finansal Durum & Tahsilat
+  evaluation += `- **Finansal Durum & Tahsilat:** `;
+  const netProfit = dailyMetrics.net || 0;
+  evaluation += `Günü ₺${netProfit.toLocaleString('tr-TR')} net kâr ile tamamladınız. `;
+  if (unpaidCount > 0) {
+    evaluation += `Tamamlanan seanslardan ${unpaidCount} adedinin (₺${totalUnpaid.toLocaleString('tr-TR')}) ödemesi henüz alınmamış. Bu danışanlara gün sonunda nazik bir hatırlatma göndermeniz nakit akışını olumlu etkileyecektir.`;
+  } else if (activeSessions.length > 0) {
+    evaluation += `Harika! Bugün tamamlanan tüm seansların ödemeleri tahsil edilmiş durumdadır, finansal akışınız kusursuz.`;
+  } else {
+    evaluation += `Bugün finansal bir hareketlilik bulunmamaktadır.`;
+  }
+  evaluation += `\n\n`;
+
+  // Section 3: Günün Sözü / Öneri
+  evaluation += `- **Günün Sözü / Öneri:** `;
+  const quotes = [
+    "\"Bir insanı dinlemek, ona var olma hakkı tanımaktır.\" - Seans sonrası kendinize de şefkat göstermeyi unutmayın.",
+    "Zihinsel emeğiniz çok değerli. Bugün dokunduğunuz hayatlar için kendinize teşekkür edin.",
+    "Klinik verimlilik sadece seans sayısıyla değil, seansların kalitesi ve kendi enerjinizle ölçülür.",
+    "Başarılı bir terapist, kendi sınırlarını çizmeyi ve dinlenmeyi de çok iyi bilendir.",
+    "Günün yoğunluğu geride kaldı; şimdi zihninizi boşaltma ve kendinize zaman ayırma vakti.",
+    "Her seans yeni bir keşif yolculuğudur; kendinize ve mesleki sezgilerinize güvenin."
+  ];
+  const dayOffset = date ? parseInt(date.split('-').pop() || '0', 10) : 0;
+  const index = (activeSessions.length + dayOffset) % quotes.length;
+  evaluation += quotes[index];
+
+  if (isKeyMissing) {
+    evaluation += `\n\n*Not: Bu analiz, API anahtarınız tanımlanmadığı için PsyCalcu Akıllı Değerlendirme Modülü tarafından lokal olarak üretilmiştir. Gerçek yapay zeka analizleri için Settings > Secrets bölümünden GEMINI_API_KEY ekleyebilirsiniz.*`;
+  } else {
+    evaluation += `\n\n*Not: Bu rapor, yapay zeka sunucu yoğunluğu nedeniyle PsyCalcu Akıllı Değerlendirme Modülü tarafından lokal olarak hazırlanmıştır.*`;
+  }
+
+  return evaluation;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -17,9 +84,9 @@ async function startServer() {
       const { date, sessions, dailyMetrics } = req.body;
 
       if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({
-          error: "GEMINI_API_KEY asistan anahtarı ortam değişkenlerinde tanımlı değil. Lütfen Settings > Secrets bölümünden ekleyin."
-        });
+        // Fallback gracefully instead of throwing 500 error
+        const fallbackText = generateSmartFallbackSummary(date, sessions, dailyMetrics, true);
+        return res.json({ text: fallbackText });
       }
 
       const ai = new GoogleGenAI({
@@ -77,8 +144,10 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
       res.json({ text: response.text });
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      res.status(500).json({ error: error?.message || "Yapay zeka özeti üretilirken bir hata oluştu." });
+      console.error("Gemini API Error, falling back to smart analysis:", error);
+      const { date, sessions, dailyMetrics } = req.body;
+      const fallbackText = generateSmartFallbackSummary(date, sessions, dailyMetrics, false);
+      res.json({ text: fallbackText });
     }
   });
 

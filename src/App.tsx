@@ -854,8 +854,68 @@ export default function App() {
 
       showToast('Günün değerlendirmesi başarıyla oluşturuldu!', 'success');
     } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'Özet oluşturulurken bir hata meydana geldi.', 'error');
+      console.warn("Server call failed, generating local smart assessment:", err);
+      
+      const activeSessions = filteredSessions ? filteredSessions.filter((s: any) => s.type !== 'cancelled') : [];
+      const cancelledSessions = filteredSessions ? filteredSessions.filter((s: any) => s.type === 'cancelled') : [];
+      const onlineCount = activeSessions.filter((s: any) => s.type === 'online').length;
+      const f2fCount = activeSessions.filter((s: any) => s.type === 'face-to-face').length;
+      const unpaidCount = activeSessions.filter((s: any) => s.paymentStatus !== 'paid').length;
+      const totalUnpaid = activeSessions.filter((s: any) => s.paymentStatus !== 'paid').reduce((sum: number, s: any) => sum + (Number(s.price) || 0), 0);
+
+      let localSummary = `- **Günün Değerlendirmesi:** `;
+      if (activeSessions.length === 0) {
+        localSummary += `${selectedDate} tarihinde aktif seansınız bulunmamaktadır. Dinlenmek ve klinik hazırlık yapmak için harika bir gün.`;
+      } else {
+        localSummary += `Bugün toplam ${activeSessions.length} aktif seans gerçekleştirdiniz (${onlineCount} Online, ${f2fCount} Yüzyüze). `;
+        if (cancelledSessions.length > 0) {
+          localSummary += `${cancelledSessions.length} adet seans iptali gerçekleşti; iptal politikalarınızı gözden geçirmek seans sadakatini artırabilir. `;
+        } else {
+          localSummary += `Seans katılım oranı %100; planlamalarınız son derece verimli geçti. `;
+        }
+        if (activeSessions.length >= 5) {
+          localSummary += `Klinik yoğunluğunuz yüksek seviyededir; seans aralarında zihinsel dinlenmeye özen göstermelisiniz.`;
+        } else if (activeSessions.length >= 3) {
+          localSummary += `Dengeli ve sürdürülebilir bir klinik iş yükü dağılımı sağlandı.`;
+        } else {
+          localSummary += `Sakin bir gün; danışan takipleri ve idari hazırlıklar için yeterli vakit kaldı.`;
+        }
+      }
+      localSummary += `\n\n`;
+
+      localSummary += `- **Finansal Durum & Tahsilat:** `;
+      localSummary += `Günü ₺${(dailySummary.net || 0).toLocaleString('tr-TR')} net kâr ile tamamladınız. `;
+      if (unpaidCount > 0) {
+        localSummary += `Tamamlanan seanslardan ${unpaidCount} adedinin (₺${totalUnpaid.toLocaleString('tr-TR')}) ödemesi henüz alınmamış. Bu danışanlara gün sonunda nazik bir hatırlatma göndermeniz nakit akışını olumlu etkileyecektir.`;
+      } else if (activeSessions.length > 0) {
+        localSummary += `Harika! Bugün tamamlanan tüm seansların ödemeleri tahsil edilmiş durumdadır, finansal akışınız kusursuz.`;
+      } else {
+        localSummary += `Bugün finansal bir hareketlilik bulunmamaktadır.`;
+      }
+      localSummary += `\n\n`;
+
+      localSummary += `- **Günün Sözü / Öneri:** `;
+      const quotes = [
+        "\"Bir insanı dinlemek, ona var olma hakkı tanımaktır.\" - Seans sonrası kendinize de şefkat göstermeyi unutmayın.",
+        "Zihinsel emeğiniz çok değerli. Bugün dokunduğunuz hayatlar için kendinize teşekkür edin.",
+        "Klinik verimlilik sadece seans sayısıyla değil, seansların kalitesi ve kendi enerjinizle ölçülür.",
+        "Başarılı bir terapist, kendi sınırlarını çizmeyi ve dinlenmeyi de çok iyi bilendir.",
+        "Günün yoğunluğu geride kaldı; şimdi zihninizi boşaltma ve kendinize zaman ayırma vakti.",
+        "Her seans yeni bir keşif yolculuğudur; kendinize ve mesleki sezgilerinize güvenin."
+      ];
+      const dayOffset = selectedDate ? parseInt(selectedDate.split('-').pop() || '0', 10) : 0;
+      const index = (activeSessions.length + dayOffset) % quotes.length;
+      localSummary += quotes[index];
+
+      localSummary += `\n\n*Not: Bu analiz, çevrimdışı/lokal değerlendirme modülü tarafından anında hazırlanmıştır.*`;
+
+      setAiSummaries(prev => {
+        const updated = { ...prev, [selectedDate]: localSummary };
+        localStorage.setItem('psycalcu_ai_summaries', JSON.stringify(updated));
+        return updated;
+      });
+
+      showToast('Günün değerlendirmesi lokal modül ile başarıyla oluşturuldu!', 'success');
     } finally {
       setIsSummaryLoading(false);
     }
