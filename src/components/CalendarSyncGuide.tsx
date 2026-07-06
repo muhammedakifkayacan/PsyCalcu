@@ -5,7 +5,15 @@ import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings } from '../types';
 
 interface CalendarSyncGuideProps {
-  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face') => { addedCount: number; updatedCount: number; totalParsed: number };
+  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face') => { 
+    addedCount: number; 
+    updatedCount: number; 
+    deletedCount?: number;
+    totalParsed: number; 
+    addedList?: any[];
+    updatedList?: any[];
+    deletedList?: any[];
+  };
   defaultPrice: number;
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number;
@@ -120,16 +128,23 @@ export default function CalendarSyncGuide({
       }
       const icsText = await response.text();
       const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online');
+      const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
-      if (parsed.length > 0) {
+      if (isValidIcs) {
         const stats = onImportSessions(parsed, 'online');
-        if (stats.addedCount > 0 || stats.updatedCount > 0) {
-          showToast(`Online Seanslar Takvimi eşitlendi: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi. (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
+          let msg = `Online Seanslar Takvimi eşitlendi: `;
+          const parts = [];
+          if (stats.addedCount > 0) parts.push(`${stats.addedCount} yeni seans eklendi`);
+          if (stats.updatedCount > 0) parts.push(`${stats.updatedCount} seans güncellendi`);
+          if ((stats.deletedCount || 0) > 0) parts.push(`${stats.deletedCount} silinen veya taşınan seans temizlendi`);
+          msg += parts.join(', ') + '.';
+          showToast(msg, 'success');
         } else {
           showToast(`Online Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
         }
       } else {
-        showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
+        showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen geçerli bir takvim linki (webcal veya ics) girdiğinizden emin olun.', 'error');
       }
     } catch (err: any) {
       console.error(err);
@@ -153,16 +168,23 @@ export default function CalendarSyncGuide({
       }
       const icsText = await response.text();
       const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face');
+      const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
-      if (parsed.length > 0) {
+      if (isValidIcs) {
         const stats = onImportSessions(parsed, 'face-to-face');
-        if (stats.addedCount > 0 || stats.updatedCount > 0) {
-          showToast(`Yüzyüze Seanslar Takvimi eşitlendi: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi. (Seanslar kendi takvim tarihlerine yerleşmiştir.)`, 'success');
+        if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
+          let msg = `Yüzyüze Seanslar Takvimi eşitlendi: `;
+          const parts = [];
+          if (stats.addedCount > 0) parts.push(`${stats.addedCount} yeni seans eklendi`);
+          if (stats.updatedCount > 0) parts.push(`${stats.updatedCount} seans güncellendi`);
+          if ((stats.deletedCount || 0) > 0) parts.push(`${stats.deletedCount} silinen veya taşınan seans temizlendi`);
+          msg += parts.join(', ') + '.';
+          showToast(msg, 'success');
         } else {
           showToast(`Yüzyüze Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
         }
       } else {
-        showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen takviminizde seansların bulunduğundan emin olun.', 'error');
+        showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen geçerli bir takvim linki (webcal veya ics) girdiğinizden emin olun.', 'error');
       }
     } catch (err: any) {
       console.error(err);

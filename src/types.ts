@@ -48,6 +48,11 @@ export interface AppNotification {
   timestamp: number; // ms timestamp
   read: boolean;
   author?: string;
+  syncDetails?: {
+    added: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+    updated: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+    deleted?: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+  };
 }
 
 export function toTurkishUpper(str: string): string {

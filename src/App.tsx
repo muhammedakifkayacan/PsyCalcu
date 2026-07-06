@@ -41,6 +41,7 @@ import SessionModal from './components/SessionModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
+import SyncDetailsModal from './components/SyncDetailsModal';
 import InteractiveTour from './components/InteractiveTour';
 import { auth, onAuthStateChanged, User, db } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
@@ -215,17 +216,18 @@ export default function App() {
     type: 'success' | 'error' | 'info';
   } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success', extraNotifData?: Partial<AppNotification>) => {
     setToast({ message, type });
 
     // Auto-log a notification
     const newNotif: AppNotification = {
       id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-      title: type === 'success' ? 'Başarılı İşlem' : type === 'error' ? 'Sistem Hatası' : 'Bilgilendirme',
+      title: extraNotifData?.title || (type === 'success' ? 'Başarılı İşlem' : type === 'error' ? 'Sistem Hatası' : 'Bilgilendirme'),
       message,
-      type: type === 'success' ? 'success' : type === 'error' ? 'error' : 'info',
+      type: extraNotifData?.type || (type === 'success' ? 'success' : type === 'error' ? 'error' : 'info'),
       timestamp: Date.now(),
-      read: false
+      read: false,
+      ...extraNotifData
     };
 
     setLocalNotifications(prev => {
@@ -574,6 +576,11 @@ export default function App() {
   const [showAiDetails, setShowAiDetails] = useState<boolean>(false);
   const [isFaqOpen, setIsFaqOpen] = useState<boolean>(false);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const [syncDetailsToShow, setSyncDetailsToShow] = useState<{
+    added: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+    updated: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+  } | null>(null);
+  const [isSyncDetailsModalOpen, setIsSyncDetailsModalOpen] = useState<boolean>(false);
 
   // Auto trigger tour for first-time logged-in users
   useEffect(() => {
@@ -1048,11 +1055,59 @@ export default function App() {
     }
   };
 
-  const handleImportSessions = (newSessions: Session[]) => {
-    const sessionsMap = new Map(sessions.map(s => [s.id, s]));
+  const handleImportSessions = (
+    newSessions: Session[],
+    syncedTypesFetched?: 'online' | 'face-to-face' | ('online' | 'face-to-face')[]
+  ) => {
+    // 60 days cutoff logic (aligns with icsParser.ts)
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const cutOffDateStr = sixtyDaysAgo.toISOString().split('T')[0];
+
+    const activeSyncedTypes = Array.isArray(syncedTypesFetched)
+      ? syncedTypesFetched
+      : syncedTypesFetched
+        ? [syncedTypesFetched]
+        : undefined;
+
+    const deletedList: any[] = [];
+    let deletedCount = 0;
+
+    // Track incoming IDs for easy lookup
+    const incomingIds = new Set(newSessions.map(ns => ns.id));
+
+    // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
+    const sessionsToKeep: Session[] = [];
+    sessions.forEach(s => {
+      if (s.isSyncedFromCalendar && 
+          activeSyncedTypes && 
+          s.syncedCalendarType && 
+          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
+          s.date >= cutOffDateStr) {
+        
+        // This session is from a synced calendar that we just updated, and it's within the sync window
+        if (!incomingIds.has(s.id)) {
+          // It is not in the incoming list, meaning it was deleted or moved from the calendar feed!
+          deletedList.push({
+            id: s.id,
+            clientName: s.clientName,
+            date: s.date,
+            time: s.time,
+            type: s.type
+          });
+          deletedCount++;
+          return; // Filter it out (delete it)
+        }
+      }
+      sessionsToKeep.push(s);
+    });
+
+    const sessionsMap = new Map(sessionsToKeep.map(s => [s.id, s]));
     let addedCount = 0;
     let updatedCount = 0;
     const toUpdate: Session[] = [];
+    const addedList: any[] = [];
+    const updatedList: any[] = [];
 
     newSessions.forEach(ns => {
       if (sessionsMap.has(ns.id)) {
@@ -1079,24 +1134,50 @@ export default function App() {
         if (JSON.stringify(existing) !== JSON.stringify(updated)) {
           updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
           toUpdate.push(updated);
+          updatedList.push({
+            id: updated.id,
+            clientName: updated.clientName,
+            date: updated.date,
+            time: updated.time,
+            type: updated.type
+          });
           updatedCount++;
         }
       } else {
         const nsWithTimestamp = { ...ns, updatedAt: Date.now() };
         toUpdate.push(nsWithTimestamp);
+        addedList.push({
+          id: nsWithTimestamp.id,
+          clientName: nsWithTimestamp.clientName,
+          date: nsWithTimestamp.date,
+          time: nsWithTimestamp.time,
+          type: nsWithTimestamp.type
+        });
         addedCount++;
       }
     });
 
-    if (toUpdate.length > 0) {
+    if (toUpdate.length > 0 || deletedCount > 0) {
       setSessions(prev => {
-        const prevMap = new Map(prev.map(s => [s.id, s]));
+        // Filter out deleted sessions from state
+        const keepIds = new Set(sessionsToKeep.map(s => s.id));
+        const filteredPrev = prev.filter(s => keepIds.has(s.id));
+
+        const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
         return Array.from(prevMap.values());
       });
     }
 
-    return { addedCount, updatedCount, totalParsed: newSessions.length };
+    return { 
+      addedCount, 
+      updatedCount, 
+      deletedCount,
+      totalParsed: newSessions.length, 
+      addedList, 
+      updatedList, 
+      deletedList 
+    };
   };
 
   const handleManualCalendarSync = async (showNotificationOnNoChanges = true) => {
@@ -1126,7 +1207,8 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online');
-          if (parsed.length > 0) {
+          const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
+          if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
             hasFetchedOnline = true;
           }
@@ -1143,7 +1225,8 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face');
-          if (parsed.length > 0) {
+          const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
+          if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
             hasFetchedFaceToFace = true;
           }
@@ -1155,10 +1238,33 @@ export default function App() {
 
     setIsManualSyncing(false);
 
-    if (totalNewSessions.length > 0) {
-      const stats = handleImportSessions(totalNewSessions);
-      if (stats.addedCount > 0 || stats.updatedCount > 0) {
-        showToast(`Takvim senkronizasyonu tamamlandı: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi.`, 'success');
+    const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
+    if (hasFetchedOnline) syncedTypesFetched.push('online');
+    if (hasFetchedFaceToFace) syncedTypesFetched.push('face-to-face');
+
+    if (syncedTypesFetched.length > 0) {
+      const stats = handleImportSessions(totalNewSessions, syncedTypesFetched);
+      if (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0) {
+        let msg = 'Takvim senkronizasyonu tamamlandı: ';
+        const parts: string[] = [];
+        if (stats.addedCount > 0) parts.push(`${stats.addedCount} yeni seans eklendi`);
+        if (stats.updatedCount > 0) parts.push(`${stats.updatedCount} seans güncellendi`);
+        if (stats.deletedCount > 0) parts.push(`${stats.deletedCount} silinen/taşınan seans temizlendi`);
+        msg += parts.join(', ') + '.';
+
+        showToast(
+          msg, 
+          'success',
+          {
+            title: 'Takvim Senkronizasyonu',
+            type: 'system',
+            syncDetails: {
+              added: stats.addedList,
+              updated: stats.updatedList,
+              deleted: stats.deletedList
+            }
+          }
+        );
       } else if (showNotificationOnNoChanges) {
         showToast('Takvimleriniz zaten güncel, yeni bir değişiklik bulunamadı.', 'info');
       }
@@ -1480,6 +1586,10 @@ export default function App() {
             onMarkAllAsRead={handleMarkAllAsRead}
             onClearAll={handleClearAllNotifications}
             showToast={showToast}
+            onViewSyncDetails={(details) => {
+              setSyncDetailsToShow(details);
+              setIsSyncDetailsModalOpen(true);
+            }}
           />
 
           <button
@@ -2472,6 +2582,13 @@ export default function App() {
         isOpen={isFaqOpen}
         onClose={() => setIsFaqOpen(false)}
         onStartTour={() => setIsTourOpen(true)}
+      />
+
+      {/* Sync Details Modal Component */}
+      <SyncDetailsModal
+        isOpen={isSyncDetailsModalOpen}
+        onClose={() => setIsSyncDetailsModalOpen(false)}
+        syncDetails={syncDetailsToShow}
       />
 
       {/* Interactive Onboarding Tour */}
