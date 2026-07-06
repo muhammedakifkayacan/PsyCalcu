@@ -197,7 +197,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                         <h4 className="font-bold text-xs">{notif.title}</h4>
                         <p className="text-[11px] leading-relaxed text-slate-500 whitespace-pre-line">{notif.message}</p>
                         
-                        {notif.syncDetails && (notif.syncDetails.added.length > 0 || notif.syncDetails.updated.length > 0) && (
+                        {notif.syncDetails && (
+                          notif.syncDetails.added.length > 0 || 
+                          notif.syncDetails.updated.length > 0 || 
+                          (notif.syncDetails.deleted && notif.syncDetails.deleted.length > 0)
+                        ) && (
                           <button
                             onClick={() => {
                               onViewSyncDetails(notif.syncDetails);
@@ -206,7 +210,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                             className="mt-2 px-2.5 py-1.5 bg-[#cb997e]/15 hover:bg-[#cb997e]/25 text-[#9a6448] text-[10px] font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer w-fit"
                           >
                             <Eye className="w-3.5 h-3.5 shrink-0" />
-                            Eklenen Seansları Gör ({notif.syncDetails.added.length + notif.syncDetails.updated.length})
+                            Detayları Gör ({notif.syncDetails.added.length + notif.syncDetails.updated.length + (notif.syncDetails.deleted?.length || 0)})
                           </button>
                         )}
                       </div>
