@@ -12,7 +12,7 @@ import {
   ArrowRight,
   Eye
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { AppNotification } from '../types';
 
 interface NotificationCenterProps {
@@ -35,6 +35,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const dragControls = useDragControls();
 
   // Detect mobile viewport reactively
   useEffect(() => {
@@ -323,6 +324,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
               {/* Bottom Sheet Content Container */}
               <motion.div
+                drag="y"
+                dragControls={dragControls}
+                dragListener={false}
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0.05, bottom: 0.85 }}
+                onDragEnd={(event, info) => {
+                  if (info.offset.y > 100 || info.velocity.y > 350) {
+                    setIsOpen(false);
+                  }
+                }}
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
@@ -330,8 +341,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-white border-t border-[#e5e1d8] rounded-t-[2.5rem] shadow-2xl flex flex-col overflow-hidden"
                 id="notification-dropdown-menu-mobile"
               >
-                {/* Drag Indicator / Notch for Bottom Sheet on Mobile */}
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto my-3 shrink-0" />
+                {/* Drag Handle Notch Zone */}
+                <div 
+                  onPointerDown={(e) => dragControls.start(e)}
+                  className="w-full pt-4 pb-3 cursor-grab active:cursor-grabbing shrink-0 touch-none flex flex-col items-center select-none"
+                  style={{ touchAction: 'none' }}
+                >
+                  {/* Drag Indicator / Notch for Bottom Sheet on Mobile */}
+                  <div className="w-12 h-1.5 bg-[#e5e1d8] rounded-full hover:bg-slate-400 transition-colors" />
+                </div>
                 {renderDropdownContent()}
               </motion.div>
             </div>
