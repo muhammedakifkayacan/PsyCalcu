@@ -929,9 +929,13 @@ export default function App() {
   };
 
   const handleTogglePaymentStatus = (id: string) => {
+    const found = sessions.find(s => s.id === id);
+    if (!found) return;
+
+    const nextStatus = found.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
-        const nextStatus = s.paymentStatus === 'paid' ? 'unpaid' : 'paid';
         return {
           ...s,
           paymentStatus: nextStatus,
@@ -941,10 +945,34 @@ export default function App() {
       }
       return s;
     }));
-    showToast('Ödeme durumu güncellendi.', 'success');
+
+    const priceVal = Number(found.price) || 0;
+    if (nextStatus === 'paid') {
+      showToast(
+        `${found.clientName} adlı danışandan ₺${priceVal.toLocaleString('tr-TR')} tahsil edildi!`, 
+        'success',
+        {
+          title: 'Ödeme Alındı',
+          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (₺${priceVal.toLocaleString('tr-TR')}) başarıyla tahsil edildi.`
+        }
+      );
+    } else {
+      showToast(
+        `${found.clientName} ödemesi iptal edildi.`, 
+        'info',
+        {
+          title: 'Ödeme İptal Edildi',
+          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (₺${priceVal.toLocaleString('tr-TR')}) ödenmedi olarak işaretlendi.`,
+          type: 'info'
+        }
+      );
+    }
   };
 
   const handleMarkSessionAsPaid = (id: string) => {
+    const found = sessions.find(s => s.id === id);
+    if (!found) return;
+
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
         return {
@@ -956,22 +984,50 @@ export default function App() {
       }
       return s;
     }));
-    showToast('Seans ödemesi başarıyla tahsil edildi!', 'success');
+
+    const priceVal = Number(found.price) || 0;
+    showToast(
+      `${found.clientName} ödemesi başarıyla tahsil edildi!`, 
+      'success',
+      {
+        title: 'Ödeme Alındı',
+        message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (₺${priceVal.toLocaleString('tr-TR')}) başarıyla tahsil edildi.`
+      }
+    );
   };
 
   const handleMarkAllClientSessionsAsPaid = (clientName: string) => {
-    setSessions(prev => prev.map(s => {
-      if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
-        return {
-          ...s,
-          paymentStatus: 'paid',
-          updatedAt: Date.now(),
-          isManuallyEdited: true
-        };
+    let totalAmount = 0;
+    let sessionCount = 0;
+
+    setSessions(prev => {
+      prev.forEach(s => {
+        if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+          totalAmount += Number(s.price) || 0;
+          sessionCount++;
+        }
+      });
+      return prev.map(s => {
+        if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+          return {
+            ...s,
+            paymentStatus: 'paid',
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      });
+    });
+
+    showToast(
+      `${clientName} adlı danışanın tüm borçları ödendi!`, 
+      'success',
+      {
+        title: 'Toplu Tahsilat',
+        message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ₺${totalAmount.toLocaleString('tr-TR')}) başarıyla ödendi olarak işaretlendi.`
       }
-      return s;
-    }));
-    showToast(`${clientName} adlı danışanın tüm borçları ödendi olarak işaretlendi!`, 'success');
+    );
   };
 
   const handleGenerateSummary = async () => {
