@@ -48,6 +48,7 @@ import { auth, onAuthStateChanged, User, db } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
+import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 
 export default function App() {
   // Load settings from localStorage or set defaults
@@ -831,6 +832,20 @@ export default function App() {
   // CRUD actions
   const handleSaveSession = (savedSession: Session) => {
     const existing = sessions.find(s => s.id === savedSession.id);
+    
+    // Check validation limits
+    const validation = validateSessionAction(
+      sessions.length,
+      existing ? 0 : 1,
+      !!existing,
+      true // manual addition/edit
+    );
+
+    if (!validation.allowed) {
+      showToast(validation.message, 'error', { title: 'Ekleme Sınırı Aşıldı' });
+      return;
+    }
+
     if (existing && isOlderThan7Days(existing.date)) {
       if (existing.date !== savedSession.date || existing.time !== savedSession.time) {
         showToast('7 günden eski seansların tarihi veya saati değiştirilemez!', 'error');
@@ -843,6 +858,8 @@ export default function App() {
       if (exists) {
         return prev.map(s => s.id === savedSession.id ? withTimestamp : s);
       } else {
+        // Increment weekly manual limit count only when adding a new session
+        incrementWeeklyManualActionCount(1);
         return [...prev, withTimestamp];
       }
     });
