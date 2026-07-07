@@ -42,6 +42,7 @@ import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
 import SyncDetailsModal from './components/SyncDetailsModal';
+import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
 import InteractiveTour from './components/InteractiveTour';
 import { auth, onAuthStateChanged, User, db } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
@@ -581,6 +582,15 @@ export default function App() {
     updated: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
   } | null>(null);
   const [isSyncDetailsModalOpen, setIsSyncDetailsModalOpen] = useState<boolean>(false);
+  const [debtConfirmState, setDebtConfirmState] = useState<{
+    isOpen: boolean;
+    clientName: string;
+    totalAmount: number;
+  }>({
+    isOpen: false,
+    clientName: '',
+    totalAmount: 0,
+  });
 
   // Auto trigger tour for first-time logged-in users
   useEffect(() => {
@@ -2390,7 +2400,11 @@ export default function App() {
 
                           {/* Bulk action */}
                           <button
-                            onClick={() => handleMarkAllClientSessionsAsPaid(debtor.clientName)}
+                            onClick={() => setDebtConfirmState({
+                              isOpen: true,
+                              clientName: debtor.clientName,
+                              totalAmount: debtor.totalAmount
+                            })}
                             className="w-full py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[11px] font-bold rounded-xl shadow-xs cursor-pointer transition-colors text-center"
                           >
                             Tüm Seansları Ödendi İşaretle (₺{debtor.totalAmount.toLocaleString('tr-TR')})
@@ -2591,6 +2605,15 @@ export default function App() {
         syncDetails={syncDetailsToShow}
       />
 
+      {/* Debt Payment Confirmation Modal */}
+      <DebtPaymentConfirmationModal
+        isOpen={debtConfirmState.isOpen}
+        onClose={() => setDebtConfirmState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={() => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName)}
+        clientName={debtConfirmState.clientName}
+        totalAmount={debtConfirmState.totalAmount}
+      />
+
       {/* Interactive Onboarding Tour */}
       <InteractiveTour
         isOpen={isTourOpen}
@@ -2605,7 +2628,7 @@ export default function App() {
 
       {/* Aesthetic Footer */}
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
-        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.5.6</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
+        <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.6.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
       </footer>
 
