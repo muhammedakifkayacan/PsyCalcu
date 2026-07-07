@@ -26,6 +26,24 @@ export default function SettingsModal({
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    if (showConfirm) {
+      setCountdown(5);
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [showConfirm]);
 
   useEffect(() => {
     if (isOpen) {
@@ -218,14 +236,19 @@ export default function SettingsModal({
                 </button>
                 <button
                   type="button"
+                  disabled={countdown > 0}
                   onClick={() => {
                     onClearAllSessions();
                     onClose();
                     setShowConfirm(false);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-semibold transition-colors cursor-pointer"
+                  className={`px-3 py-1.5 rounded-xl text-white text-[10px] font-semibold transition-all ${
+                    countdown > 0
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700 cursor-pointer'
+                  }`}
                 >
-                  Evet, Tümünü Sil
+                  {countdown > 0 ? `Evet, Tümünü Sil (${countdown}s)` : 'Evet, Tümünü Sil'}
                 </button>
               </div>
             </div>

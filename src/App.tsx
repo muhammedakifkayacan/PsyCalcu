@@ -253,11 +253,31 @@ export default function App() {
     title: string;
     message: string;
     onConfirm: () => void;
+    hasCountdown?: boolean;
   } | null>(null);
+  const [confirmCountdown, setConfirmCountdown] = useState(5);
 
-  const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
-    setConfirmState({ isOpen: true, title, message, onConfirm });
+  const triggerConfirm = (title: string, message: string, onConfirm: () => void, hasCountdown = false) => {
+    setConfirmState({ isOpen: true, title, message, onConfirm, hasCountdown });
   };
+
+  useEffect(() => {
+    if (confirmState && confirmState.isOpen && confirmState.hasCountdown) {
+      setConfirmCountdown(5);
+      const interval = setInterval(() => {
+        setConfirmCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setConfirmCountdown(0);
+    }
+  }, [confirmState]);
 
   // Monitor Auth State Changes
   useEffect(() => {
@@ -839,7 +859,8 @@ export default function App() {
       'Bu seansı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
       () => {
         setSessions(prev => prev.filter(s => s.id !== id));
-      }
+      },
+      true
     );
   };
 
@@ -1423,7 +1444,8 @@ export default function App() {
             }
             showToast('Yedek başarıyla yüklendi! Seanslarınız ve ayarlarınız geri getirildi.', 'success');
             e.target.value = '';
-          }
+          },
+          true
         );
       } catch (err) {
         showToast('Yedek dosyası okunurken bir hata oluştu. Dosyanın bozulmadığından emin olun.', 'error');
@@ -2653,13 +2675,18 @@ export default function App() {
                 Vazgeç
               </button>
               <button
+                disabled={confirmState.hasCountdown && confirmCountdown > 0}
                 onClick={() => {
                   confirmState.onConfirm();
                   setConfirmState(null);
                 }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm transition-colors cursor-pointer"
+                className={`px-4 py-2 text-xs font-semibold text-white rounded-xl shadow-sm transition-all ${
+                  confirmState.hasCountdown && confirmCountdown > 0
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                }`}
               >
-                Onayla
+                {confirmState.hasCountdown && confirmCountdown > 0 ? `Onayla (${confirmCountdown}s)` : 'Onayla'}
               </button>
             </div>
           </div>
