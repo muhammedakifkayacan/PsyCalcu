@@ -59,6 +59,17 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMobile]);
 
+  // Lock body scroll when mobile bottom sheet is open to prevent underlying content from scrolling
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [isMobile, isOpen]);
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   // Helper to format timestamps elegantly in Turkish
@@ -116,7 +127,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       </div>
 
       {/* Body Content */}
-      <div className="p-4 sm:p-5 flex-1 overflow-y-auto max-h-[50vh] sm:max-h-[360px]">
+      <div 
+        className="p-4 sm:p-5 flex-1 overflow-y-auto overscroll-contain sm:max-h-[360px]"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {showClearConfirm ? (
           <div className="py-8 px-4 text-center space-y-4 animate-fade-in">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100">
