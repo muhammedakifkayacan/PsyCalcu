@@ -97,6 +97,7 @@ export default function App() {
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<User | null>(null);
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
+  const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -322,6 +323,7 @@ export default function App() {
       if (!currentUser) {
         hasSyncedRef.current = null;
         lastSavedRef.current = { settings: '', sessions: '' };
+        setRegistrationCreatedAt(null);
         // Load local storage if they log out
         const savedSessions = localStorage.getItem('psycalcu_sessions');
         const savedSettings = localStorage.getItem('psycalcu_settings');
@@ -362,6 +364,19 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setRegistrationStatus(data.status || 'pending');
+          
+          let regCreated = data.createdAt;
+          // Protect and correct uzmpsikologbusra@gmail.com's registration date
+          if (user.email === 'uzmpsikologbusra@gmail.com' && data.createdAt !== '2026-07-01T00:00:00.000Z') {
+            regCreated = '2026-07-01T00:00:00.000Z';
+            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z' }, { merge: true }).catch(err => {
+              console.error("Error correcting registration date for Büşra:", err);
+            });
+          }
+          if (regCreated) {
+            setRegistrationCreatedAt(regCreated);
+          }
+          
           setRegistrationError(null);
         } else {
           // Document doesn't exist, create it as pending
@@ -375,6 +390,7 @@ export default function App() {
             };
             await setDoc(regRef, newReg);
             setRegistrationStatus('pending');
+            setRegistrationCreatedAt(newReg.createdAt);
             setRegistrationError(null);
 
             // Notify Admin via backend API
@@ -1415,7 +1431,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online');
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -1433,7 +1449,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face');
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];

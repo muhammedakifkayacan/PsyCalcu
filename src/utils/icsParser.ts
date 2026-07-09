@@ -9,7 +9,8 @@ export function parseICS(
   defaultPrice: number,
   defaultBabysitterFee: number,
   defaultOfficeRentFee: number,
-  forcedType?: 'online' | 'face-to-face'
+  forcedType?: 'online' | 'face-to-face',
+  membershipDate?: string | null
 ): Session[] {
   const sessions: Session[] = [];
   
@@ -97,15 +98,20 @@ export function parseICS(
         continue;
       }
       
-      // Determine if this is a session in a past month (earlier than the 1st of the current month)
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth(); // 0-indexed
-      const currentMonthStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      
-      const isPastMonth = currentEvent.date && currentEvent.date < currentMonthStartStr;
+      // Determine if this is a session before membership date OR in a past month (if no membership date)
+      let isBeforeMembership = false;
+      if (membershipDate) {
+        const membershipDayStr = membershipDate.split('T')[0];
+        isBeforeMembership = !!(currentEvent.date && currentEvent.date < membershipDayStr);
+      } else {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); // 0-indexed
+        const currentMonthStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+        isBeforeMembership = !!(currentEvent.date && currentEvent.date < currentMonthStartStr);
+      }
 
-      if (finalType === 'cancelled' || isPastMonth) {
+      if (finalType === 'cancelled' || isBeforeMembership) {
         currentEvent.price = 0;
         currentEvent.hasBabysitterFee = false;
         currentEvent.babysitterFeeAmount = 0;

@@ -146,12 +146,14 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     if (type === 'approve') {
       try {
         const ref = doc(db, 'registrations', userId);
+        const existingReg = registrations.find(r => r.userId === userId);
+        const originalCreatedAt = existingReg?.createdAt || new Date().toISOString();
         await setDoc(ref, {
           userId,
           email: displayEmail,
           displayName: displayName || 'Psikolog',
           status: 'approved',
-          createdAt: new Date().toISOString()
+          createdAt: originalCreatedAt
         }, { merge: true });
         showToast(`${displayName || displayEmail} kullanıcısına başarıyla onay verildi.`, 'success');
       } catch (error) {
@@ -161,12 +163,14 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     } else if (type === 'restrict') {
       try {
         const ref = doc(db, 'registrations', userId);
+        const existingReg = registrations.find(r => r.userId === userId);
+        const originalCreatedAt = existingReg?.createdAt || new Date().toISOString();
         await setDoc(ref, {
           userId,
           email: displayEmail,
           displayName: displayName || 'Psikolog',
           status: 'rejected',
-          createdAt: new Date().toISOString()
+          createdAt: originalCreatedAt
         }, { merge: true });
         showToast(`${displayName || displayEmail} kullanıcısı başarıyla sınırlandırıldı.`, 'success');
       } catch (error) {
