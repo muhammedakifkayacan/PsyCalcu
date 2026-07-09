@@ -19,8 +19,10 @@ import {
   UserCheck,
   UserX,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Registration {
   userId: string;
@@ -39,6 +41,38 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [search, setSearch] = useState('');
+
+  // Confirmation Modal with countdown state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'restrict' | 'delete';
+    userId: string;
+    email: string;
+    displayName: string;
+  } | null>(null);
+  const [confirmCountdown, setConfirmCountdown] = useState(3);
+
+  // Safety countdown effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (confirmModal?.isOpen && confirmCountdown > 0) {
+      timer = setTimeout(() => {
+        setConfirmCountdown(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [confirmModal?.isOpen, confirmCountdown]);
+
+  const openConfirmModal = (type: 'restrict' | 'delete', userId: string, email: string, displayName: string) => {
+    setConfirmModal({
+      isOpen: true,
+      type,
+      userId,
+      email,
+      displayName
+    });
+    setConfirmCountdown(3);
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'registrations'), orderBy('createdAt', 'desc'));
@@ -76,17 +110,30 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     }
   };
 
-  const handleDeleteRegistration = async (userId: string, email: string) => {
-    if (!window.confirm(`${email} kaydını tamamen silmek istediğinize emin misiniz?`)) {
-      return;
-    }
-    try {
-      const ref = doc(db, 'registrations', userId);
-      await deleteDoc(ref);
-      showToast(`${email} kaydı tamamen silindi.`, 'success');
-    } catch (error) {
-      console.error("Error deleting registration:", error);
-      showToast('Kayıt silinirken bir sorun oluştu.', 'error');
+  const handleConfirmedAction = async () => {
+    if (!confirmModal) return;
+    const { type, userId, email } = confirmModal;
+    
+    setConfirmModal(null);
+    
+    if (type === 'restrict') {
+      try {
+        const ref = doc(db, 'registrations', userId);
+        await updateDoc(ref, { status: 'rejected' });
+        showToast(`${email} kullanıcısı başarıyla sınırlandırıldı.`, 'success');
+      } catch (error) {
+        console.error("Error restricting registration status:", error);
+        showToast('Durum güncellenirken bir sorun oluştu.', 'error');
+      }
+    } else if (type === 'delete') {
+      try {
+        const ref = doc(db, 'registrations', userId);
+        await deleteDoc(ref);
+        showToast(`${email} kaydı tamamen silindi.`, 'success');
+      } catch (error) {
+        console.error("Error deleting registration:", error);
+        showToast('Kayıt silinirken bir sorun oluştu.', 'error');
+      }
     }
   };
 
@@ -145,23 +192,49 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
 
       {/* Filters and Search toolbar */}
       <div className="bg-white p-4 rounded-[2rem] border border-[#e5e1d8] shadow-xs flex flex-col sm:flex-row gap-4 justify-between items-center">
-        <div className="flex flex-wrap gap-1 w-full sm:w-auto">
-          {(['all', 'pending', 'approved', 'rejected'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFilter(t)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                filter === t 
-                  ? 'bg-[#6b705c] text-white shadow-xs' 
-                  : 'text-[#6b705c] hover:bg-slate-50'
-              }`}
-            >
-              {t === 'all' && 'Tümü'}
-              {t === 'pending' && `Onay Bekleyen (${pendingCount})`}
-              {t === 'approved' && 'Onaylananlar'}
-              {t === 'rejected' && 'Reddedilenler'}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
+          {(['all', 'pending', 'approved', 'rejected'] as const).map((t) => {
+            const approvedCount = registrations.filter(r => r.status === 'approved').length;
+            const rejectedCount = registrations.filter(r => r.status === 'rejected').length;
+            return (
+              <button
+                key={t}
+                onClick={() => setFilter(t)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  filter === t 
+                    ? 'bg-[#6b705c] text-white shadow-xs' 
+                    : 'text-[#6b705c] hover:bg-slate-50'
+                }`}
+              >
+                {t === 'all' && 'Tüm Kayıtlar'}
+                {t === 'pending' && (
+                  <span className="flex items-center gap-1.5">
+                    Onay Bekleyenler
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${filter === t ? 'bg-white text-[#6b705c]' : 'bg-amber-100 text-amber-800'}`}>
+                      {pendingCount}
+                    </span>
+                  </span>
+                )}
+                {t === 'approved' && (
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${filter === t ? 'bg-white' : 'animate-pulse'}`} />
+                    Aktif Kullanıcılar
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${filter === t ? 'bg-white text-[#6b705c]' : 'bg-emerald-100 text-emerald-800'}`}>
+                      {approvedCount}
+                    </span>
+                  </span>
+                )}
+                {t === 'rejected' && (
+                  <span className="flex items-center gap-1.5">
+                    Sınırlandırılanlar
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${filter === t ? 'bg-white text-[#6b705c]' : 'bg-rose-100 text-rose-800'}`}>
+                      {rejectedCount}
+                    </span>
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div className="relative w-full sm:w-64">
@@ -245,7 +318,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
 
                   {reg.status !== 'rejected' && (
                     <button
-                      onClick={() => handleUpdateStatus(reg.userId, reg.email, 'rejected')}
+                      onClick={() => openConfirmModal('restrict', reg.userId, reg.email, reg.displayName)}
                       className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-100 flex items-center gap-1.5 transition-colors cursor-pointer"
                       title="Kullanıcı Girişini Engelle/Sınırla"
                     >
@@ -255,7 +328,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                   )}
 
                   <button
-                    onClick={() => handleDeleteRegistration(reg.userId, reg.email)}
+                    onClick={() => openConfirmModal('delete', reg.userId, reg.email, reg.displayName)}
                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors cursor-pointer"
                     title="Kullanıcı Kaydını Sil"
                   >
@@ -267,6 +340,115 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Dynamic Confirmation Modal with Counter */}
+      <AnimatePresence>
+        {confirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal(null)}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+            />
+            
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.4 }}
+              className="relative w-full max-w-md bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-xl p-8 overflow-hidden z-10"
+            >
+              {/* Decorative top strip */}
+              <div className={`absolute top-0 left-0 right-0 h-2 ${
+                confirmModal.type === 'delete' ? 'bg-rose-500' : 'bg-amber-500'
+              }`} />
+
+              <div className="text-center space-y-6">
+                {/* Icon Wrapper */}
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${
+                  confirmModal.type === 'delete' 
+                    ? 'bg-rose-50 border-rose-100 text-rose-600' 
+                    : 'bg-amber-50 border-amber-100 text-amber-600'
+                }`}>
+                  {confirmModal.type === 'delete' ? (
+                    <Trash2 className="w-8 h-8" />
+                  ) : (
+                    <UserX className="w-8 h-8" />
+                  )}
+                </div>
+
+                {/* Text Content */}
+                <div className="space-y-2">
+                  <h3 className="text-xl font-serif text-slate-800 font-bold">
+                    {confirmModal.type === 'delete' ? 'Kaydı Tamamen Sil' : 'Kullanıcıyı Sınırla'}
+                  </h3>
+                  <div className="space-y-1">
+                    <p className="text-xs font-serif text-slate-500 italic">
+                      {confirmModal.displayName || 'Bilinmeyen Terapist'}
+                    </p>
+                    <p className="text-xs font-mono text-slate-400">
+                      {confirmModal.email}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl border border-[#e5e1d8]/60 text-left space-y-2">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {confirmModal.type === 'delete' ? (
+                      <>
+                        Bu işlem geri alınamaz. Terapistin kayıt isteği ve onay bilgileri veritabanından <strong>kalıcı olarak silinecektir</strong>.
+                      </>
+                    ) : (
+                      <>
+                        Bu terapistin sisteme erişimi derhal <strong>kısıtlanacaktır</strong>. Tekrar giriş yapmak istediğinde onay bekleme ekranıyla karşılaşacaktır.
+                      </>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    ⚠️ Kazaları önlemek için güvenlik sayacı aktif edilmiştir. Lütfen bekleyin.
+                  </p>
+                </div>
+
+                {/* Control Buttons */}
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <button
+                    disabled={confirmCountdown > 0}
+                    onClick={handleConfirmedAction}
+                    className={`w-full py-3.5 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
+                      confirmCountdown > 0
+                        ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                        : confirmModal.type === 'delete'
+                          ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                          : 'bg-amber-600 hover:bg-amber-700 text-white'
+                    }`}
+                  >
+                    {confirmCountdown > 0 ? (
+                      <>
+                        <span>⏳ Onayla ({confirmCountdown}s)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⚠️ Güvenle Onayla</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={() => setConfirmModal(null)}
+                    className="w-full py-3.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer"
+                  >
+                    Vazgeç / İptal Et
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
