@@ -345,6 +345,8 @@ export default function App() {
       });
   }, []);
 
+  const activeSavesCountRef = useRef(0);
+
   // Monitor Auth State Changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -358,6 +360,9 @@ export default function App() {
         hasSyncedRef.current = null;
         lastSavedRef.current = { settings: '', sessions: '' };
         setRegistrationCreatedAt(null);
+        setIsCloudSaving(false);
+        setIsAuthSyncing(false);
+        activeSavesCountRef.current = 0;
         // Load local storage if they log out
         const savedSessions = localStorage.getItem('psycalcu_sessions');
         const savedSettings = localStorage.getItem('psycalcu_settings');
@@ -668,19 +673,26 @@ export default function App() {
       return;
     }
 
-    // Set saving indicator to true
+    // Increment active saves count
+    activeSavesCountRef.current++;
     setIsCloudSaving(true);
 
     // Debounce cloud save by 500ms for high responsiveness
     const timer = setTimeout(() => {
       saveUserData(user.uid, settings, sessions).then(() => {
+        activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
+        if (activeSavesCountRef.current === 0) {
+          setIsCloudSaving(false);
+        }
         lastSavedRef.current = {
           settings: currentSettingsStr,
           sessions: currentSessionsStr
         };
-        setIsCloudSaving(false);
       }).catch((err: any) => {
-        setIsCloudSaving(false);
+        activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
+        if (activeSavesCountRef.current === 0) {
+          setIsCloudSaving(false);
+        }
         const isQuota = err?.message === 'quota-exceeded' || 
                         err?.message?.toLowerCase().includes('quota') || 
                         err?.code?.toLowerCase().includes('quota') ||
@@ -694,7 +706,13 @@ export default function App() {
       });
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
+      if (activeSavesCountRef.current === 0) {
+        setIsCloudSaving(false);
+      }
+    };
   }, [settings, sessions, user, isAuthSyncing, isQuotaExceeded]);
 
   // Automatic Background Calendar Sync on App Load
