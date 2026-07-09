@@ -348,10 +348,16 @@ export default function App() {
       return;
     }
 
-    if (user.email === 'muhammedakifkayacan@gmail.com') {
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+
+    if (cleanEmail === 'muhammedakifkayacan@gmail.com') {
       setRegistrationStatus('approved');
       setRegistrationError(null);
       return;
+    }
+
+    if (cleanEmail === 'uzmpsikologbusra@gmail.com') {
+      setRegistrationCreatedAt('2026-07-01T00:00:00.000Z');
     }
 
     setRegistrationStatus('checking');
@@ -367,7 +373,7 @@ export default function App() {
           
           let regCreated = data.createdAt;
           // Protect and correct uzmpsikologbusra@gmail.com's registration date
-          if (user.email === 'uzmpsikologbusra@gmail.com' && data.createdAt !== '2026-07-01T00:00:00.000Z') {
+          if (cleanEmail === 'uzmpsikologbusra@gmail.com' && data.createdAt !== '2026-07-01T00:00:00.000Z') {
             regCreated = '2026-07-01T00:00:00.000Z';
             setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z' }, { merge: true }).catch(err => {
               console.error("Error correcting registration date for Büşra:", err);
@@ -386,7 +392,7 @@ export default function App() {
               email: user.email || 'bilinmiyor',
               displayName: user.displayName || 'Psikolog',
               status: 'pending',
-              createdAt: new Date().toISOString()
+              createdAt: cleanEmail === 'uzmpsikologbusra@gmail.com' ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
             };
             await setDoc(regRef, newReg);
             setRegistrationStatus('pending');
@@ -1343,6 +1349,9 @@ export default function App() {
           return;
         }
 
+        // Determine if the incoming session is cancelled or before membership
+        const isCancelledOrBeforeMembership = ns.price === 0 || ns.paymentStatus === 'paid';
+
         // Merge changed calendar fields, preserving custom user edits on price/payment status
         const updated = {
           ...existing,
@@ -1351,8 +1360,12 @@ export default function App() {
           time: ns.time,
           duration: ns.duration,
           notes: ns.notes || existing.notes,
-          price: existing.price !== settings.defaultSessionPrice ? existing.price : ns.price,
-          paymentStatus: existing.paymentStatus || ns.paymentStatus,
+          price: isCancelledOrBeforeMembership ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
+          paymentStatus: isCancelledOrBeforeMembership ? 'paid' : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
+          hasBabysitterFee: isCancelledOrBeforeMembership ? false : ns.hasBabysitterFee,
+          babysitterFeeAmount: isCancelledOrBeforeMembership ? 0 : ns.babysitterFeeAmount,
+          hasOfficeRentFee: isCancelledOrBeforeMembership ? false : ns.hasOfficeRentFee,
+          officeRentFeeAmount: isCancelledOrBeforeMembership ? 0 : ns.officeRentFeeAmount,
         };
         
         // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
