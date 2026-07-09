@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useRef } from 'react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin } from 'lucide-react';
+import { motion } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings } from '../types';
 
@@ -47,22 +47,6 @@ export default function CalendarSyncGuide({
   const [isOnlineSyncing, setIsOnlineSyncing] = useState(false);
   const [isFaceToFaceSyncing, setIsFaceToFaceSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    type: 'online' | 'face-to-face';
-  } | null>(null);
-  const [deleteCountdown, setDeleteCountdown] = useState(5);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (deleteModal?.isOpen && deleteCountdown > 0) {
-      timer = setTimeout(() => {
-        setDeleteCountdown(prev => prev - 1);
-      }, 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [deleteModal?.isOpen, deleteCountdown]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -120,47 +104,8 @@ export default function CalendarSyncGuide({
     showToast(msg, 'success');
   };
 
-  const handleTriggerDelete = (type: 'online' | 'face-to-face') => {
-    setDeleteModal({ isOpen: true, type });
-    setDeleteCountdown(5);
-  };
-
-  const handleConfirmDelete = () => {
-    if (!deleteModal) return;
-    const { type } = deleteModal;
-    
-    const updatedSettings = {
-      ...settings,
-      onlineCalendarWebcalUrl: type === 'online' ? '' : settings.onlineCalendarWebcalUrl,
-      faceToFaceCalendarWebcalUrl: type === 'face-to-face' ? '' : settings.faceToFaceCalendarWebcalUrl,
-    };
-    
-    if (type === 'online') {
-      setOnlineUrl('');
-    } else {
-      setFaceToFaceUrl('');
-    }
-    
-    onSaveSettings(updatedSettings);
-    setDeleteModal(null);
-    showToast(`${type === 'online' ? 'Online' : 'Yüzyüze'} Seanslar takvim bağlantısı başarıyla silindi.`, 'success');
-  };
-
   const handleSaveUrls = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Check if any link was cleared manually without using the trash button
-    if (settings.onlineCalendarWebcalUrl && !onlineUrl) {
-      showToast('Takvim linkini silmek için lütfen input alanının sağındaki Sil (çöp kutusu) butonunu kullanın.', 'info');
-      setOnlineUrl(settings.onlineCalendarWebcalUrl);
-      return;
-    }
-    if (settings.faceToFaceCalendarWebcalUrl && !faceToFaceUrl) {
-      showToast('Takvim linkini silmek için lütfen input alanının sağındaki Sil (çöp kutusu) butonunu kullanın.', 'info');
-      setFaceToFaceUrl(settings.faceToFaceCalendarWebcalUrl);
-      return;
-    }
-
     onSaveSettings({
       ...settings,
       onlineCalendarWebcalUrl: onlineUrl,
@@ -410,18 +355,8 @@ export default function CalendarSyncGuide({
                     placeholder="webcal://calendar.google.com/... veya icloud.com/..."
                     value={onlineUrl}
                     onChange={(e) => setOnlineUrl(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2 text-xs bg-white border border-emerald-200 rounded-full focus:outline-none focus:border-emerald-500"
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-emerald-200 rounded-full focus:outline-none focus:border-emerald-500"
                   />
-                  {onlineUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerDelete('online')}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
-                      title="Takvim Linkini Sil"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               </div>
               <button
@@ -458,18 +393,8 @@ export default function CalendarSyncGuide({
                     placeholder="webcal://calendar.google.com/... veya icloud.com/..."
                     value={faceToFaceUrl}
                     onChange={(e) => setFaceToFaceUrl(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2 text-xs bg-white border border-amber-200 rounded-full focus:outline-none focus:border-amber-500"
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-amber-200 rounded-full focus:outline-none focus:border-amber-500"
                   />
-                  {faceToFaceUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerDelete('face-to-face')}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
-                      title="Takvim Linkini Sil"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               </div>
               <button
@@ -588,77 +513,6 @@ export default function CalendarSyncGuide({
           </div>
         );
       })()}
-
-      {/* Calendar Delete Confirmation Modal with 5s Safety Delay */}
-      <AnimatePresence>
-        {deleteModal?.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setDeleteModal(null)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
-            />
-            
-            {/* Modal Content */}
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="relative bg-white w-full max-w-md p-6 rounded-3xl border border-[#e5e1d8] shadow-2xl flex flex-col items-center text-center space-y-4"
-            >
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 animate-bounce">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              
-              <div className="space-y-1">
-                <h3 className="text-base font-serif font-bold text-slate-800">
-                  Takvim Bağlantısını Sil
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  <strong>{deleteModal.type === 'online' ? 'Online Seanslar' : 'Yüzyüze Seanslar'}</strong> takvim linkini silmek istediğinize emin misiniz? 
-                  Bu işlem, bu takvimden senkronize edilmiş tüm mevcut seans verilerinin sisteminizden kaldırılmasına neden olacaktır.
-                </p>
-              </div>
-
-              {/* Countdown Warning Message */}
-              <div className="bg-amber-50/50 border border-amber-100 text-amber-800 p-2.5 rounded-xl text-[10px] leading-relaxed flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  Yanlışlıkla silmeleri önlemek için onay butonu <strong>5 saniye</strong> kilitlidir. Lütfen bekleyin.
-                </span>
-              </div>
-
-              <div className="flex gap-2.5 w-full pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => setDeleteModal(null)}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-full transition-colors cursor-pointer"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={deleteCountdown > 0}
-                  onClick={handleConfirmDelete}
-                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {deleteCountdown > 0 ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      Onayla ({deleteCountdown}s)
-                    </>
-                  ) : (
-                    'Evet, Takvimi Sil'
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

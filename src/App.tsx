@@ -479,17 +479,7 @@ export default function App() {
       try {
         setIsAuthSyncing(true);
         const cloudData = await fetchUserData(user.uid);
-        const cleanEmail = (user.email || '').trim().toLowerCase();
-        
         if (cloudData) {
-          // Auto-restore uzmpsikologbusra@gmail.com's calendar link if empty
-          if (cleanEmail === 'uzmpsikologbusra@gmail.com' && !cloudData.settings.onlineCalendarWebcalUrl) {
-            cloudData.settings = {
-              ...cloudData.settings,
-              onlineCalendarWebcalUrl: 'webcal://calendar.google.com/calendar/ical/uzmpsikologbusra%40gmail.com/public/basic.ics'
-            };
-          }
-
           // Get local sessions to perform conflict-free merging
           const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
           let localSessions: Session[] = [];
@@ -552,14 +542,6 @@ export default function App() {
           }
           if (savedSettingsStr) {
             try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
-          }
-          
-          // Auto-restore uzmpsikologbusra@gmail.com's calendar link if empty
-          if (cleanEmail === 'uzmpsikologbusra@gmail.com' && !settingsToSave.onlineCalendarWebcalUrl) {
-            settingsToSave = {
-              ...settingsToSave,
-              onlineCalendarWebcalUrl: 'webcal://calendar.google.com/calendar/ical/uzmpsikologbusra%40gmail.com/public/basic.ics'
-            };
           }
           
           const correctedSessions = autoCorrectPastSessions(sessionsToSave);
