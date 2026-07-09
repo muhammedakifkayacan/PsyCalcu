@@ -52,6 +52,28 @@ import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, set
 import { NotificationCenter } from './components/NotificationCenter';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 
+// Auto-correct any session before July 1, 2026 to be 0 TL and marked as 'paid'
+const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
+  if (!sessionList) return [];
+  return sessionList.map(s => {
+    if (s.date && s.date < '2026-07-01') {
+      if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
+        return {
+          ...s,
+          price: 0,
+          paymentStatus: 'paid',
+          hasBabysitterFee: false,
+          babysitterFeeAmount: 0,
+          hasOfficeRentFee: false,
+          officeRentFeeAmount: 0,
+          updatedAt: Date.now() // Mark as updated to trigger cloud sync saving
+        };
+      }
+    }
+    return s;
+  });
+};
+
 export default function App() {
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -89,7 +111,9 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>(() => {
     const saved = localStorage.getItem('psycalcu_sessions');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        return autoCorrectPastSessions(JSON.parse(saved));
+      } catch (e) {}
     }
     return [];
   });
@@ -106,7 +130,17 @@ export default function App() {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
-  const lastSavedRef = useRef<{ settings: string; sessions: string }>({ settings: '', sessions: '' });
+  const lastSavedRef = useRef<{ settings: string; sessions: string }>((() => {
+    const savedSessions = localStorage.getItem('psycalcu_sessions');
+    let initialSessionsStr = '[]';
+    if (savedSessions) {
+      try {
+        initialSessionsStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions)));
+      } catch (e) {}
+    }
+    const savedSettingsStr = localStorage.getItem('psycalcu_settings') || '';
+    return { settings: savedSettingsStr, sessions: initialSessionsStr };
+  })());
 
   // Notification States
   const [localNotifications, setLocalNotifications] = useState<AppNotification[]>(() => {
@@ -448,7 +482,7 @@ export default function App() {
             try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
           }
           
-          const cloudSessions = cloudData.sessions || [];
+          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
           
           // Merge local and cloud sessions using updatedAt field
           const localMap = new Map(localSessions.map(s => [s.id, s]));
@@ -470,7 +504,7 @@ export default function App() {
             return cs;
           });
           
-          const finalSessions = [...mergedSessions, ...localOnly];
+          const finalSessions = autoCorrectPastSessions([...mergedSessions, ...localOnly]);
           
           // If the merged sessions list differs from cloud sessions, trigger a save back to the cloud
           if (JSON.stringify(cloudSessions) !== JSON.stringify(finalSessions)) {
@@ -505,18 +539,20 @@ export default function App() {
             try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
           }
           
+          const correctedSessions = autoCorrectPastSessions(sessionsToSave);
+          
           let hasRealLocalSessions = false;
-          if (sessionsToSave && sessionsToSave.length > 0) {
-            hasRealLocalSessions = !sessionsToSave.every(s => s.id && s.id.startsWith('mock_'));
+          if (correctedSessions && correctedSessions.length > 0) {
+            hasRealLocalSessions = !correctedSessions.every(s => s.id && s.id.startsWith('mock_'));
           }
           
           if (hasRealLocalSessions) {
-            await saveUserData(user.uid, settingsToSave, sessionsToSave);
-            setSessions(sessionsToSave);
+            await saveUserData(user.uid, settingsToSave, correctedSessions);
+            setSessions(correctedSessions);
             setSettings(settingsToSave);
             lastSavedRef.current = {
               settings: JSON.stringify(settingsToSave),
-              sessions: JSON.stringify(sessionsToSave)
+              sessions: JSON.stringify(correctedSessions)
             };
             showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
           } else {
@@ -543,11 +579,23 @@ export default function App() {
           setIsQuotaExceeded(true);
         }
 
+        // Initialize lastSavedRef on failure to prevent infinite failing save retries
+        const finalSavedSessions = localStorage.getItem('psycalcu_sessions') || '[]';
+        let correctedSavedStr = '[]';
+        try {
+          correctedSavedStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(finalSavedSessions)));
+        } catch (e) {}
+        const finalSavedSettings = localStorage.getItem('psycalcu_settings') || '';
+        lastSavedRef.current = {
+          settings: finalSavedSettings,
+          sessions: correctedSavedStr
+        };
+
         // Graceful fallback to local storage on offline/network errors
         const savedSessions = localStorage.getItem('psycalcu_sessions');
         const savedSettings = localStorage.getItem('psycalcu_settings');
         if (savedSessions) {
-          try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
+          try { setSessions(autoCorrectPastSessions(JSON.parse(savedSessions))); } catch (e) {}
         }
         if (savedSettings) {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
