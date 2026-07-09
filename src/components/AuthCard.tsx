@@ -5,7 +5,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   googleProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect
 } from '../lib/firebase';
 import { User } from 'firebase/auth';
 import { 
@@ -42,6 +43,9 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
   const [infoMessage, setInfoMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [migrateData, setMigrateData] = useState(true);
+
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isIframe = window.self !== window.top;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,20 +95,31 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
     setError('');
     setInfoMessage('');
     setLoading(true);
+
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        onAuthSuccess(result.user, migrateData);
+      if (isMobile && !isIframe) {
+        setInfoMessage("Google ile güvenli giriş sayfasına yönlendiriliyorsunuz, lütfen bekleyin...");
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        const result = await signInWithPopup(auth, googleProvider);
+        if (result.user) {
+          onAuthSuccess(result.user, migrateData);
+        }
       }
     } catch (err: any) {
       console.error("Google Auth Error:", err);
-      // Fallback message for frame constraints
-      setError(
-        "Google Girişi başarısız oldu. Tarayıcınız pop-up pencerelerini engellemiş veya iframe kısıtlaması uyguluyor olabilir. " +
-        "Lütfen pop-up izinlerini kontrol edip tekrar deneyiniz veya uygulamayı yeni sekmede açınız."
-      );
+      if (err.code === 'auth/popup-blocked') {
+        setError("Pop-up penceresi engellendi. Lütfen tarayıcı ayarlarından pop-up'lara izin verin veya uygulamayı yeni bir tarayıcı sekmesinde açın.");
+      } else {
+        setError(
+          "Google Girişi başarısız oldu. Tarayıcınız pop-up pencerelerini engellemiş veya yerleşik (iframe) kısıtlaması uyguluyor olabilir. " +
+          "Lütfen pop-up izinlerini kontrol edip tekrar deneyiniz veya uygulamayı yeni sekmede açınız."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!(isMobile && !isIframe)) {
+        setLoading(false);
+      }
     }
   };
 
@@ -244,6 +259,20 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
           Verileriniz tamamen size özeldir. Seanslarınızı tarayıcı önbelleği silindiğinde kaybetmemek için lütfen giriş yapın.
         </p>
       </div>
+
+      {isMobile && isIframe && (
+        <div className="bg-[#fff8e7] border border-[#f5e1b8] rounded-2xl p-4 text-left text-[11px] text-[#8a6d3b] space-y-1.5 leading-relaxed animate-pulse">
+          <div className="font-bold flex items-center gap-1.5 text-xs text-[#735118]">
+            <span className="text-sm">📱</span> Mobil Kullanıcı Uyarısı
+          </div>
+          <p>
+            Bulunduğunuz yerleşik pencere (iframe/uygulama içi tarayıcı) Google Giriş ekranını engelleyebilir.
+          </p>
+          <p className="font-bold">
+            Giriş yapılamazsa, lütfen uygulamayı Chrome/Safari tarayıcınızda yeni sekmede açarak deneyiniz.
+          </p>
+        </div>
+      )}
 
       {/* Social Logins */}
       <div className="flex flex-col gap-3">

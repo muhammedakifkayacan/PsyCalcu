@@ -44,7 +44,7 @@ import FAQModal from './components/FAQModal';
 import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
 import InteractiveTour from './components/InteractiveTour';
-import { auth, onAuthStateChanged, User, db } from './lib/firebase';
+import { auth, onAuthStateChanged, User, db, getRedirectResult } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -279,6 +279,23 @@ export default function App() {
       setConfirmCountdown(0);
     }
   }, [confirmState]);
+
+  // Handle redirect result for Google sign-in on mobile
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          showToast('Google Hesabınız ile başarıyla giriş yapıldı.', 'success');
+        }
+      })
+      .catch((err) => {
+        console.error("Redirect Auth Error:", err);
+        // Do not block with error toast if it was a user cancellation
+        if (err.code !== 'auth/redirect-cancelled') {
+          showToast('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyiniz.', 'error');
+        }
+      });
+  }, []);
 
   // Monitor Auth State Changes
   useEffect(() => {
