@@ -101,7 +101,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       // Fallback message for frame constraints
       setError(
         "Google Girişi başarısız oldu. Tarayıcınız pop-up pencerelerini engellemiş veya iframe kısıtlaması uyguluyor olabilir. " +
-        "Lütfen yukarıdaki E-posta/Şifre alanını kullanarak saniyeler içinde ücretsiz hesabınızı oluşturun!"
+        "Lütfen pop-up izinlerini kontrol edip tekrar deneyiniz veya uygulamayı yeni sekmede açınız."
       );
     } finally {
       setLoading(false);
@@ -275,129 +275,48 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
           Google Hesabınız ile Giriş Yapın
         </button>
       </div>
-
-      <div className="flex items-center justify-center gap-3">
-        <div className="h-px bg-[#e5e1d8] flex-1"></div>
-        <span className="text-[10px] tracking-widest text-slate-400 font-bold">VEYA E-POSTA İLE</span>
-        <div className="h-px bg-[#e5e1d8] flex-1"></div>
-      </div>
-
-      {/* Auth Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">E-POSTA ADRESİNİZ</label>
-            <div className="relative">
-              <Mail className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="psikolog@ornek.com"
-                className="w-full pl-10 pr-3 py-2 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-                required
-              />
-            </div>
+      
+      {/* Existing Data Migration Switch */}
+      {existingSessionsCount > 0 && (
+        <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <input
+            type="checkbox"
+            checked={migrateData}
+            onChange={(e) => setMigrateData(e.target.checked)}
+            className="rounded text-[#6b705c] focus:ring-[#6b705c] h-4 w-4 cursor-pointer"
+          />
+          <div className="text-[10px] text-slate-600 font-medium leading-normal">
+            Tarayıcıdaki mevcut <span className="font-bold text-[#6b705c]">{existingSessionsCount} adet</span> seans kaydımı yeni bulut hesabıma aktar
           </div>
+        </label>
+      )}
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">ŞİFRENİZ</label>
-            <div className="relative">
-              <KeyRound className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••"
-                className="w-full pl-10 pr-3 py-2 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-                required
-              />
-            </div>
-          </div>
+      {/* Error Feedback */}
+      {error && (
+        <div className="p-3.5 bg-red-50 rounded-xl border border-red-100 flex gap-2 text-xs text-red-600 font-medium leading-relaxed">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
         </div>
+      )}
 
-        {/* Existing Data Migration Switch */}
-        {!isLogin && existingSessionsCount > 0 && (
-          <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <input
-              type="checkbox"
-              checked={migrateData}
-              onChange={(e) => setMigrateData(e.target.checked)}
-              className="rounded text-[#6b705c] focus:ring-[#6b705c] h-4 w-4"
-            />
-            <div className="text-[10px] text-slate-600 font-medium leading-normal">
-              Tarayıcıdaki mevcut <span className="font-bold text-[#6b705c]">{existingSessionsCount} adet</span> seans kaydımı yeni bulut hesabıma aktar
-            </div>
-          </label>
-        )}
-
-        {/* Error Feedback */}
-        {error && (
-          <div className="p-3.5 bg-red-50 rounded-xl border border-red-100 flex gap-2 text-xs text-red-600 font-medium leading-relaxed">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Info Message Feedback */}
-        {infoMessage && (
-          <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-100 flex gap-2 text-xs text-blue-600 font-medium leading-relaxed animate-pulse">
-            <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
-            <span>{infoMessage}</span>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="space-y-3 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-[#6b705c] hover:bg-[#585c4c] disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                İşlem Yapılıyor...
-              </>
-            ) : isLogin ? (
-              <>
-                <LogIn className="w-3.5 h-3.5" />
-                Hesaba Giriş Yap
-              </>
-            ) : (
-              <>
-                <UserPlus className="w-3.5 h-3.5" />
-                Hesabı Oluştur ve Başlat
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError('');
-              setInfoMessage('');
-            }}
-            className="w-full text-center text-[11px] text-slate-500 hover:text-[#6b705c] font-semibold transition-colors py-1 cursor-pointer"
-          >
-            {isLogin 
-              ? "Henüz bir hesabınız yok mu? Yeni Hesap Oluşturun" 
-              : "Zaten bir hesabınız var mı? Giriş Yapın"}
-          </button>
-
-          {onOpenFaq && (
-            <button
-              type="button"
-              onClick={onOpenFaq}
-              className="w-full text-center text-[11px] text-[#cb997e] hover:text-[#b58368] font-bold flex items-center justify-center gap-1.5 transition-colors py-2 border-t border-dashed border-[#e5e1d8] mt-3 cursor-pointer"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              PsyCalcu Nedir? Nasıl Kullanılır? (Yardım & SSS)
-            </button>
-          )}
+      {/* Info Message Feedback */}
+      {infoMessage && (
+        <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-100 flex gap-2 text-xs text-blue-600 font-medium leading-relaxed animate-pulse">
+          <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+          <span>{infoMessage}</span>
         </div>
-      </form>
+      )}
+
+      {onOpenFaq && (
+        <button
+          type="button"
+          onClick={onOpenFaq}
+          className="w-full text-center text-[11px] text-[#cb997e] hover:text-[#b58368] font-bold flex items-center justify-center gap-1.5 transition-colors py-2 border-t border-dashed border-[#e5e1d8] mt-3 cursor-pointer"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+          PsyCalcu Nedir? Nasıl Kullanılır? (Yardım & SSS)
+        </button>
+      )}
     </div>
   );
 }
