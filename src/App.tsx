@@ -1539,25 +1539,162 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#fdfbf7] p-6 relative overflow-hidden" id="auth-portal-screen">
+      <div className="min-h-screen bg-[#fdfbf7] flex flex-col lg:flex-row relative" id="auth-portal-screen">
         {/* Floating Help / FAQ Button */}
         <button
           onClick={() => setIsFaqOpen(true)}
-          className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-xs z-30"
+          className="absolute top-6 right-6 lg:right-8 flex items-center gap-2 px-4 py-2 bg-white/95 backdrop-blur-xs hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-xs z-30"
           title="Yardım Merkezi & Sıkça Sorulan Sorular"
         >
           <HelpCircle className="w-4 h-4 text-[#cb997e]" />
           <span>Yardım & SSS</span>
         </button>
 
-        <AuthCard
-          user={null}
-          onLogout={handleLogout}
-          onAuthSuccess={handleAuthSuccess}
-          existingSessionsCount={sessions.length}
-          showToast={showToast}
-          onOpenFaq={() => setIsFaqOpen(true)}
-        />
+        {/* Left Side: Hero Promotion (Olive Editorial Layout) */}
+        <div className="hidden lg:flex lg:w-[55%] bg-[#6b705c] text-white p-16 flex-col justify-between relative overflow-hidden">
+          {/* Subtle background graphics */}
+          <div className="absolute -right-24 -bottom-24 w-96 h-96 rounded-full bg-white/5 blur-3xl pointer-events-none"></div>
+          <div className="absolute -left-12 top-1/3 w-72 h-72 rounded-full bg-[#cb997e]/10 blur-3xl pointer-events-none"></div>
+
+          {/* Top Branding Header */}
+          <div className="flex items-center gap-3 z-10">
+            <div className="w-11 h-11 bg-white text-[#6b705c] rounded-2xl flex items-center justify-center font-serif text-2xl italic font-bold shadow-md">
+              P
+            </div>
+            <div>
+              <h2 className="text-xl font-serif italic text-white tracking-tight leading-none">PsyCalcu</h2>
+              <p className="text-[9px] text-[#ffe8d6] font-bold tracking-widest mt-1">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
+            </div>
+          </div>
+
+          {/* Main Hero Promotion Copy */}
+          <div className="space-y-12 my-auto max-w-xl z-10">
+            <div className="space-y-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs font-medium text-[#ffe8d6] border border-white/10">
+                <Sparkles className="w-3.5 h-3.5 text-[#cb997e]" />
+                Klinik Süreçlerinizde Yeni Nesil Asistan
+              </span>
+              <h3 className="text-4xl md:text-5xl font-serif italic font-normal leading-[1.15] text-white tracking-tight">
+                Zamanınızı planlayın, <br />
+                <span className="text-[#ffe8d6] font-medium">bütçenizi kolayca yönetin.</span>
+              </h3>
+              <p className="text-sm text-white/80 font-normal leading-relaxed">
+                PsyCalcu, psikologlar ve terapistler için özel olarak tasarlanmış modern bir asistan uygulamasıdır. Danışan seanslarınızı, gelir-gider dengenizi ve takvim entegrasyonlarınızı tek bir şık panelden yönetin.
+              </p>
+            </div>
+
+            {/* Feature Highlights Grid */}
+            <div className="grid grid-cols-2 gap-6 pt-4">
+              <div className="space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-[#ffe8d6]">
+                  <CalendarIcon className="w-4.5 h-4.5" />
+                </div>
+                <h4 className="text-sm font-semibold text-white font-serif italic">Çift Yönlü Takvim Entegrasyonu</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Google Calendar ve popüler takvimleri otomatik eşitleyin, seans kaçırma derdine son verin.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-[#ffe8d6]">
+                  <TrendingUp className="w-4.5 h-4.5" />
+                </div>
+                <h4 className="text-sm font-semibold text-white font-serif italic">Otomatik Muhasebe & Döküm</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Kira, kolaylaştırıcı katsayısı ve seans gelirlerini hesaplayıp net kârınızı anında izleyin.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-[#ffe8d6]">
+                  <ShieldCheck className="w-4.5 h-4.5" />
+                </div>
+                <h4 className="text-sm font-semibold text-white font-serif italic">Güvenli Bulut Altyapısı</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Tarayıcı geçmişini temizleseniz dahi seanslarınız güvenli şifrelemeyle bulutta korunur.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-[#ffe8d6]">
+                  <Wallet className="w-4.5 h-4.5" />
+                </div>
+                <h4 className="text-sm font-semibold text-white font-serif italic">Borç & Tahsilat Yönetimi</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Geciken ödemeleri, danışan bakiyelerini ve klinik borçlarınızı kolayca faturalandırın.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Micro Testimonial or Tagline Footer */}
+          <div className="border-t border-white/10 pt-6 flex items-center justify-between text-xs text-white/60 z-10">
+            <span>© 2026 PsyCalcu</span>
+            <span className="flex items-center gap-1">
+              Terapistler için sevgiyle tasarlandı 🌸
+            </span>
+          </div>
+        </div>
+
+        {/* Right Side: Auth Form Centering */}
+        <div className="w-full lg:w-[45%] flex items-center justify-center p-8 bg-[#fdfbf7] relative">
+          {/* Background decoration for mobile */}
+          <div className="absolute -left-20 -top-20 w-48 h-48 rounded-full bg-[#cb997e]/5 blur-2xl lg:hidden"></div>
+          <div className="absolute -right-20 -bottom-20 w-48 h-48 rounded-full bg-[#6b705c]/5 blur-2xl lg:hidden"></div>
+
+          <div className="w-full max-w-md space-y-8 z-10 py-12 lg:py-0">
+            {/* Show Brand Header on Mobile only */}
+            <div className="lg:hidden text-center space-y-3">
+              <div className="w-12 h-12 bg-[#6b705c] rounded-2xl flex items-center justify-center text-white font-serif text-2xl italic mx-auto shadow-md">
+                P
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-2xl font-serif italic text-[#6b705c]">PsyCalcu</h2>
+                <p className="text-[10px] text-slate-400 font-bold tracking-widest">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
+              </div>
+            </div>
+
+            <AuthCard
+              user={null}
+              onLogout={handleLogout}
+              onAuthSuccess={handleAuthSuccess}
+              existingSessionsCount={sessions.length}
+              showToast={showToast}
+              onOpenFaq={() => setIsFaqOpen(true)}
+            />
+
+            {/* Compact feature representation for mobile */}
+            <div className="lg:hidden bg-white p-5 rounded-3xl border border-[#e5e1d8] space-y-4">
+              <h4 className="text-[10px] font-bold tracking-widest text-[#a5a58d] uppercase">PsyCalcu Ne Sunar?</h4>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[#6b705c] shrink-0 border border-[#e5e1d8]/40">
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate">Takvim Entegrasyonu</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[#6b705c] shrink-0 border border-[#e5e1d8]/40">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate">Gelir-Gider Takibi</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[#6b705c] shrink-0 border border-[#e5e1d8]/40">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate">Yedekli Bulut Verisi</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[#6b705c] shrink-0 border border-[#e5e1d8]/40">
+                    <Wallet className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate">Borç Takibi</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* FAQ Modal */}
         <FAQModal isOpen={isFaqOpen} onClose={() => setIsFaqOpen(false)} />
