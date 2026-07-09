@@ -76,6 +76,18 @@ const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
   });
 };
 
+const DEFAULT_SETTINGS: AppSettings = {
+  defaultSessionPrice: 1200,
+  defaultBabysitterFee: 250,
+  defaultOfficeRentFee: 200,
+  therapistName: 'Dr. Melis Kaya',
+  calendarSyncEnabled: true,
+  onlineCalendarWebcalUrl: '',
+  faceToFaceCalendarWebcalUrl: '',
+  googleSheetId: '',
+  googleSheetsLinked: false,
+};
+
 export default function App() {
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -84,29 +96,19 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         return {
-          defaultSessionPrice: parsed.defaultSessionPrice ?? 1200,
-          defaultBabysitterFee: parsed.defaultBabysitterFee ?? 250,
-          defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? 200,
-          therapistName: parsed.therapistName ?? 'Dr. Melis Kaya',
-          calendarSyncEnabled: parsed.calendarSyncEnabled ?? true,
-          onlineCalendarWebcalUrl: parsed.onlineCalendarWebcalUrl ?? parsed.calendarWebcalUrl ?? '',
-          faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? '',
-          googleSheetId: parsed.googleSheetId ?? '',
-          googleSheetsLinked: parsed.googleSheetsLinked ?? false,
+          defaultSessionPrice: parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultSessionPrice,
+          defaultBabysitterFee: parsed.defaultBabysitterFee ?? DEFAULT_SETTINGS.defaultBabysitterFee,
+          defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
+          therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
+          calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
+          onlineCalendarWebcalUrl: parsed.onlineCalendarWebcalUrl ?? parsed.calendarWebcalUrl ?? DEFAULT_SETTINGS.onlineCalendarWebcalUrl,
+          faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
+          googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
+          googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
         };
       } catch (e) {}
     }
-    return {
-      defaultSessionPrice: 1200,
-      defaultBabysitterFee: 250,
-      defaultOfficeRentFee: 200,
-      therapistName: 'Dr. Melis Kaya',
-      calendarSyncEnabled: true,
-      onlineCalendarWebcalUrl: '',
-      faceToFaceCalendarWebcalUrl: '',
-      googleSheetId: '',
-      googleSheetsLinked: false,
-    };
+    return DEFAULT_SETTINGS;
   });
 
   // Load sessions from localStorage or use empty array
@@ -481,12 +483,27 @@ export default function App() {
       try {
         setIsAuthSyncing(true);
         const cloudData = await fetchUserData(user.uid);
+        
+        // Check if there was an explicit request to migrate anonymous local data
+        const shouldMigrate = localStorage.getItem('psycalcu_should_migrate') === 'true';
+        
         if (cloudData) {
-          // Get local sessions to perform conflict-free merging
-          const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+          // EXISTING USER WHO ALREADY HAS CLOUD DATA
           let localSessions: Session[] = [];
-          if (savedSessionsStr) {
-            try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+          
+          if (shouldMigrate) {
+            // User explicitly requested to migrate anonymous data into their existing cloud account
+            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+            if (savedSessionsStr) {
+              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
+          } else {
+            // Standard flow: Use user-specific cached local sessions (for offline work support)
+            const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+            const savedSessionsStr = localStorage.getItem(userSessionsKey);
+            if (savedSessionsStr) {
+              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
           }
           
           const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
@@ -531,19 +548,32 @@ export default function App() {
               sessions: JSON.stringify(cloudSessions)
             };
           }
-          showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
+          
+          // Wipe anonymous local storage if migrated to prevent re-migration or leak
+          if (shouldMigrate) {
+            localStorage.removeItem('psycalcu_sessions');
+            localStorage.removeItem('psycalcu_settings');
+            localStorage.removeItem('psycalcu_should_migrate');
+            showToast('Yerel seanslarınız mevcut bulut hesabınızla başarıyla birleştirildi!', 'success');
+          } else {
+            showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
+          }
         } else {
-          // First time registered user, sync existing local data to their new cloud database if it's real
-          const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
-          const savedSettingsStr = localStorage.getItem('psycalcu_settings');
-          let sessionsToSave = sessions;
+          // BRAND NEW USER (First time registered user, no cloud data yet)
+          let sessionsToSave: Session[] = [];
           let settingsToSave = settings;
           
-          if (savedSessionsStr) {
-            try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
-          }
-          if (savedSettingsStr) {
-            try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
+          if (shouldMigrate) {
+            // Sync existing local data to their new cloud database if they checked migrate
+            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+            const savedSettingsStr = localStorage.getItem('psycalcu_settings');
+            
+            if (savedSessionsStr) {
+              try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
+            if (savedSettingsStr) {
+              try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
+            }
           }
           
           const correctedSessions = autoCorrectPastSessions(sessionsToSave);
@@ -553,7 +583,7 @@ export default function App() {
             hasRealLocalSessions = !correctedSessions.every(s => s.id && s.id.startsWith('mock_'));
           }
           
-          if (hasRealLocalSessions) {
+          if (hasRealLocalSessions && shouldMigrate) {
             await saveUserData(user.uid, settingsToSave, correctedSessions);
             setSessions(correctedSessions);
             setSettings(settingsToSave);
@@ -572,6 +602,11 @@ export default function App() {
             };
             showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
           }
+          
+          // Wipe anonymous local storage
+          localStorage.removeItem('psycalcu_sessions');
+          localStorage.removeItem('psycalcu_settings');
+          localStorage.removeItem('psycalcu_should_migrate');
         }
       } catch (error: any) {
         console.error("Bulut verisi çekilirken hata:", error);
@@ -585,24 +620,30 @@ export default function App() {
         if (isQuota) {
           setIsQuotaExceeded(true);
         }
+ 
+        // Use user-specific or generic local storage keys dynamically based on auth status
+        const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
+        const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
 
         // Initialize lastSavedRef on failure to prevent infinite failing save retries
-        const finalSavedSessions = localStorage.getItem('psycalcu_sessions') || '[]';
+        const finalSavedSessions = localStorage.getItem(localSessionsKey) || '[]';
         let correctedSavedStr = '[]';
         try {
           correctedSavedStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(finalSavedSessions)));
         } catch (e) {}
-        const finalSavedSettings = localStorage.getItem('psycalcu_settings') || '';
+        const finalSavedSettings = localStorage.getItem(localSettingsKey) || '';
         lastSavedRef.current = {
           settings: finalSavedSettings,
           sessions: correctedSavedStr
         };
-
+ 
         // Graceful fallback to local storage on offline/network errors
-        const savedSessions = localStorage.getItem('psycalcu_sessions');
-        const savedSettings = localStorage.getItem('psycalcu_settings');
+        const savedSessions = localStorage.getItem(localSessionsKey);
+        const savedSettings = localStorage.getItem(localSettingsKey);
         if (savedSessions) {
           try { setSessions(autoCorrectPastSessions(JSON.parse(savedSessions))); } catch (e) {}
+        } else if (user) {
+          setSessions([]);
         }
         if (savedSettings) {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
@@ -739,8 +780,21 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
     hasSyncedRef.current = null;
+    lastSavedRef.current = { settings: '', sessions: '' };
+    hasAutoSyncedRef.current = false;
+
+    // Clear local storage sensitive data to prevent cross-user contamination on shared computers
+    localStorage.removeItem('psycalcu_sessions');
+    localStorage.removeItem('psycalcu_settings');
+    localStorage.removeItem('psycalcu_ai_summaries');
+    localStorage.removeItem('psycalcu_local_notifications');
+    localStorage.removeItem('psycalcu_should_migrate');
+
+    // Reset app states
+    setSessions([]);
+    setSettings(DEFAULT_SETTINGS);
+    setUser(null);
   };
 
   // UI state

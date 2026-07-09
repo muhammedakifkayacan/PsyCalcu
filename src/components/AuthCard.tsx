@@ -68,9 +68,11 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
     try {
       if (isLogin) {
+        localStorage.setItem('psycalcu_should_migrate', 'false');
         const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
         onAuthSuccess(userCredential.user, false);
       } else {
+        localStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
         const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         onAuthSuccess(userCredential.user, migrateData);
       }
@@ -106,6 +108,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       // signInWithRedirect is notorious for failing on mobile Safari/iOS due to ITP blocking Auth cookies.
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
+        localStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
         onAuthSuccess(result.user, migrateData);
       }
     } catch (err: any) {
