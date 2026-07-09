@@ -15,7 +15,8 @@ service cloud.firestore {
     }
 
     match /registrations/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'muhammedakifkayacan@gmail.com');
+      allow get: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'muhammedakifkayacan@gmail.com');
+      allow list: if request.auth != null && request.auth.token.email == 'muhammedakifkayacan@gmail.com';
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update, delete: if request.auth != null && request.auth.token.email == 'muhammedakifkayacan@gmail.com';
     }
