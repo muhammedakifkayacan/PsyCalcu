@@ -98,17 +98,26 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
     setLoading(true);
 
     try {
-      if (isMobile && !isIframe) {
-        setInfoMessage("Google ile güvenli giriş sayfasına yönlendiriliyorsunuz, lütfen bekleyin...");
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        const result = await signInWithPopup(auth, googleProvider);
-        if (result.user) {
-          onAuthSuccess(result.user, migrateData);
-        }
+      // Prefer signInWithPopup for everyone, including mobile.
+      // signInWithRedirect is notorious for failing on mobile Safari/iOS due to ITP blocking Auth cookies.
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        onAuthSuccess(result.user, migrateData);
       }
     } catch (err: any) {
-      console.error("Google Auth Error:", err);
+      console.error("Google Auth Popup Error:", err);
+      // Fallback to Redirect only if popup is blocked or explicitly fails on mobile
+      if (isMobile && !isIframe) {
+        try {
+          setInfoMessage("Google ile güvenli giriş sayfasına yönlendiriliyorsunuz, lütfen bekleyin...");
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr: any) {
+          console.error("Google Auth Redirect Error:", redirectErr);
+          setError("Yönlendirme ile giriş başlatılamadı. Lütfen başka bir giriş yöntemini deneyin.");
+        }
+      }
+      
       if (err.code === 'auth/popup-blocked') {
         setError("Pop-up penceresi engellendi. Lütfen tarayıcı ayarlarından pop-up'lara izin verin veya uygulamayı yeni bir tarayıcı sekmesinde açın.");
       } else {
@@ -122,71 +131,6 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
         setLoading(false);
       }
     }
-  };
-
-  const handleAppleSignIn = () => {
-    setError('');
-    
-    // Check if there is already a saved simulated Apple email
-    let storedEmail = localStorage.getItem('psycalcu_simulated_apple_email');
-    let emailToUse = storedEmail;
-    
-    if (!emailToUse) {
-      const userEmail = prompt(
-        "Apple ile Giriş Yap:\n\nLütfen Apple ID veya iCloud e-posta adresinizi giriniz. Hesabınız bu e-posta ile güvenli ve kalıcı olarak oluşturulacaktır:", 
-        ""
-      );
-      if (!userEmail) return; // User clicked Cancel
-      
-      if (!userEmail.includes('@') || userEmail.length < 5) {
-        setError("Geçersiz e-posta adresi girdiniz.");
-        return;
-      }
-      emailToUse = userEmail.trim().toLowerCase();
-    }
-
-    setInfoMessage("Apple Secure Gateway üzerinden güvenli bağlantı kuruluyor...");
-    setLoading(true);
-
-    const securePass = "AppleSecureGatePass102";
-
-    setTimeout(async () => {
-      try {
-        let userCredential;
-        // First, try to login if user already exists
-        try {
-          userCredential = await signInWithEmailAndPassword(auth, emailToUse!, securePass);
-          localStorage.setItem('psycalcu_simulated_apple_email', emailToUse!);
-          onAuthSuccess(userCredential.user, false);
-          if (showToast) {
-            showToast("Apple Hesabınızla başarıyla giriş yapıldı!", "success");
-          }
-        } catch (signInErr: any) {
-          // If the user does not exist, create the account
-          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
-            try {
-              userCredential = await createUserWithEmailAndPassword(auth, emailToUse!, securePass);
-              localStorage.setItem('psycalcu_simulated_apple_email', emailToUse!);
-              onAuthSuccess(userCredential.user, migrateData);
-              if (showToast) {
-                showToast("Yeni Apple Hesabınız başarıyla oluşturuldu ve eşitlendi!", "success");
-              }
-            } catch (createErr: any) {
-              // If creation failed but it's actually wrong password, try standard signIn with the exact error
-              throw createErr;
-            }
-          } else {
-            throw signInErr;
-          }
-        }
-      } catch (err: any) {
-        console.error("Apple auth error:", err);
-        setError(`Apple Girişi başarısız: ${err.message || 'Lütfen internet bağlantınızı kontrol edip tekrar deneyin.'}`);
-      } finally {
-        setLoading(false);
-        setInfoMessage('');
-      }
-    }, 1200);
   };
 
   const handleSignOut = async () => {
@@ -310,7 +254,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       </div>
 
       {activeTab === 'google' ? (
-        /* Tab 1: Google & Apple Quick Login */
+        /* Tab 1: Google Quick Login */
         <div className="space-y-3">
           {/* Google Sign In */}
           <button
@@ -338,19 +282,6 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
               />
             </svg>
             Google Hesabı ile Hızlı Giriş
-          </button>
-
-          {/* Apple Sign In */}
-          <button
-            type="button"
-            onClick={handleAppleSignIn}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 py-3 px-4 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-55 w-full"
-          >
-            <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 170 170">
-              <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.34.13-9.13-1.92-14.35-6.12-3.57-2.81-7.39-7.5-11.47-14.06-10.19-16.74-15.29-34.13-15.29-52.17 0-15.29 4.14-27.42 12.42-36.42 8.28-9.01 18.06-13.56 29.35-13.67 5.4 0 11.03 1.52 16.91 4.58 5.87 3.05 10.15 4.58 12.85 4.58 2.33 0 6.13-1.4 11.41-4.22 5.28-2.81 10.51-4.27 15.7-4.38 12.18 0 22.34 4.41 30.5 13.23 6.07 6.53 10.45 14.54 13.14 24.03-12.72 5.19-19.11 13.53-19.16 25.01-.06 9.4 3.4 17.3 10.38 23.68 6.98 6.38 15.39 9.8 25.21 10.25-1.15 4.63-2.6 9.38-4.35 14.24zm-37.37-99.56c0-7.31 2.61-14.19 7.84-20.66 5.23-6.46 11.85-10.51 19.86-12.14.13.91.19 1.76.19 2.56 0 7.23-2.67 14.07-8.02 20.53-5.35 6.46-11.96 10.52-19.83 12.17-.06-.8-.1-1.63-.1-2.46z" />
-            </svg>
-            Apple Hesabı ile Hızlı Giriş (Simüle)
           </button>
         </div>
       ) : (

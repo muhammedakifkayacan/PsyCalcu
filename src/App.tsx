@@ -16,6 +16,7 @@ import {
   HelpCircle,
   FileSpreadsheet,
   AlertCircle,
+  XCircle,
   Database,
   Download,
   Upload,
@@ -44,9 +45,10 @@ import FAQModal from './components/FAQModal';
 import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
 import InteractiveTour from './components/InteractiveTour';
+import AdminPanel from './components/AdminPanel';
 import { auth, onAuthStateChanged, User, db, getRedirectResult } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
-import { collection, onSnapshot, query, limit, orderBy, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 
@@ -94,6 +96,7 @@ export default function App() {
 
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<User | null>(null);
+  const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
@@ -300,148 +303,10 @@ export default function App() {
   // Monitor Auth State Changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        // Page can open immediately, we don't need to block with full screen loading
-        setIsInitialAuthCheckDone(true);
-        setIsAuthLoading(false);
-
-        if (hasSyncedRef.current === currentUser.uid) {
-          return;
-        }
-        hasSyncedRef.current = currentUser.uid;
-        try {
-          setIsAuthSyncing(true);
-          const cloudData = await fetchUserData(currentUser.uid);
-          if (cloudData) {
-            // Get local sessions to perform conflict-free merging
-            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
-            let localSessions: Session[] = [];
-            if (savedSessionsStr) {
-              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
-            }
-            
-            const cloudSessions = cloudData.sessions || [];
-            
-            // Merge local and cloud sessions using updatedAt field
-            const localMap = new Map(localSessions.map(s => [s.id, s]));
-            const cloudIds = new Set(cloudSessions.map(s => s.id));
-            
-            // Keep local-only sessions (e.g. offline edits) if they are not mock sessions
-            const localOnly = localSessions.filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
-            
-            const mergedSessions = cloudSessions.map(cs => {
-              const ls = localMap.get(cs.id);
-              if (ls) {
-                const localTime = ls.updatedAt || 0;
-                const cloudTime = cs.updatedAt || 0;
-                // If local has a newer update, merge/use the local session
-                if (localTime > cloudTime) {
-                  return ls;
-                }
-              }
-              return cs;
-            });
-            
-            const finalSessions = [...mergedSessions, ...localOnly];
-            
-            // If the merged sessions list differs from cloud sessions, trigger a save back to the cloud
-            if (JSON.stringify(cloudSessions) !== JSON.stringify(finalSessions)) {
-              setSessions(finalSessions);
-              setSettings(cloudData.settings);
-              // Save the merged data to the cloud
-              await saveUserData(currentUser.uid, cloudData.settings, finalSessions);
-              lastSavedRef.current = {
-                settings: JSON.stringify(cloudData.settings),
-                sessions: JSON.stringify(finalSessions)
-              };
-            } else {
-              setSessions(cloudSessions);
-              setSettings(cloudData.settings);
-              lastSavedRef.current = {
-                settings: JSON.stringify(cloudData.settings),
-                sessions: JSON.stringify(cloudSessions)
-              };
-            }
-            showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
-          } else {
-            // First time registered user, sync existing local data to their new cloud database if it's real
-            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
-            const savedSettingsStr = localStorage.getItem('psycalcu_settings');
-            let sessionsToSave = sessions;
-            let settingsToSave = settings;
-            
-            if (savedSessionsStr) {
-              try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
-            }
-            if (savedSettingsStr) {
-              try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
-            }
-            
-            let hasRealLocalSessions = false;
-            if (sessionsToSave && sessionsToSave.length > 0) {
-              hasRealLocalSessions = !sessionsToSave.every(s => s.id && s.id.startsWith('mock_'));
-            }
-            
-            if (hasRealLocalSessions) {
-              await saveUserData(currentUser.uid, settingsToSave, sessionsToSave);
-              setSessions(sessionsToSave);
-              setSettings(settingsToSave);
-              lastSavedRef.current = {
-                settings: JSON.stringify(settingsToSave),
-                sessions: JSON.stringify(sessionsToSave)
-              };
-              showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
-            } else {
-              await saveUserData(currentUser.uid, settingsToSave, []);
-              setSessions([]);
-              setSettings(settingsToSave);
-              lastSavedRef.current = {
-                settings: JSON.stringify(settingsToSave),
-                sessions: '[]'
-              };
-              showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
-            }
-          }
-        } catch (error: any) {
-          console.error("Bulut verisi çekilirken hata:", error);
-          
-          const isQuota = error?.message === 'quota-exceeded' || 
-                          error?.message?.toLowerCase().includes('quota') || 
-                          error?.code?.toLowerCase().includes('quota') ||
-                          error?.message?.toLowerCase().includes('resource-exhausted') ||
-                          error?.code?.toLowerCase().includes('resource-exhausted');
-          
-          if (isQuota) {
-            setIsQuotaExceeded(true);
-          }
-
-          // Graceful fallback to local storage on offline/network errors
-          const savedSessions = localStorage.getItem('psycalcu_sessions');
-          const savedSettings = localStorage.getItem('psycalcu_settings');
-          if (savedSessions) {
-            try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
-          }
-          if (savedSettings) {
-            try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
-          }
-          
-          const isOfflineErr = error?.message?.toLowerCase().includes('offline') || 
-                              error?.code?.toLowerCase().includes('offline') || 
-                              !navigator.onLine;
-                              
-          if (isQuota) {
-            showToast('Bulut günlük kotaları doldu. Yerel verileriniz kullanılıyor; seanslarınız güvendedir.', 'info');
-          } else if (isOfflineErr) {
-            showToast('Şu anda çevrimdışısınız. Yerel verileriniz yüklendi; bağlantı geldiğinde bulut ile eşitlenecektir.', 'info');
-          } else {
-            showToast('Bulut verileri eşitlenirken bir sorun oluştu, yerel verileriniz kullanılıyor.', 'error');
-          }
-        } finally {
-          setIsAuthSyncing(false);
-        }
-      } else {
-        setUser(null);
+      setUser(currentUser);
+      setIsInitialAuthCheckDone(true);
+      setIsAuthLoading(false);
+      if (!currentUser) {
         hasSyncedRef.current = null;
         lastSavedRef.current = { settings: '', sessions: '' };
         // Load local storage if they log out
@@ -455,12 +320,208 @@ export default function App() {
         if (savedSettings) {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
         }
-        setIsInitialAuthCheckDone(true);
-        setIsAuthLoading(false);
       }
     });
     return () => unsubscribe();
   }, []);
+
+  // Listen to Registration/Approval Status
+  useEffect(() => {
+    if (!user) {
+      setRegistrationStatus('checking');
+      return;
+    }
+
+    if (user.email === 'muhammedakifkayacan@gmail.com') {
+      setRegistrationStatus('approved');
+      return;
+    }
+
+    setRegistrationStatus('checking');
+    
+    // Subscribe to registration document
+    const regRef = doc(db, 'registrations', user.uid);
+    const unsubscribe = onSnapshot(regRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setRegistrationStatus(data.status || 'pending');
+      } else {
+        // Document doesn't exist, create it as pending
+        try {
+          const newReg = {
+            userId: user.uid,
+            email: user.email || 'bilinmiyor',
+            displayName: user.displayName || 'Psikolog',
+            status: 'pending',
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(regRef, newReg);
+          setRegistrationStatus('pending');
+
+          // Notify Admin via backend API
+          fetch('/api/notify-admin-registration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userEmail: user.email, userId: user.uid })
+          }).catch(err => console.error("Email notification alert failed:", err));
+
+        } catch (err) {
+          console.error("Error creating registration document:", err);
+        }
+      }
+    }, (error) => {
+      console.error("Error listening to registration document:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Handle Cloud Sync for Approved Users
+  useEffect(() => {
+    if (!user || registrationStatus !== 'approved') {
+      return;
+    }
+
+    if (hasSyncedRef.current === user.uid) {
+      return;
+    }
+    hasSyncedRef.current = user.uid;
+
+    const performSync = async () => {
+      try {
+        setIsAuthSyncing(true);
+        const cloudData = await fetchUserData(user.uid);
+        if (cloudData) {
+          // Get local sessions to perform conflict-free merging
+          const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+          let localSessions: Session[] = [];
+          if (savedSessionsStr) {
+            try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+          }
+          
+          const cloudSessions = cloudData.sessions || [];
+          
+          // Merge local and cloud sessions using updatedAt field
+          const localMap = new Map(localSessions.map(s => [s.id, s]));
+          const cloudIds = new Set(cloudSessions.map(s => s.id));
+          
+          // Keep local-only sessions (e.g. offline edits) if they are not mock sessions
+          const localOnly = localSessions.filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
+          
+          const mergedSessions = cloudSessions.map(cs => {
+            const ls = localMap.get(cs.id);
+            if (ls) {
+              const localTime = ls.updatedAt || 0;
+              const cloudTime = cs.updatedAt || 0;
+              // If local has a newer update, merge/use the local session
+              if (localTime > cloudTime) {
+                return ls;
+              }
+            }
+            return cs;
+          });
+          
+          const finalSessions = [...mergedSessions, ...localOnly];
+          
+          // If the merged sessions list differs from cloud sessions, trigger a save back to the cloud
+          if (JSON.stringify(cloudSessions) !== JSON.stringify(finalSessions)) {
+            setSessions(finalSessions);
+            setSettings(cloudData.settings);
+            // Save the merged data to the cloud
+            await saveUserData(user.uid, cloudData.settings, finalSessions);
+            lastSavedRef.current = {
+              settings: JSON.stringify(cloudData.settings),
+              sessions: JSON.stringify(finalSessions)
+            };
+          } else {
+            setSessions(cloudSessions);
+            setSettings(cloudData.settings);
+            lastSavedRef.current = {
+              settings: JSON.stringify(cloudData.settings),
+              sessions: JSON.stringify(cloudSessions)
+            };
+          }
+          showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
+        } else {
+          // First time registered user, sync existing local data to their new cloud database if it's real
+          const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+          const savedSettingsStr = localStorage.getItem('psycalcu_settings');
+          let sessionsToSave = sessions;
+          let settingsToSave = settings;
+          
+          if (savedSessionsStr) {
+            try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
+          }
+          if (savedSettingsStr) {
+            try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
+          }
+          
+          let hasRealLocalSessions = false;
+          if (sessionsToSave && sessionsToSave.length > 0) {
+            hasRealLocalSessions = !sessionsToSave.every(s => s.id && s.id.startsWith('mock_'));
+          }
+          
+          if (hasRealLocalSessions) {
+            await saveUserData(user.uid, settingsToSave, sessionsToSave);
+            setSessions(sessionsToSave);
+            setSettings(settingsToSave);
+            lastSavedRef.current = {
+              settings: JSON.stringify(settingsToSave),
+              sessions: JSON.stringify(sessionsToSave)
+            };
+            showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
+          } else {
+            await saveUserData(user.uid, settingsToSave, []);
+            setSessions([]);
+            setSettings(settingsToSave);
+            lastSavedRef.current = {
+              settings: JSON.stringify(settingsToSave),
+              sessions: '[]'
+            };
+            showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
+          }
+        }
+      } catch (error: any) {
+        console.error("Bulut verisi çekilirken hata:", error);
+        
+        const isQuota = error?.message === 'quota-exceeded' || 
+                        error?.message?.toLowerCase().includes('quota') || 
+                        error?.code?.toLowerCase().includes('quota') ||
+                        error?.message?.toLowerCase().includes('resource-exhausted') ||
+                        error?.code?.toLowerCase().includes('resource-exhausted');
+        
+        if (isQuota) {
+          setIsQuotaExceeded(true);
+        }
+
+        // Graceful fallback to local storage on offline/network errors
+        const savedSessions = localStorage.getItem('psycalcu_sessions');
+        const savedSettings = localStorage.getItem('psycalcu_settings');
+        if (savedSessions) {
+          try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
+        }
+        if (savedSettings) {
+          try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
+        }
+        
+        const isOfflineErr = error?.message?.toLowerCase().includes('offline') || 
+                            error?.code?.toLowerCase().includes('offline') || 
+                            !navigator.onLine;
+                            
+        if (isQuota) {
+          showToast('Bulut günlük kotaları doldu. Yerel verileriniz kullanılıyor; seanslarınız güvendedir.', 'info');
+        } else if (isOfflineErr) {
+          showToast('Şu anda çevrimdışısınız. Yerel verileriniz yüklendi; bağlantı geldiğinde bulut ile eşitlenecektir.', 'info');
+        } else {
+          showToast('Bulut verileri eşitlenirken bir sorun oluştu, yerel verileriniz kullanılıyor.', 'error');
+        }
+      } finally {
+        setIsAuthSyncing(false);
+      }
+    };
+
+    performSync();
+  }, [user, registrationStatus]);
 
   // Refs to track latest values for safe unmount/unload saving
   const sessionsRef = useRef(sessions);
@@ -569,7 +630,7 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
-  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings'>('agenda');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin'>('agenda');
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -1719,6 +1780,92 @@ export default function App() {
     );
   }
 
+  if (user && registrationStatus === 'checking') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#fdfbf7]" id="registration-checking-screen">
+        <div className="text-center space-y-4">
+          <RefreshCw className="w-8 h-8 animate-spin text-[#6b705c] mx-auto" />
+          <p className="text-sm font-serif italic text-slate-500">Üyelik durumunuz doğrulanıyor...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && registrationStatus === 'pending') {
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="registration-pending-screen">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 text-center space-y-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-[#cb997e]/5 rounded-full pointer-events-none" />
+          <div className="w-16 h-16 bg-[#cb997e]/10 rounded-2xl flex items-center justify-center text-[#cb997e] mx-auto border border-[#cb997e]/20">
+            <Clock className="w-8 h-8 animate-pulse" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-serif text-[#6b705c]">Kayıt İstediğiniz Gönderildi</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            PsyCalcu uygulamasına erişebilmek için hesap oluşturma talebiniz kurucu yöneticiye (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) iletilmiştir.
+          </p>
+          <div className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] text-left">
+            <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+              💡 <span className="text-[#6b705c] font-bold">Onay Durumu:</span> Yönetici onay verdiğinde bu sayfa <strong className="text-emerald-700">otomatik olarak güncellenecek</strong> ve uygulamaya girişiniz sağlanacaktır. Sayfayı kapatıp daha sonra da gelebilirsiniz.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              onClick={() => {
+                const regRef = doc(db, 'registrations', user.uid);
+                getDoc(regRef).then((docSnap) => {
+                  if (docSnap.exists()) {
+                    setRegistrationStatus(docSnap.data().status || 'pending');
+                    showToast('Durum güncellendi.', 'success');
+                  }
+                });
+              }}
+              className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Şimdi Tekrar Kontrol Et
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer"
+            >
+              Farklı Hesapla Giriş Yap / Çıkış Yap
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && registrationStatus === 'rejected') {
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="registration-rejected-screen">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-rose-200 shadow-sm p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto border border-rose-100">
+            <XCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-serif text-rose-700">Giriş Talebiniz Onaylanmadı</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Bu hesabın PsyCalcu uygulamasını kullanma yetkisi yönetici tarafından sınırlandırılmıştır. Sorularınız için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> ile iletişime geçebilirsiniz.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer"
+            >
+              Farklı Hesapla Giriş Yap / Çıkış Yap
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
       
@@ -1779,6 +1926,17 @@ export default function App() {
           >
             Yedek & E-Tablo
           </button>
+          {user?.email === 'muhammedakifkayacan@gmail.com' && (
+            <button
+              id="tab-admin"
+              onClick={() => setActiveTab('admin')}
+              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+                activeTab === 'admin' ? 'bg-[#cb997e] text-white shadow-sm' : 'text-slate-600 hover:bg-[#e5e5df]'
+              }`}
+            >
+              Yönetici Paneli
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -2812,6 +2970,18 @@ export default function App() {
                 userEmail={user?.email || undefined}
                 showExplanations={showExplanations}
               />
+            </motion.div>
+          )}
+
+          {activeTab === 'admin' && user?.email === 'muhammedakifkayacan@gmail.com' && (
+            <motion.div
+              key="admin-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              <AdminPanel showToast={showToast} />
             </motion.div>
           )}
         </AnimatePresence>

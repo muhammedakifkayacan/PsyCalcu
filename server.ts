@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import nodemailer from "nodemailer";
 import "dotenv/config";
 
 function generateSmartFallbackSummary(date: string, sessions: any[], dailyMetrics: any, isKeyMissing: boolean): string {
@@ -148,6 +149,97 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       const { date, sessions, dailyMetrics } = req.body;
       const fallbackText = generateSmartFallbackSummary(date, sessions, dailyMetrics, false);
       res.json({ text: fallbackText });
+    }
+  });
+
+  // API Route for Admin Registration Notification
+  app.post("/api/notify-admin-registration", async (req: any, res: any) => {
+    try {
+      const { userEmail, userId } = req.body;
+      if (!userEmail) {
+        return res.status(400).json({ error: "userEmail is required" });
+      }
+
+      console.log(`New registration alert for email: ${userEmail}, userId: ${userId}`);
+
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+
+      if (!smtpHost || !smtpUser || !smtpPass) {
+        console.log("SMTP configuration is incomplete. Skipping actual email delivery.");
+        return res.json({
+          success: true,
+          message: "Registration received (SMTP is not configured in Secrets, email simulation logged)."
+        });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465, // true for 465, false for other ports
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const adminEmail = "muhammedakifkayacan@gmail.com";
+      const appUrl = process.env.APP_URL || "https://psycalcu.com";
+
+      const mailOptions = {
+        from: `"PsyCalcu Kayıt Bildirimi" <${smtpUser}>`,
+        to: adminEmail,
+        subject: `🔔 Yeni Kullanıcı Kayıt Onayı Bekleniyor: ${userEmail}`,
+        html: `
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e5e1d8; border-radius: 16px; background-color: #fdfbf7; color: #333;">
+            <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #e5e1d8;">
+              <span style="font-size: 28px; font-weight: bold; color: #6b705c; letter-spacing: -0.5px;">PsyCalcu</span>
+              <p style="font-size: 13px; color: #a5a58d; margin-top: 5px; margin-bottom: 0;">Yönetici Onay Sistemi</p>
+            </div>
+            
+            <div style="padding: 25px 10px;">
+              <h2 style="color: #6b705c; font-size: 17px; margin-top: 0; font-weight: 600;">Merhaba,</h2>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #555; margin-bottom: 20px;">
+                PsyCalcu uygulamasına yeni bir kullanıcı kayıt oldu ve <strong>yönetici onayınızı</strong> bekliyor:
+              </p>
+              
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #ffffff; border: 1px solid #e5e1d8; border-radius: 12px; overflow: hidden;">
+                <tr style="border-bottom: 1px solid #e5e1d8; background-color: #fcfbfa;">
+                  <td style="padding: 12px 16px; font-size: 13px; font-weight: bold; color: #6b705c; width: 120px;">E-Posta:</td>
+                  <td style="padding: 12px 16px; font-size: 13px; color: #222; font-weight: 500;">${userEmail}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 16px; font-size: 13px; font-weight: bold; color: #6b705c;">Kullanıcı ID:</td>
+                  <td style="padding: 12px 16px; font-size: 12px; color: #777; font-family: monospace;">${userId}</td>
+                </tr>
+              </table>
+
+              <p style="font-size: 13.5px; line-height: 1.6; color: #555;">
+                Bu kullanıcının uygulamayı kullanabilmesi için yönetici panelinizden onay vermeniz gerekmektedir. Aşağıdaki butona tıklayarak doğrudan sisteme gidip onaylayabilirsiniz:
+              </p>
+
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${appUrl}" style="background-color: #6b705c; color: #ffffff !important; padding: 12px 28px; text-decoration: none; font-size: 13.5px; font-weight: bold; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(107, 112, 92, 0.15);">
+                  Yönetici Paneline Git ve Onayla
+                </a>
+              </div>
+              
+              <p style="font-size: 11px; color: #a5a58d; text-align: center; margin-top: 40px; border-top: 1px solid #e5e1d8; padding-top: 20px; margin-bottom: 0;">
+                Bu e-posta PsyCalcu sistemi tarafından otomatik olarak üretilmiştir.
+              </p>
+            </div>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`Approval email successfully sent to ${adminEmail}`);
+      res.json({ success: true, message: "Email sent successfully!" });
+    } catch (error: any) {
+      console.error("Nodemailer Email Send Error:", error);
+      res.status(500).json({ error: `E-posta gönderimi başarısız oldu: ${error.message}` });
     }
   });
 
