@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "database": "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222"
+  }
+}

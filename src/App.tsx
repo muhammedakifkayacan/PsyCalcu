@@ -28,6 +28,8 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -745,6 +747,86 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
+
+  // Keep calendar view month in sync with selectedDate
+  useEffect(() => {
+    if (selectedDate) {
+      setCalendarViewDate(new Date(selectedDate));
+    }
+  }, [selectedDate]);
+
+  // Click outside handler for calendar popover
+  const calendarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setIsCalendarOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const calendarGrid = useMemo(() => {
+    const year = calendarViewDate.getFullYear();
+    const month = calendarViewDate.getMonth();
+
+    // First day of the month
+    const firstDayOfMonth = new Date(year, month, 1);
+    
+    // Day of the week of first day (Monday = 0, ..., Sunday = 6)
+    let startDayOfWeek = firstDayOfMonth.getDay() - 1;
+    if (startDayOfWeek < 0) startDayOfWeek = 6;
+
+    // Total days in current month
+    const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Total days in previous month
+    const totalDaysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const cells = [];
+
+    // Previous month's trailing days
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const dayNum = totalDaysInPrevMonth - i;
+      const prevMonthDate = new Date(year, month - 1, dayNum);
+      const dateStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}-${String(prevMonthDate.getDate()).padStart(2, '0')}`;
+      cells.push({
+        dateStr,
+        dayNum,
+        isCurrentMonth: false,
+      });
+    }
+
+    // Current month's days
+    for (let i = 1; i <= totalDaysInMonth; i++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      cells.push({
+        dateStr,
+        dayNum: i,
+        isCurrentMonth: true,
+      });
+    }
+
+    // Next month's leading days to make a perfect 42-cell grid
+    const remainingCells = 42 - cells.length;
+    for (let i = 1; i <= remainingCells; i++) {
+      const nextMonthDate = new Date(year, month + 1, i);
+      const dateStr = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-${String(nextMonthDate.getDate()).padStart(2, '0')}`;
+      cells.push({
+        dateStr,
+        dayNum: i,
+        isCurrentMonth: false,
+      });
+    }
+
+    return cells;
+  }, [calendarViewDate]);
+
   const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin'>('agenda');
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -2384,12 +2466,138 @@ export default function App() {
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">
                   <div className="flex justify-between items-center mb-3 px-2">
                     <span className="text-xs font-bold text-[#a5a58d] tracking-wider">TARİH SEÇİMİ</span>
-                    <input 
-                      type="date" 
-                      value={selectedDate}
-                      onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-                      className="px-3 py-1 bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] focus:outline-none"
-                    />
+                    
+                    {/* Custom Calendar Popover */}
+                    <div className="relative" ref={calendarRef}>
+                      <button 
+                        onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-sm"
+                      >
+                        <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
+                        <span>{new Date(selectedDate).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                        <ChevronDown className="w-3 h-3 text-[#6b705c] opacity-70" />
+                      </button>
+
+                      <AnimatePresence>
+                        {isCalendarOpen && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute right-0 top-full mt-2 w-72 bg-white rounded-3xl border border-[#e5e1d8] p-4 shadow-xl z-50 animate-fade-in"
+                          >
+                            {/* Calendar Header */}
+                            <div className="flex justify-between items-center mb-3">
+                              <h4 className="text-xs font-bold text-slate-800 font-sans tracking-wide">
+                                {calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+                              </h4>
+                              <div className="flex gap-1">
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    const prev = new Date(calendarViewDate);
+                                    prev.setMonth(prev.getMonth() - 1);
+                                    setCalendarViewDate(prev);
+                                  }}
+                                  className="p-1 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                                >
+                                  <ChevronLeft className="w-4 h-4 text-slate-600" />
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    const next = new Date(calendarViewDate);
+                                    next.setMonth(next.getMonth() + 1);
+                                    setCalendarViewDate(next);
+                                  }}
+                                  className="p-1 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                                >
+                                  <ChevronRight className="w-4 h-4 text-slate-600" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Weekday Labels */}
+                            <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                              {['P', 'S', 'Ç', 'P', 'C', 'C', 'P'].map((day, idx) => (
+                                <span key={idx} className="text-[10px] font-bold text-[#a5a58d] py-1">
+                                  {day}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Grid of Days */}
+                            <div className="grid grid-cols-7 gap-1">
+                              {calendarGrid.map((cell, idx) => {
+                                const isSelected = cell.dateStr === selectedDate;
+                                const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                                
+                                // Check if there are sessions on this day
+                                const daySessions = sessions.filter(s => s.date === cell.dateStr);
+                                const hasSessions = daySessions.length > 0;
+                                
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedDate(cell.dateStr);
+                                      setIsCalendarOpen(false);
+                                    }}
+                                    className={`relative flex flex-col items-center justify-center h-8 w-8 rounded-full transition-all cursor-pointer ${
+                                      !cell.isCurrentMonth 
+                                        ? 'text-slate-300 hover:bg-slate-50' 
+                                        : isSelected
+                                          ? 'bg-[#6b705c] text-white font-bold shadow-sm'
+                                          : isToday
+                                            ? 'border border-[#6b705c] text-[#6b705c] font-semibold hover:bg-slate-50'
+                                            : 'text-slate-700 hover:bg-slate-100 font-medium'
+                                    }`}
+                                  >
+                                    <span className="text-xs">{cell.dayNum}</span>
+                                    
+                                    {/* Beautiful Dot Indicator */}
+                                    {hasSessions && (
+                                      <span 
+                                        className={`absolute bottom-0.5 w-1 h-1 rounded-full ${
+                                          isSelected ? 'bg-white' : 'bg-[#cb997e]'
+                                        }`} 
+                                      />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Calendar Footer Actions */}
+                            <div className="flex justify-between items-center border-t border-slate-100 mt-3 pt-2.5">
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  const todayStr = new Date().toISOString().split('T')[0];
+                                  setSelectedDate(todayStr);
+                                  setIsCalendarOpen(false);
+                                }}
+                                className="text-[10px] font-bold text-[#cb997e] hover:text-[#b8856c] transition-colors cursor-pointer"
+                              >
+                                Bugün
+                              </button>
+                              <span className="text-[9px] text-slate-400 font-medium">
+                                Seanslı günler noktalıdır
+                              </span>
+                              <button 
+                                type="button"
+                                onClick={() => setIsCalendarOpen(false)}
+                                className="text-[10px] font-bold text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                              >
+                                Kapat
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                   
                   {/* Date band selection */}
@@ -2397,11 +2605,13 @@ export default function App() {
                     {dateRibbon.map((day) => {
                       const isSelected = day.dateStr === selectedDate;
                       const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                      const daySessions = sessions.filter(s => s.date === day.dateStr);
+                      const hasSessions = daySessions.length > 0;
                       return (
                         <button
                           key={day.dateStr}
                           onClick={() => setSelectedDate(day.dateStr)}
-                          className={`flex flex-col items-center justify-center p-2.5 rounded-2xl transition-all cursor-pointer ${
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-2xl transition-all relative cursor-pointer ${
                             isSelected 
                               ? 'bg-[#6b705c] text-white shadow-md' 
                               : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] border border-[#e5e1d8]/60 text-slate-600'
@@ -2413,9 +2623,14 @@ export default function App() {
                           <span className="text-lg font-serif font-bold mt-0.5">
                             {day.dayNum}
                           </span>
-                          {isToday && (
-                            <span className={`w-1 h-1 rounded-full mt-1 ${isSelected ? 'bg-white' : 'bg-[#cb997e]'}`}></span>
-                          )}
+                          <div className="flex gap-1 mt-1 justify-center items-center h-1">
+                            {isToday && (
+                              <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-[#cb997e]'}`}></span>
+                            )}
+                            {hasSessions && (
+                              <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white/80' : 'bg-[#6b705c]'}`}></span>
+                            )}
+                          </div>
                         </button>
                       );
                     })}

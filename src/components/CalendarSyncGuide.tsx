@@ -48,6 +48,18 @@ export default function CalendarSyncGuide({
   const [isFaceToFaceSyncing, setIsFaceToFaceSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isOnlineLocked, setIsOnlineLocked] = useState(!!settings.onlineCalendarWebcalUrl);
+  const [isFaceToFaceLocked, setIsFaceToFaceLocked] = useState(!!settings.faceToFaceCalendarWebcalUrl);
+  const [onlineShowConfirm, setOnlineShowConfirm] = useState(false);
+  const [faceToFaceShowConfirm, setFaceToFaceShowConfirm] = useState(false);
+
+  React.useEffect(() => {
+    setOnlineUrl(settings.onlineCalendarWebcalUrl || '');
+    setFaceToFaceUrl(settings.faceToFaceCalendarWebcalUrl || '');
+    setIsOnlineLocked(!!settings.onlineCalendarWebcalUrl);
+    setIsFaceToFaceLocked(!!settings.faceToFaceCalendarWebcalUrl);
+  }, [settings.onlineCalendarWebcalUrl, settings.faceToFaceCalendarWebcalUrl]);
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -111,6 +123,8 @@ export default function CalendarSyncGuide({
       onlineCalendarWebcalUrl: onlineUrl,
       faceToFaceCalendarWebcalUrl: faceToFaceUrl
     });
+    setIsOnlineLocked(!!onlineUrl);
+    setIsFaceToFaceLocked(!!faceToFaceUrl);
     showSuccess('Takvim senkronizasyon linkleriniz başarıyla kaydedildi!');
   };
 
@@ -349,15 +363,58 @@ export default function CalendarSyncGuide({
                   Online Seanslar Takvim Linki
                 </label>
                 <div className="relative">
-                  <Link2 className="absolute left-3 top-2.5 w-4 h-4 text-emerald-600" />
+                  <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isOnlineLocked ? 'text-slate-400' : 'text-emerald-600'}`} />
                   <input
                     type="text"
                     placeholder="webcal://calendar.google.com/... veya icloud.com/..."
                     value={onlineUrl}
                     onChange={(e) => setOnlineUrl(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-emerald-200 rounded-full focus:outline-none focus:border-emerald-500"
+                    readOnly={isOnlineLocked}
+                    className={`w-full pl-9 py-2 text-xs border rounded-full focus:outline-none transition-all ${
+                      isOnlineLocked
+                        ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed pr-20'
+                        : 'bg-white border-emerald-200 focus:border-emerald-500 pr-4'
+                    }`}
                   />
+                  {isOnlineLocked && (
+                    <button
+                      type="button"
+                      onClick={() => setOnlineShowConfirm(true)}
+                      className="absolute right-2 top-1 px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold rounded-full transition-colors cursor-pointer"
+                    >
+                      Düzenle
+                    </button>
+                  )}
                 </div>
+                {onlineShowConfirm && (
+                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">
+                    <div className="flex items-start gap-2 text-xs text-amber-800 leading-normal">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Takvim Düzenleme Uyarısı:</strong> Bu alanı düzenlemeden önce doğru takvim linkine sahip olduğunuzdan emin olun. Yanlış bir link seansların senkronize edilmesini engelleyecektir. Devam etmek istiyor musunuz?
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOnlineShowConfirm(false)}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-full transition-all cursor-pointer"
+                      >
+                        Vazgeç
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsOnlineLocked(false);
+                          setOnlineShowConfirm(false);
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-full transition-all cursor-pointer"
+                      >
+                        Evet, Düzenle
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -387,15 +444,58 @@ export default function CalendarSyncGuide({
                   Yüzyüze Seanslar Takvim Linki
                 </label>
                 <div className="relative">
-                  <Link2 className="absolute left-3 top-2.5 w-4 h-4 text-amber-600" />
+                  <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isFaceToFaceLocked ? 'text-slate-400' : 'text-amber-600'}`} />
                   <input
                     type="text"
                     placeholder="webcal://calendar.google.com/... veya icloud.com/..."
                     value={faceToFaceUrl}
                     onChange={(e) => setFaceToFaceUrl(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-amber-200 rounded-full focus:outline-none focus:border-amber-500"
+                    readOnly={isFaceToFaceLocked}
+                    className={`w-full pl-9 py-2 text-xs border rounded-full focus:outline-none transition-all ${
+                      isFaceToFaceLocked
+                        ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed pr-20'
+                        : 'bg-white border-amber-200 focus:border-amber-500 pr-4'
+                    }`}
                   />
+                  {isFaceToFaceLocked && (
+                    <button
+                      type="button"
+                      onClick={() => setFaceToFaceShowConfirm(true)}
+                      className="absolute right-2 top-1 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-full transition-colors cursor-pointer"
+                    >
+                      Düzenle
+                    </button>
+                  )}
                 </div>
+                {faceToFaceShowConfirm && (
+                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">
+                    <div className="flex items-start gap-2 text-xs text-amber-800 leading-normal">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Takvim Düzenleme Uyarısı:</strong> Bu alanı düzenlemeden önce doğru takvim linkine sahip olduğunuzdan emin olun. Yanlış bir link seansların senkronize edilmesini engelleyecektir. Devam etmek istiyor musunuz?
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFaceToFaceShowConfirm(false)}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-full transition-all cursor-pointer"
+                      >
+                        Vazgeç
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsFaceToFaceLocked(false);
+                          setFaceToFaceShowConfirm(false);
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-full transition-all cursor-pointer"
+                      >
+                        Evet, Düzenle
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <button
                 type="button"
