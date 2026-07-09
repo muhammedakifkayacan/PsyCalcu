@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   onSnapshot, 
@@ -6,7 +6,9 @@ import {
   updateDoc, 
   deleteDoc, 
   query, 
-  orderBy 
+  orderBy,
+  setDoc,
+  getDocs
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
@@ -28,8 +30,9 @@ interface Registration {
   userId: string;
   email: string;
   displayName: string;
-  status: 'approved' | 'pending' | 'rejected';
+  status: 'approved' | 'pending' | 'rejected' | 'legacy_active';
   createdAt?: string;
+  isLegacy?: boolean;
 }
 
 interface AdminPanelProps {
@@ -38,6 +41,7 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [legacyUsers, setLegacyUsers] = useState<{ userId: string; therapistName: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [search, setSearch] = useState('');
@@ -45,14 +49,15 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   // Confirmation Modal with countdown state
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
-    type: 'restrict' | 'delete';
+    type: 'approve' | 'restrict' | 'delete';
     userId: string;
     email: string;
     displayName: string;
+    isLegacy?: boolean;
   } | null>(null);
-  const [confirmCountdown, setConfirmCountdown] = useState(3);
+  const [confirmCountdown, setConfirmCountdown] = useState(5);
 
-  // Safety countdown effect
+  // Safety countdown effect (5 seconds)
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (confirmModal?.isOpen && confirmCountdown > 0) {
@@ -63,15 +68,22 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     return () => clearTimeout(timer);
   }, [confirmModal?.isOpen, confirmCountdown]);
 
-  const openConfirmModal = (type: 'restrict' | 'delete', userId: string, email: string, displayName: string) => {
+  const openConfirmModal = (
+    type: 'approve' | 'restrict' | 'delete', 
+    userId: string, 
+    email: string, 
+    displayName: string,
+    isLegacy?: boolean
+  ) => {
     setConfirmModal({
       isOpen: true,
       type,
       userId,
       email,
-      displayName
+      displayName,
+      isLegacy
     });
-    setConfirmCountdown(3);
+    setConfirmCountdown(5);
   };
 
   useEffect(() => {
@@ -99,37 +111,78 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     return () => unsubscribe();
   }, []);
 
-  const handleUpdateStatus = async (userId: string, email: string, newStatus: 'approved' | 'rejected') => {
-    try {
-      const ref = doc(db, 'registrations', userId);
-      await updateDoc(ref, { status: newStatus });
-      showToast(`${email} kullanıcısı başarıyla ${newStatus === 'approved' ? 'onaylandı' : 'sınırlandırıldı'}.`, 'success');
-    } catch (error) {
-      console.error("Error updating registration status:", error);
-      showToast('Durum güncellenirken bir sorun oluştu.', 'error');
-    }
-  };
+  // Fetch legacy users (registered before rule creation)
+  useEffect(() => {
+    const fetchLegacyUsers = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        const list: { userId: string; therapistName: string }[] = [];
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Exclude admin themselves from legacy user checks
+          if (docSnap.id !== 'muhammedakifkayacan@gmail.com') {
+            list.push({
+              userId: docSnap.id,
+              therapistName: data.settings?.therapistName || 'Eski Sistem Kullanıcısı'
+            });
+          }
+        });
+        setLegacyUsers(list);
+      } catch (error) {
+        console.error("Error fetching legacy users:", error);
+      }
+    };
+    fetchLegacyUsers();
+  }, [registrations]);
 
   const handleConfirmedAction = async () => {
     if (!confirmModal) return;
-    const { type, userId, email } = confirmModal;
+    const { type, userId, email, displayName } = confirmModal;
     
     setConfirmModal(null);
     
-    if (type === 'restrict') {
+    const displayEmail = email.includes('Eski Kayıt') ? 'eski.kayit@psycalcu.com' : email;
+    
+    if (type === 'approve') {
       try {
         const ref = doc(db, 'registrations', userId);
-        await updateDoc(ref, { status: 'rejected' });
-        showToast(`${email} kullanıcısı başarıyla sınırlandırıldı.`, 'success');
+        await setDoc(ref, {
+          userId,
+          email: displayEmail,
+          displayName: displayName || 'Psikolog',
+          status: 'approved',
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+        showToast(`${displayName || displayEmail} kullanıcısına başarıyla onay verildi.`, 'success');
+      } catch (error) {
+        console.error("Error approving registration status:", error);
+        showToast('Durum güncellenirken bir sorun oluştu.', 'error');
+      }
+    } else if (type === 'restrict') {
+      try {
+        const ref = doc(db, 'registrations', userId);
+        await setDoc(ref, {
+          userId,
+          email: displayEmail,
+          displayName: displayName || 'Psikolog',
+          status: 'rejected',
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+        showToast(`${displayName || displayEmail} kullanıcısı başarıyla sınırlandırıldı.`, 'success');
       } catch (error) {
         console.error("Error restricting registration status:", error);
         showToast('Durum güncellenirken bir sorun oluştu.', 'error');
       }
     } else if (type === 'delete') {
       try {
-        const ref = doc(db, 'registrations', userId);
-        await deleteDoc(ref);
-        showToast(`${email} kaydı tamamen silindi.`, 'success');
+        const regRef = doc(db, 'registrations', userId);
+        await deleteDoc(regRef);
+        
+        // Also wipe user settings and sessions document to completely clean database
+        const userRef = doc(db, 'users', userId);
+        await deleteDoc(userRef);
+        
+        showToast(`${displayName || displayEmail} kaydı ve tüm verileri tamamen silindi.`, 'success');
       } catch (error) {
         console.error("Error deleting registration:", error);
         showToast('Kayıt silinirken bir sorun oluştu.', 'error');
@@ -137,15 +190,38 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     }
   };
 
-  const filteredRegistrations = registrations.filter(reg => {
-    const matchesFilter = filter === 'all' || reg.status === filter;
-    const matchesSearch = 
-      reg.email.toLowerCase().includes(search.toLowerCase()) || 
-      reg.displayName.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  // Combine standard registrations and legacy users
+  const combinedUsers = useMemo(() => {
+    const list: Registration[] = registrations.map(r => ({ ...r, isLegacy: false }));
+    legacyUsers.forEach(lu => {
+      const exists = registrations.some(r => r.userId === lu.userId);
+      if (!exists) {
+        list.push({
+          userId: lu.userId,
+          email: 'Eski Kayıt (Giriş yaptığında e-posta alınacak)',
+          displayName: lu.therapistName || 'Eski Terapist',
+          status: 'pending',
+          isLegacy: true,
+          createdAt: undefined
+        });
+      }
+    });
+    return list;
+  }, [registrations, legacyUsers]);
 
-  const pendingCount = registrations.filter(r => r.status === 'pending').length;
+  const filteredRegistrations = useMemo(() => {
+    return combinedUsers.filter(reg => {
+      const matchesFilter = filter === 'all' || reg.status === filter;
+      const matchesSearch = 
+        reg.email.toLowerCase().includes(search.toLowerCase()) || 
+        reg.displayName.toLowerCase().includes(search.toLowerCase());
+      return matchesFilter && matchesSearch;
+    });
+  }, [combinedUsers, filter, search]);
+
+  const pendingCount = useMemo(() => {
+    return combinedUsers.filter(r => r.status === 'pending').length;
+  }, [combinedUsers]);
 
   return (
     <div className="space-y-6" id="admin-panel-component">
@@ -165,7 +241,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-[#e5e1d8] shadow-xs flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Toplam Kayıt</span>
-          <span className="text-2xl font-serif font-bold text-slate-700 mt-2">{registrations.length}</span>
+          <span className="text-2xl font-serif font-bold text-slate-700 mt-2">{combinedUsers.length}</span>
         </div>
         <div className="bg-amber-50/40 p-5 rounded-3xl border border-amber-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] text-amber-600 font-bold tracking-widest uppercase">Onay Bekleyen</span>
@@ -179,13 +255,13 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
         <div className="bg-emerald-50/40 p-5 rounded-3xl border border-emerald-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] text-emerald-600 font-bold tracking-widest uppercase">Onaylanan</span>
           <span className="text-2xl font-serif font-bold text-emerald-700 mt-2">
-            {registrations.filter(r => r.status === 'approved').length}
+            {combinedUsers.filter(r => r.status === 'approved').length}
           </span>
         </div>
         <div className="bg-rose-50/40 p-5 rounded-3xl border border-rose-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] text-rose-600 font-bold tracking-widest uppercase">Reddedilen</span>
           <span className="text-2xl font-serif font-bold text-rose-700 mt-2">
-            {registrations.filter(r => r.status === 'rejected').length}
+            {combinedUsers.filter(r => r.status === 'rejected').length}
           </span>
         </div>
       </div>
@@ -194,8 +270,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       <div className="bg-white p-4 rounded-[2rem] border border-[#e5e1d8] shadow-xs flex flex-col sm:flex-row gap-4 justify-between items-center">
         <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
           {(['all', 'pending', 'approved', 'rejected'] as const).map((t) => {
-            const approvedCount = registrations.filter(r => r.status === 'approved').length;
-            const rejectedCount = registrations.filter(r => r.status === 'rejected').length;
+            const approvedCount = combinedUsers.filter(r => r.status === 'approved').length;
+            const rejectedCount = combinedUsers.filter(r => r.status === 'rejected').length;
             return (
               <button
                 key={t}
@@ -283,17 +359,26 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
                       reg.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                       reg.status === 'rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                      reg.isLegacy ? 'bg-[#6b705c]/10 text-[#6b705c] border border-[#6b705c]/20' :
                       'bg-amber-50 text-amber-700 border border-amber-100 animate-pulse'
                     }`}>
                       {reg.status === 'approved' && 'Onaylandı'}
                       {reg.status === 'rejected' && 'Sınırlandı'}
-                      {reg.status === 'pending' && 'Onay Bekliyor'}
+                      {reg.isLegacy && 'Eski Sistem Kaydı'}
+                      {!reg.isLegacy && reg.status === 'pending' && 'Onay Bekliyor'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 font-mono">{reg.email}</p>
+                  
+                  {reg.isLegacy && (
+                    <p className="text-[11px] text-[#cb997e] font-semibold leading-relaxed mt-1">
+                      ⚠️ Bu terapist onay sistemi kurulmadan önce kayıt olmuştur. Giriş yetkisi için onay vermeniz önerilir.
+                    </p>
+                  )}
+                  
                   {reg.createdAt && (
                     <p className="text-[10px] text-slate-400">
-                      Talebi Tarihi: {new Date(reg.createdAt).toLocaleDateString('tr-TR', {
+                      Talep Tarihi: {new Date(reg.createdAt).toLocaleDateString('tr-TR', {
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric',
@@ -307,7 +392,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                 <div className="flex items-center gap-2">
                   {reg.status !== 'approved' && (
                     <button
-                      onClick={() => handleUpdateStatus(reg.userId, reg.email, 'approved')}
+                      onClick={() => openConfirmModal('approve', reg.userId, reg.email, reg.displayName, reg.isLegacy)}
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                       title="Kullanıcıya Giriş Onayı Ver"
                     >
@@ -318,7 +403,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
 
                   {reg.status !== 'rejected' && (
                     <button
-                      onClick={() => openConfirmModal('restrict', reg.userId, reg.email, reg.displayName)}
+                      onClick={() => openConfirmModal('restrict', reg.userId, reg.email, reg.displayName, reg.isLegacy)}
                       className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-100 flex items-center gap-1.5 transition-colors cursor-pointer"
                       title="Kullanıcı Girişini Engelle/Sınırla"
                     >
@@ -328,7 +413,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                   )}
 
                   <button
-                    onClick={() => openConfirmModal('delete', reg.userId, reg.email, reg.displayName)}
+                    onClick={() => openConfirmModal('delete', reg.userId, reg.email, reg.displayName, reg.isLegacy)}
                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors cursor-pointer"
                     title="Kullanıcı Kaydını Sil"
                   >
@@ -364,7 +449,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
             >
               {/* Decorative top strip */}
               <div className={`absolute top-0 left-0 right-0 h-2 ${
-                confirmModal.type === 'delete' ? 'bg-rose-500' : 'bg-amber-500'
+                confirmModal.type === 'delete' ? 'bg-rose-500' :
+                confirmModal.type === 'approve' ? 'bg-emerald-500' : 'bg-amber-500'
               }`} />
 
               <div className="text-center space-y-6">
@@ -372,10 +458,14 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${
                   confirmModal.type === 'delete' 
                     ? 'bg-rose-50 border-rose-100 text-rose-600' 
-                    : 'bg-amber-50 border-amber-100 text-amber-600'
+                    : confirmModal.type === 'approve'
+                      ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                      : 'bg-amber-50 border-amber-100 text-amber-600'
                 }`}>
                   {confirmModal.type === 'delete' ? (
                     <Trash2 className="w-8 h-8" />
+                  ) : confirmModal.type === 'approve' ? (
+                    <UserCheck className="w-8 h-8" />
                   ) : (
                     <UserX className="w-8 h-8" />
                   )}
@@ -384,7 +474,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                 {/* Text Content */}
                 <div className="space-y-2">
                   <h3 className="text-xl font-serif text-slate-800 font-bold">
-                    {confirmModal.type === 'delete' ? 'Kaydı Tamamen Sil' : 'Kullanıcıyı Sınırla'}
+                    {confirmModal.type === 'delete' ? 'Kaydı Tamamen Sil' :
+                     confirmModal.type === 'approve' ? 'Kullanıcı Girişini Onayla' : 'Kullanıcıyı Sınırla'}
                   </h3>
                   <div className="space-y-1">
                     <p className="text-xs font-serif text-slate-500 italic">
@@ -400,7 +491,19 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                   <p className="text-xs text-slate-600 leading-relaxed">
                     {confirmModal.type === 'delete' ? (
                       <>
-                        Bu işlem geri alınamaz. Terapistin kayıt isteği ve onay bilgileri veritabanından <strong>kalıcı olarak silinecektir</strong>.
+                        Bu işlem geri alınamaz. Terapistin kayıt isteği, onay bilgileri ve tüm bulut verileri veritabanından <strong>kalıcı olarak silinecektir</strong>.
+                      </>
+                    ) : confirmModal.type === 'approve' ? (
+                      <>
+                        {confirmModal.isLegacy ? (
+                          <>
+                            Bu kullanıcı eski sisteme aittir. Giriş yapabilmesi için yeni sistemde <strong>onay kaydı oluşturularak aktif edilecektir</strong>.
+                          </>
+                        ) : (
+                          <>
+                            Bu terapistin sisteme erişimi ve veri senkronizasyonu <strong>onaylanacaktır</strong>. Hemen giriş yapabilecektir.
+                          </>
+                        )}
                       </>
                     ) : (
                       <>
@@ -423,7 +526,9 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                         ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                         : confirmModal.type === 'delete'
                           ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                          : 'bg-amber-600 hover:bg-amber-700 text-white'
+                          : confirmModal.type === 'approve'
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white'
                     }`}
                   >
                     {confirmCountdown > 0 ? (
