@@ -3250,6 +3250,9 @@ export default function App() {
                 onSaveSettings={(updated) => setSettings(updated)}
                 showToast={showToast}
                 sessions={sessions}
+                onDeleteSessions={(ids) => {
+                  setSessions(prev => prev.filter(s => !ids.includes(s.id)));
+                }}
                 onGoToDate={(date) => setSelectedDate(date)}
                 setActiveTab={setActiveTab}
                 showExplanations={showExplanations}
