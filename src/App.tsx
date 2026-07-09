@@ -97,6 +97,7 @@ export default function App() {
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<User | null>(null);
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
@@ -285,18 +286,27 @@ export default function App() {
 
   // Handle redirect result for Google sign-in on mobile
   useEffect(() => {
+    const isPendingRedirect = localStorage.getItem('psycalcu_pending_redirect') === 'true';
+    if (isPendingRedirect) {
+      setIsInitialAuthCheckDone(false);
+    }
     getRedirectResult(auth)
       .then((result) => {
+        localStorage.removeItem('psycalcu_pending_redirect');
         if (result?.user) {
+          setUser(result.user);
           showToast('Google Hesabınız ile başarıyla giriş yapıldı.', 'success');
         }
+        setIsInitialAuthCheckDone(true);
       })
       .catch((err) => {
+        localStorage.removeItem('psycalcu_pending_redirect');
         console.error("Redirect Auth Error:", err);
         // Do not block with error toast if it was a user cancellation
         if (err.code !== 'auth/redirect-cancelled') {
           showToast('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyiniz.', 'error');
         }
+        setIsInitialAuthCheckDone(true);
       });
   }, []);
 
@@ -304,7 +314,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      setIsInitialAuthCheckDone(true);
+      const isPendingRedirect = localStorage.getItem('psycalcu_pending_redirect') === 'true';
+      if (!isPendingRedirect) {
+        setIsInitialAuthCheckDone(true);
+      }
       setIsAuthLoading(false);
       if (!currentUser) {
         hasSyncedRef.current = null;
@@ -329,48 +342,62 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setRegistrationStatus('checking');
+      setRegistrationError(null);
       return;
     }
 
     if (user.email === 'muhammedakifkayacan@gmail.com') {
       setRegistrationStatus('approved');
+      setRegistrationError(null);
       return;
     }
 
     setRegistrationStatus('checking');
+    setRegistrationError(null);
     
     // Subscribe to registration document
     const regRef = doc(db, 'registrations', user.uid);
     const unsubscribe = onSnapshot(regRef, async (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRegistrationStatus(data.status || 'pending');
-      } else {
-        // Document doesn't exist, create it as pending
-        try {
-          const newReg = {
-            userId: user.uid,
-            email: user.email || 'bilinmiyor',
-            displayName: user.displayName || 'Psikolog',
-            status: 'pending',
-            createdAt: new Date().toISOString()
-          };
-          await setDoc(regRef, newReg);
-          setRegistrationStatus('pending');
+      try {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setRegistrationStatus(data.status || 'pending');
+          setRegistrationError(null);
+        } else {
+          // Document doesn't exist, create it as pending
+          try {
+            const newReg = {
+              userId: user.uid,
+              email: user.email || 'bilinmiyor',
+              displayName: user.displayName || 'Psikolog',
+              status: 'pending',
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(regRef, newReg);
+            setRegistrationStatus('pending');
+            setRegistrationError(null);
 
-          // Notify Admin via backend API
-          fetch('/api/notify-admin-registration', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userEmail: user.email, userId: user.uid })
-          }).catch(err => console.error("Email notification alert failed:", err));
+            // Notify Admin via backend API
+            fetch('/api/notify-admin-registration', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userEmail: user.email, userId: user.uid })
+            }).catch(err => console.error("Email notification alert failed:", err));
 
-        } catch (err) {
-          console.error("Error creating registration document:", err);
+          } catch (err: any) {
+            console.error("Error creating registration document:", err);
+            setRegistrationError(err?.message || String(err));
+            setRegistrationStatus('pending');
+          }
         }
+      } catch (err: any) {
+        console.error("Error inside onSnapshot callback:", err);
+        setRegistrationError(err?.message || String(err));
       }
     }, (error) => {
       console.error("Error listening to registration document:", error);
+      setRegistrationError(error?.message || String(error));
+      setRegistrationStatus('pending');
     });
 
     return () => unsubscribe();
@@ -1782,10 +1809,72 @@ export default function App() {
 
   if (user && registrationStatus === 'checking') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#fdfbf7]" id="registration-checking-screen">
-        <div className="text-center space-y-4">
-          <RefreshCw className="w-8 h-8 animate-spin text-[#6b705c] mx-auto" />
-          <p className="text-sm font-serif italic text-slate-500">Üyelik durumunuz doğrulanıyor...</p>
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="registration-checking-screen">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 text-center space-y-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-[#6b705c]/5 rounded-full pointer-events-none" />
+          
+          <div className="w-16 h-16 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
+            <RefreshCw className="w-8 h-8 animate-spin" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl font-serif text-[#6b705c]">Üyelik Doğrulaması</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+              PsyCalcu bulut hesabınızın durumu doğrulanıyor. Bu işlem genellikle birkaç saniye sürer.
+            </p>
+
+            {registrationError && (
+              <div className="p-3.5 bg-red-50 rounded-2xl border border-red-100 text-left space-y-1">
+                <span className="text-[11px] font-bold text-red-700 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Bağlantı Hatası
+                </span>
+                <p className="text-[10px] text-red-600 leading-relaxed">
+                  {registrationError.includes('permission') || registrationError.toLowerCase().includes('permission-denied')
+                    ? 'Yönetici onay kayıtlarınızı çekerken bir yetkilendirme hatası oluştu. Lütfen çıkış yapıp tekrar deneyin veya yöneticiyle iletişime geçin.'
+                    : `Hata detayı: ${registrationError}`}
+                </p>
+              </div>
+            )}
+            
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Herhangi bir sorun yaşarsanız kurucu yöneticiye (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) e-posta gönderebilirsiniz.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              onClick={() => {
+                setRegistrationError(null);
+                setRegistrationStatus('checking');
+                const regRef = doc(db, 'registrations', user.uid);
+                getDoc(regRef).then((docSnap) => {
+                  if (docSnap.exists()) {
+                    setRegistrationStatus(docSnap.data().status || 'pending');
+                  } else {
+                    setRegistrationStatus('pending');
+                  }
+                }).catch(err => {
+                  setRegistrationError(err?.message || String(err));
+                });
+              }}
+              className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Tekrar Dene / Yenile
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>🚪</span>
+              Çıkış Yap / Farklı Hesapla Giriş Yap
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1800,15 +1889,19 @@ export default function App() {
             <Clock className="w-8 h-8 animate-pulse" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-serif text-[#6b705c]">Kayıt İstediğiniz Gönderildi</h2>
+            <h2 className="text-2xl font-serif text-[#6b705c]">Yönetici Onayı Bekleniyor</h2>
             <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-            PsyCalcu uygulamasına erişebilmek için hesap oluşturma talebiniz kurucu yöneticiye (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) iletilmiştir.
-          </p>
-          <div className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] text-left">
-            <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-              💡 <span className="text-[#6b705c] font-bold">Onay Durumu:</span> Yönetici onay verdiğinde bu sayfa <strong className="text-emerald-700">otomatik olarak güncellenecek</strong> ve uygulamaya girişiniz sağlanacaktır. Sayfayı kapatıp daha sonra da gelebilirsiniz.
+          <div className="space-y-3 text-slate-500 leading-relaxed text-xs">
+            <p>
+              Hesabınız başarıyla oluşturulmuş ve bulut veritabanımıza işlenmiştir. Ancak PsyCalcu seans ve bütçe ajandasına erişebilmek için kurucu yöneticinin (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) onayı gerekmektedir.
+            </p>
+            <p className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] text-left text-[11px] leading-relaxed">
+              🙋‍♂️ <strong className="text-[#6b705c]">Ne Yapabilirsiniz?</strong><br />
+              Yöneticiyi şahsen tanıyorsanız onay vermesi için kendisine söyleyebilir, bilgi almak veya onay talebinizi hızlandırmak için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> adresine e-posta gönderebilir veya iletişime geçebilirsiniz.
+            </p>
+            <p className="text-[11px] text-slate-400 font-medium">
+              💡 Yönetici onay verdiğinde bu sayfa <strong className="text-emerald-700 font-bold">otomatik olarak güncellenecek</strong> ve uygulamaya girişiniz sağlanacaktır.
             </p>
           </div>
           <div className="flex flex-col gap-2 pt-2">
@@ -1818,8 +1911,12 @@ export default function App() {
                 getDoc(regRef).then((docSnap) => {
                   if (docSnap.exists()) {
                     setRegistrationStatus(docSnap.data().status || 'pending');
-                    showToast('Durum güncellendi.', 'success');
+                    showToast('Üyelik durumunuz güncellendi.', 'success');
+                  } else {
+                    showToast('Kayıt durumu güncel. Onay bekleniyor...', 'info');
                   }
+                }).catch(err => {
+                  setRegistrationError(err?.message || String(err));
                 });
               }}
               className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
@@ -1829,9 +1926,10 @@ export default function App() {
             </button>
             <button
               onClick={handleLogout}
-              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer"
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              Farklı Hesapla Giriş Yap / Çıkış Yap
+              <span>🚪</span>
+              Çıkış Yap / Farklı Hesapla Giriş Yap
             </button>
           </div>
         </div>

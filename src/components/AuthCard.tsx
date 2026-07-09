@@ -85,6 +85,10 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
         errorMsg = 'Geçersiz bir e-posta adresi girdiniz.';
       } else if (err.code === 'auth/weak-password') {
         errorMsg = 'Şifre çok zayıf. En az 6 karakter olmalıdır.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        errorMsg = 'E-posta & Şifre ile kayıt/giriş seçeneği Firebase panelinizde etkinleştirilmemiş olabilir. Lütfen Firebase Console > Authentication > Sign-in Method sekmesinden "Email/Password" seçeneğini aktif edin.';
+      } else if (err.message) {
+        errorMsg = `Hata: ${err.message}`;
       }
       setError(errorMsg);
     } finally {
@@ -110,9 +114,11 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       if (isMobile && !isIframe) {
         try {
           setInfoMessage("Google ile güvenli giriş sayfasına yönlendiriliyorsunuz, lütfen bekleyin...");
+          localStorage.setItem('psycalcu_pending_redirect', 'true');
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectErr: any) {
+          localStorage.removeItem('psycalcu_pending_redirect');
           console.error("Google Auth Redirect Error:", redirectErr);
           setError("Yönlendirme ile giriş başlatılamadı. Lütfen başka bir giriş yöntemini deneyin.");
         }
