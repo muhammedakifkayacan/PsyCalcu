@@ -30,7 +30,8 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Lightbulb
+  Lightbulb,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -48,7 +49,7 @@ import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
-import { auth, onAuthStateChanged, User, db, getRedirectResult } from './lib/firebase';
+import { auth, onAuthStateChanged, User, db, getRedirectResult, signOut } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -779,10 +780,16 @@ export default function App() {
     setUser(currentUser);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     hasSyncedRef.current = null;
     lastSavedRef.current = { settings: '', sessions: '' };
     hasAutoSyncedRef.current = false;
+
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Firebase Signout Error:", e);
+    }
 
     // Clear local storage sensitive data to prevent cross-user contamination on shared computers
     localStorage.removeItem('psycalcu_sessions');
@@ -2368,6 +2375,17 @@ export default function App() {
           >
             <SettingsIcon className="w-4 h-4" />
           </button>
+
+          {user && (
+            <button
+              id="header-logout-btn"
+              onClick={handleLogout}
+              className="w-10 h-10 rounded-full border border-red-200 bg-red-50/50 flex items-center justify-center text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all cursor-pointer shadow-xs"
+              title="Güvenli Çıkış Yap"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </nav>
 
@@ -3458,7 +3476,6 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSave={(updated) => setSettings(updated)}
-        onClearAllSessions={handleClearAllSessions}
         showExplanations={showExplanations}
         onToggleExplanations={toggleShowExplanations}
       />

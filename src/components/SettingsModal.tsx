@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Trash2 } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -7,7 +7,6 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AppSettings;
   onSave: (settings: AppSettings) => void;
-  onClearAllSessions: () => void;
   showExplanations: boolean;
   onToggleExplanations: () => void;
 }
@@ -17,7 +16,6 @@ export default function SettingsModal({
   onClose, 
   settings, 
   onSave, 
-  onClearAllSessions,
   showExplanations,
   onToggleExplanations
 }: SettingsModalProps) {
@@ -25,25 +23,6 @@ export default function SettingsModal({
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [countdown, setCountdown] = useState(5);
-
-  useEffect(() => {
-    if (showConfirm) {
-      setCountdown(5);
-      const interval = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
-  }, [showConfirm]);
 
   useEffect(() => {
     if (isOpen) {
@@ -51,7 +30,6 @@ export default function SettingsModal({
       setDefaultSessionPrice(settings.defaultSessionPrice);
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
-      setShowConfirm(false);
     }
   }, [isOpen, settings]);
 
@@ -211,63 +189,6 @@ export default function SettingsModal({
                   Uygulama, seans gelirlerinizden seans başı bakıcı ücretini otomatik düşer. Yüzyüze seanslarda ise ek olarak seans başı ofis kira gideri de düşülerek net kârınız anlık hesaplanır. Online seanslarda ofis kirası kesilmez.
                 </p>
               </div>
-            </div>
-          )}
-
-          {/* Danger Zone */}
-          {showConfirm ? (
-            <div className="bg-red-50 p-4 rounded-2xl border border-red-100 space-y-3">
-              <div className="flex gap-2.5 items-start">
-                <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="text-xs font-bold text-red-950 font-sans">Kalıcı Olarak Silinecek!</h4>
-                  <p className="text-[10px] text-red-700 leading-relaxed font-sans">
-                    DİKKAT: Tüm seans verileriniz kalıcı olarak silinecektir! Bu işlem geri alınamaz. Devam etmek istiyor musunuz?
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(false)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold transition-colors cursor-pointer"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={countdown > 0}
-                  onClick={() => {
-                    onClearAllSessions();
-                    onClose();
-                    setShowConfirm(false);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-white text-[10px] font-semibold transition-all ${
-                    countdown > 0
-                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                      : 'bg-red-600 hover:bg-red-700 cursor-pointer'
-                  }`}
-                >
-                  {countdown > 0 ? `Evet, Tümünü Sil (${countdown}s)` : 'Evet, Tümünü Sil'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#fff5f5] p-4 rounded-2xl border border-red-100 flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="space-y-0.5 text-center sm:text-left">
-                <h4 className="text-xs font-bold text-red-800 font-sans">Veri Temizleme & Sıfırlama</h4>
-                <p className="text-[10px] text-red-600 font-sans">
-                  Tüm mevcut seans verilerinizi siler ve boş bir takvim sayfası açar.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowConfirm(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 hover:text-red-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Tüm Verileri Temizle
-              </button>
             </div>
           )}
 

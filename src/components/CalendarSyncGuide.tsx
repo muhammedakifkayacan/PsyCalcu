@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle } from 'lucide-react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings } from '../types';
@@ -62,6 +62,7 @@ export default function CalendarSyncGuide({
   const [deleteCountdown, setDeleteCountdown] = useState(0);
   const [showAllSynced, setShowAllSynced] = useState(false);
   const [syncedFilter, setSyncedFilter] = useState<'all' | 'online' | 'face-to-face'>('all');
+  const [showRecoveryPanel, setShowRecoveryPanel] = useState(false);
 
   React.useEffect(() => {
     let timer: any;
@@ -665,138 +666,161 @@ export default function CalendarSyncGuide({
               </div>
             </div>
 
+            {/* Toggle Button for Danger Area */}
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowRecoveryPanel(prev => !prev)}
+                className="text-[11px] font-bold text-slate-500 hover:text-red-600 flex items-center gap-1.5 transition-all cursor-pointer px-3 py-1.5 rounded-xl border border-dashed border-slate-300 hover:border-red-300 bg-white shadow-xs"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                {showRecoveryPanel ? "Temizleme & Kurtarma Seçeneklerini Gizle" : "Kurtarma Seçeneklerini & Veri Silme Panelini Göster"}
+              </button>
+            </div>
+
             {/* DANGER AREA: RECOVERY & EMERGENCY DATA CLEANER */}
-            <div className="bg-red-50/40 border border-red-200/80 p-5 rounded-3xl space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0 mt-0.5">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h5 className="text-xs font-bold text-red-900 tracking-wide uppercase">Takvim Senkronizasyon Kurtarma & Veri Temizleme Paneli</h5>
-                  <p className="text-[11px] text-red-800 leading-normal mt-0.5">
-                    Yanlış bir takvim linki eklediyseniz veya yanlış seansların aktarıldığını fark ettiyseniz, aşağıdaki butonları kullanarak ilgili takvime ait seans verilerini <strong>toplu olarak silebilirsiniz</strong>. Bu işlem manuel eklediğiniz seansları etkilemez.
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons with Counter Prominent Warning */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                <button
-                  type="button"
-                  disabled={onlineSynced.length === 0}
-                  onClick={() => startDeleteFlow('online')}
-                  className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold border border-red-200 hover:border-red-300 rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            <AnimatePresence>
+              {showRecoveryPanel && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Online Takvimi Temizle ({onlineSynced.length} Seans)
-                </button>
-                <button
-                  type="button"
-                  disabled={f2fSynced.length === 0}
-                  onClick={() => startDeleteFlow('face-to-face')}
-                  className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold border border-red-200 hover:border-red-300 rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Yüzyüze Takvimi Temizle ({f2fSynced.length} Seans)
-                </button>
-                <button
-                  type="button"
-                  disabled={syncedSessions.length === 0}
-                  onClick={() => startDeleteFlow('all')}
-                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 text-white text-xs font-bold rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Tüm Takvimleri Sıfırla ({syncedSessions.length} Seans)
-                </button>
-              </div>
-
-              {/* Expandable Double-Confirmation Modal Inline */}
-              <AnimatePresence>
-                {deleteConfirmType && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="bg-white border-2 border-red-300 rounded-2xl p-5 mt-2 space-y-4 shadow-inner animate-fade-in">
-                      <div className="flex items-center gap-2 text-red-700">
-                        <AlertTriangle className="w-5 h-5 shrink-0 text-red-600" />
-                        <span className="text-xs font-extrabold uppercase tracking-wider">
-                          Kritik Güvenlik Doğrulaması (İşlem Geri Alınamaz)
-                        </span>
+                  <div className="bg-red-50/40 border border-red-200/80 p-5 rounded-3xl space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0 mt-0.5">
+                        <AlertTriangle className="w-5 h-5" />
                       </div>
-
-                      <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-xs text-red-900 leading-relaxed space-y-2">
-                        <div className="font-extrabold text-sm flex items-center gap-2">
-                          <span className="inline-block w-2.5 h-2.5 bg-red-600 rounded-full animate-ping" />
-                          <span>DİKKAT: Toplam {modalTargetCount} Adet Seans Silinecektir!</span>
-                        </div>
-                        <p>
-                          Şu anda <strong>{modalTargetLabel}</strong> kaynağından panele eklenen tüm seansları veritabanınızdan kalıcı olarak silmek üzeresiniz. Bu seansların silinmesi, o seanslara bağlı geçmiş tüm babysitter (bakıcı) ücreti ve ofis kirası hesaplamalarını da sıfırlayacaktır.
+                      <div>
+                        <h5 className="text-xs font-bold text-red-900 tracking-wide uppercase">Takvim Senkronizasyon Kurtarma & Veri Temizleme Paneli</h5>
+                        <p className="text-[11px] text-red-800 leading-normal mt-0.5">
+                          Yanlış bir takvim linki eklediyseniz veya yanlış seansların aktarıldığını fark ettiyseniz, aşağıdaki butonları kullanarak ilgili takvime ait seans verilerini <strong>toplu olarak silebilirsiniz</strong>. Bu işlem manuel eklediğiniz seansları etkilemez.
                         </p>
                       </div>
-
-                      {/* Security Checklist */}
-                      <div className="space-y-3 pt-1">
-                        <label className="flex items-start gap-2.5 text-xs text-slate-700 font-semibold cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={deleteCheckboxChecked}
-                            onChange={(e) => setDeleteCheckboxChecked(e.target.checked)}
-                            className="mt-0.5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
-                          />
-                          <span>
-                            Bu takvim verilerinin silineceğini, seans detaylarının ve bunlara bağlı mali hesaplamaların geri döndürülemeyeceğini anlıyorum ve kabul ediyorum.
-                          </span>
-                        </label>
-
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] font-bold text-slate-600 block">
-                            İşlemi onaylamak için büyük harflerle <span className="text-red-600 font-mono font-extrabold">"TEMİZLE"</span> yazın:
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="TEMİZLE"
-                            value={deleteSecurityText}
-                            onChange={(e) => setDeleteSecurityText(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Action confirm / cancel */}
-                      <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirmType(null)}
-                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-full transition-all cursor-pointer"
-                        >
-                          Vazgeç / İptal Et
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleExecuteDelete}
-                          disabled={
-                            !deleteCheckboxChecked ||
-                            deleteSecurityText !== 'TEMİZLE' ||
-                            deleteCountdown > 0
-                          }
-                          className="px-5 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-extrabold rounded-full transition-all flex items-center gap-2 shadow-xs cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>
-                            {deleteCountdown > 0
-                              ? `Siliniyor (${deleteCountdown}s)...`
-                              : `Evet, ${modalTargetCount} Seansı Kalıcı Olarak Sil`}
-                          </span>
-                        </button>
-                      </div>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+
+                    {/* Action Buttons with Counter Prominent Warning */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <button
+                        type="button"
+                        disabled={onlineSynced.length === 0}
+                        onClick={() => startDeleteFlow('online')}
+                        className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold border border-red-200 hover:border-red-300 rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Online Takvimi Temizle ({onlineSynced.length} Seans)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={f2fSynced.length === 0}
+                        onClick={() => startDeleteFlow('face-to-face')}
+                        className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold border border-red-200 hover:border-red-300 rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Yüzyüze Takvimi Temizle ({f2fSynced.length} Seans)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={syncedSessions.length === 0}
+                        onClick={() => startDeleteFlow('all')}
+                        className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 text-white text-xs font-bold rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Tüm Takvimleri Sıfırla ({syncedSessions.length} Seans)
+                      </button>
+                    </div>
+
+                    {/* Expandable Double-Confirmation Modal Inline */}
+                    <AnimatePresence>
+                      {deleteConfirmType && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="bg-white border-2 border-red-300 rounded-2xl p-5 mt-2 space-y-4 shadow-inner animate-fade-in">
+                            <div className="flex items-center gap-2 text-red-700">
+                              <AlertTriangle className="w-5 h-5 shrink-0 text-red-600" />
+                              <span className="text-xs font-extrabold uppercase tracking-wider">
+                                Kritik Güvenlik Doğrulaması (İşlem Geri Alınamaz)
+                              </span>
+                            </div>
+
+                            <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-xs text-red-900 leading-relaxed space-y-2">
+                              <div className="font-extrabold text-sm flex items-center gap-2">
+                                <span className="inline-block w-2.5 h-2.5 bg-red-600 rounded-full animate-ping" />
+                                <span>DİKKAT: Toplam {modalTargetCount} Adet Seans Silinecektir!</span>
+                              </div>
+                              <p>
+                                Şu anda <strong>{modalTargetLabel}</strong> kaynağından panele eklenen tüm seansları veritabanınızdan kalıcı olarak silmek üzeresiniz. Bu seansların silinmesi, o seanslara bağlı geçmiş tüm babysitter (bakıcı) ücreti ve ofis kirası hesaplamalarını da sıfırlayacaktır.
+                              </p>
+                            </div>
+
+                            {/* Security Checklist */}
+                            <div className="space-y-3 pt-1">
+                              <label className="flex items-start gap-2.5 text-xs text-slate-700 font-semibold cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={deleteCheckboxChecked}
+                                  onChange={(e) => setDeleteCheckboxChecked(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
+                                />
+                                <span>
+                                  Bu takvim verilerinin silineceğini, seans detaylarının ve bunlara bağlı mali hesaplamaların geri döndürülemeyeceğini anlıyorum ve kabul ediyorum.
+                                </span>
+                              </label>
+
+                              <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-slate-600 block">
+                                  İşlemi onaylamak için büyük harflerle <span className="text-red-600 font-mono font-extrabold">"TEMİZLE"</span> yazın:
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="TEMİZLE"
+                                  value={deleteSecurityText}
+                                  onChange={(e) => setDeleteSecurityText(e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Action confirm / cancel */}
+                            <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmType(null)}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-full transition-all cursor-pointer"
+                              >
+                                Vazgeç / İptal Et
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleExecuteDelete}
+                                disabled={
+                                  !deleteCheckboxChecked ||
+                                  deleteSecurityText !== 'TEMİZLE' ||
+                                  deleteCountdown > 0
+                                }
+                                className="px-5 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-extrabold rounded-full transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>
+                                  {deleteCountdown > 0
+                                    ? `Siliniyor (${deleteCountdown}s)...`
+                                    : `Evet, ${modalTargetCount} Seansı Kalıcı Olarak Sil`}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* FILTERED LISTING FOR VIEWING/INSPECTION */}
             <div className="bg-[#fcfbf9] rounded-2xl border border-[#e5e1d8]/80 p-5 space-y-3.5">
