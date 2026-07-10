@@ -31,9 +31,10 @@ interface InteractiveTourProps {
   onClose: () => void;
   setActiveTab: (tab: string) => void;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  userId?: string;
 }
 
-export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToast }: InteractiveTourProps) {
+export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToast, userId }: InteractiveTourProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number; placement: string }>({ top: 0, left: 0, placement: 'center' });
@@ -368,7 +369,8 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
 
   const handleFinish = () => {
     if (dontShowAgain) {
-      localStorage.setItem('psycalcu_tour_completed', 'true');
+      const key = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+      localStorage.setItem(key, 'true');
     }
     if (showToast) {
       showToast("Tanıtım turu tamamlandı! Keyifli kullanımlar dileriz.", "success");
@@ -379,7 +381,8 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
 
   const handleSkip = () => {
     if (dontShowAgain) {
-      localStorage.setItem('psycalcu_tour_completed', 'true');
+      const key = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+      localStorage.setItem(key, 'true');
     }
     onClose();
     setCurrentStepIndex(0);

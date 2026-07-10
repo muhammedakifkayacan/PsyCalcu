@@ -200,6 +200,50 @@ export default function App() {
     }
   }, [user]);
 
+  // Synchronize and load user-specific or anonymous preferences, AI summaries, and notifications
+  useEffect(() => {
+    const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
+    const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
+    const summariesKey = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
+    const notesKey = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+    const explanationsKey = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
+
+    try {
+      const savedNotifications = localStorage.getItem(notificationsKey);
+      setLocalNotifications(savedNotifications ? JSON.parse(savedNotifications) : []);
+    } catch (e) {
+      setLocalNotifications([]);
+    }
+
+    try {
+      const savedAnnouncements = localStorage.getItem(announcementsKey);
+      setReadAnnouncementIds(savedAnnouncements ? JSON.parse(savedAnnouncements) : []);
+    } catch (e) {
+      setReadAnnouncementIds([]);
+    }
+
+    try {
+      const savedSummaries = localStorage.getItem(summariesKey);
+      setAiSummaries(savedSummaries ? JSON.parse(savedSummaries) : {});
+    } catch (e) {
+      setAiSummaries({});
+    }
+
+    try {
+      const savedNotes = localStorage.getItem(notesKey);
+      setShowNotes(savedNotes !== 'false');
+    } catch (e) {
+      setShowNotes(true);
+    }
+
+    try {
+      const savedExplanations = localStorage.getItem(explanationsKey);
+      setShowExplanations(savedExplanations !== 'false');
+    } catch (e) {
+      setShowExplanations(true);
+    }
+  }, [user]);
+
   const allNotifications = useMemo<AppNotification[]>(() => {
     const annotsWithReadState = announcements.map(ann => ({
       ...ann,
@@ -212,14 +256,16 @@ export default function App() {
   const handleMarkAllAsRead = () => {
     setLocalNotifications(prev => {
       const updated = prev.map(n => ({ ...n, read: true }));
-      localStorage.setItem('psycalcu_local_notifications', JSON.stringify(updated));
+      const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
+      localStorage.setItem(notificationsKey, JSON.stringify(updated));
       return updated;
     });
     
     const allAnnotIds = announcements.map(ann => ann.id);
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
-      localStorage.setItem('psycalcu_read_announcement_ids', JSON.stringify(updated));
+      const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
+      localStorage.setItem(announcementsKey, JSON.stringify(updated));
       return updated;
     });
     
@@ -229,12 +275,14 @@ export default function App() {
 
   const handleClearAllNotifications = () => {
     setLocalNotifications([]);
-    localStorage.removeItem('psycalcu_local_notifications');
+    const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
+    localStorage.removeItem(notificationsKey);
     
     const allAnnotIds = announcements.map(ann => ann.id);
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
-      localStorage.setItem('psycalcu_read_announcement_ids', JSON.stringify(updated));
+      const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
+      localStorage.setItem(announcementsKey, JSON.stringify(updated));
       return updated;
     });
     
@@ -278,7 +326,8 @@ export default function App() {
 
     setLocalNotifications(prev => {
       const updated = [newNotif, ...prev].slice(0, 100);
-      localStorage.setItem('psycalcu_local_notifications', JSON.stringify(updated));
+      const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
+      localStorage.setItem(notificationsKey, JSON.stringify(updated));
       return updated;
     });
   };
@@ -701,8 +750,11 @@ export default function App() {
 
   // Save settings & sessions to local & cloud on changes with debouncing and change-detection
   useEffect(() => {
-    localStorage.setItem('psycalcu_settings', JSON.stringify(settings));
-    localStorage.setItem('psycalcu_sessions', JSON.stringify(sessions));
+    const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
+    const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
+
+    localStorage.setItem(localSettingsKey, JSON.stringify(settings));
+    localStorage.setItem(localSessionsKey, JSON.stringify(sessions));
 
     if (!user || isAuthSyncing || isQuotaExceeded) {
       return;
@@ -906,7 +958,8 @@ export default function App() {
     setShowNotes(prev => {
       const next = !prev;
       try {
-        localStorage.setItem('psycalcu_show_notes', String(next));
+        const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+        localStorage.setItem(key, String(next));
       } catch (e) {}
       return next;
     });
@@ -925,7 +978,8 @@ export default function App() {
     setShowExplanations(prev => {
       const next = !prev;
       try {
-        localStorage.setItem('psycalcu_show_explanations', String(next));
+        const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
+        localStorage.setItem(key, String(next));
       } catch (e) {}
       return next;
     });
@@ -952,7 +1006,7 @@ export default function App() {
   // Auto trigger tour for first-time logged-in users
   useEffect(() => {
     if (user) {
-      const isCompleted = localStorage.getItem('psycalcu_tour_completed');
+      const isCompleted = localStorage.getItem(`psycalcu_tour_completed_${user.uid}`);
       if (!isCompleted) {
         const timer = setTimeout(() => {
           setIsTourOpen(true);
@@ -1174,7 +1228,8 @@ export default function App() {
       sessions.length,
       existing ? 0 : 1,
       !!existing,
-      true // manual addition/edit
+      true, // manual addition/edit
+      user?.uid
     );
 
     if (!validation.allowed) {
@@ -1195,7 +1250,7 @@ export default function App() {
         return prev.map(s => s.id === savedSession.id ? withTimestamp : s);
       } else {
         // Increment weekly manual limit count only when adding a new session
-        incrementWeeklyManualActionCount(1);
+        incrementWeeklyManualActionCount(1, user?.uid);
         return [...prev, withTimestamp];
       }
     });
@@ -1422,7 +1477,8 @@ export default function App() {
 
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: summaryText };
-        localStorage.setItem('psycalcu_ai_summaries', JSON.stringify(updated));
+        const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
+        localStorage.setItem(key, JSON.stringify(updated));
         return updated;
       });
 
@@ -1485,7 +1541,8 @@ export default function App() {
 
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: localSummary };
-        localStorage.setItem('psycalcu_ai_summaries', JSON.stringify(updated));
+        const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
+        localStorage.setItem(key, JSON.stringify(updated));
         return updated;
       });
 
@@ -3525,6 +3582,7 @@ export default function App() {
           }
         }}
         showToast={showToast}
+        userId={user?.uid}
       />
 
       {/* Aesthetic Footer */}

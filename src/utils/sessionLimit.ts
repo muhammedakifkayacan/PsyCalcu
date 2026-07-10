@@ -25,11 +25,12 @@ export function getStartOfWeek(d: Date = new Date()): string {
 /**
  * Gets the current weekly manual action count from localStorage
  */
-export function getWeeklyManualActionCount(): number {
+export function getWeeklyManualActionCount(userId?: string): number {
   if (typeof window === 'undefined') return 0;
   
   const weekStartStr = getStartOfWeek();
-  const stored = localStorage.getItem('psycalcu_weekly_manual_actions');
+  const key = userId ? `psycalcu_weekly_manual_actions_${userId}` : 'psycalcu_weekly_manual_actions';
+  const stored = localStorage.getItem(key);
   
   if (stored) {
     try {
@@ -49,14 +50,15 @@ export function getWeeklyManualActionCount(): number {
 /**
  * Increments the weekly manual action count in localStorage
  */
-export function incrementWeeklyManualActionCount(amount: number = 1): void {
+export function incrementWeeklyManualActionCount(amount: number = 1, userId?: string): void {
   if (typeof window === 'undefined' || amount <= 0) return;
   
   const weekStartStr = getStartOfWeek();
-  const currentCount = getWeeklyManualActionCount();
+  const currentCount = getWeeklyManualActionCount(userId);
   const nextCount = currentCount + amount;
   
-  localStorage.setItem('psycalcu_weekly_manual_actions', JSON.stringify({
+  const key = userId ? `psycalcu_weekly_manual_actions_${userId}` : 'psycalcu_weekly_manual_actions';
+  localStorage.setItem(key, JSON.stringify({
     weekStart: weekStartStr,
     count: nextCount
   }));
@@ -69,16 +71,18 @@ export function incrementWeeklyManualActionCount(amount: number = 1): void {
  * @param addedAmount - The number of new sessions being added
  * @param isUpdateOnly - True if we are only modifying an existing session (doesn't increase total count)
  * @param isManual - True if the addition is manual, false if synced from calendar
+ * @param userId - Optional unique user identifier to scope weekly actions
  */
 export function validateSessionAction(
   currentTotal: number,
   addedAmount: number,
   isUpdateOnly: boolean = false,
-  isManual: boolean = true
+  isManual: boolean = true,
+  userId?: string
 ): { allowed: boolean; reason: 'weekly' | null; message: string } {
   // Weekly Manual Limit Check
   if (isManual && !isUpdateOnly && addedAmount > 0) {
-    const weeklyCount = getWeeklyManualActionCount();
+    const weeklyCount = getWeeklyManualActionCount(userId);
     if ((weeklyCount + addedAmount) > WEEKLY_MANUAL_LIMIT) {
       return {
         allowed: false,
