@@ -214,19 +214,6 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
         </p>
       </div>
 
-      {isMobile && (
-        <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 text-left text-[11px] text-amber-800 space-y-1.5 leading-relaxed">
-          <div className="font-bold flex items-center gap-1.5 text-xs text-amber-900">
-            <span className="text-sm">📱</span> Mobil & Safari Kullanıcı Uyarısı
-          </div>
-          <p>
-            Mobil cihazlarda (Safari/Chrome) ve uygulama içi tarayıcılarda (WhatsApp, Instagram vb.) "Siteler Arası Takip Engelleme" nedeniyle Google ile giriş yapmak bazen engellenebilir veya sayfa yüklenemiyor hatası verebilir.
-          </p>
-          <p className="font-semibold">
-            Alternatif olarak <span className="text-[#6b705c] font-bold">E-posta & Şifre</span> sekmesini kullanarak hemen üye olabilir veya giriş yapabilirsiniz. Bu yöntem tüm mobil cihazlarda %100 sorunsuz çalışır!
-          </p>
-        </div>
-      )}
 
       {/* Elegant Tab Switcher */}
       <div className="flex bg-slate-100/80 p-1 rounded-2xl border border-slate-200/40">

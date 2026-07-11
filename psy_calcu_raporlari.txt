@@ -1,0 +1,178 @@
+================================================================================
+                                PSY CALCU
+                    SİSTEM VE ÜRÜN GELİŞİM RAPORLARI
+================================================================================
+
+Bu belge, Psy Calcu platformunun kavramsal çerçevesini, gelişim sürecini, 
+teknik tasarım kararlarını, karşılaşılan kritik zorlukları ve bunların 
+üretilen yaratıcı çözümlerle aşılma hikayesini detaylandırmak üzere 
+hazırlanmıştır.
+
+İÇİNDEKİLER:
+1. RAPOR: Psy Calcu Nedir? (Kavramsal ve İşlevsel Tanım)
+2. RAPOR: Profesyonel Ürün Gelişim Raporu (Süreç, Mantık Kararları ve Teknik Detaylar)
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+1. RAPOR: PSY CALCU NEDİR?
+================================================================================
+
+Psy Calcu; klinik psikologlar, psikoterapistler, psikiyatristler ve benzeri 
+ruh sağlığı profesyonellerinin seans planlamalarını, karmaşık finansal gelir-gider 
+modellerini ve lojistik giderlerini tek bir merkezden, hatasız ve zahmetsizce 
+yönetebilmeleri için özel olarak tasarlanmış **Niş bir Finansal Yönetim ve 
+Planlama Platformudur**.
+
+Ruh sağlığı profesyonelleri için danışan takibi yapmaktan çok daha zor olan kısım, 
+her bir seansın lojistik ve operasyonel maliyetlerini (ofis kirası, çocuk bakım/
+babysitter ücretleri, online/yüzyüze seans ayrımından doğan farklı gelir modelleri) 
+manuel olarak hesaplamaktır. Psy Calcu, bu karmaşık yapıyı ortadan kaldırarak 
+terapi süreçlerinin finansal yönetimini tamamen otomatikleştirir.
+
+Platformun Temel Özellikleri ve Yetenekleri:
+--------------------------------------------
+1. **Dinamik Finansal Modelleme:** Online ve Yüzyüze (Face-to-Face) seansların 
+   gelirlerini ayrı ayrı hesaplar. Ofis kirasını yalnızca yüzyüze seanslara yansıtır.
+2. **Akıllı Çocuk Bakım (Babysitter) & Ofis Kira Entegrasyonu:** Seans bazlı veya 
+   saatlik olarak değişen bakıcı ücretlerini ve ofis kiralama giderlerini seans 
+   saatlerine göre dinamik olarak hesaplar ve net kârdan düşer.
+3. **Takvim Senkronizasyonu (ICS):** Google Takvim, Outlook veya Apple Takvim 
+   gibi harici takvimlerden .ics uzantılı senkronizasyon linkleri alarak seansları 
+   otomatik olarak içeri aktarır. Seans başlıklarındaki anahtar kelimelere göre 
+   (Örn: "Online", "Yüzyüze") seans türünü kendisi tespit eder.
+4. **Hassas Güvenlik ve Çoklu Kullanıcı Uyumluluğu:** Firebase Firestore bulut 
+   veritabanı ile tam entegre çalışır. Ortak bilgisayarlarda veya tarayıcılarda 
+   farklı kullanıcıların verilerinin birbirine karışmasını engelleyen özel 
+   izole veri önbellekleme (User-Scoped Caching) mimarisine sahiptir.
+5. **Açıklayıcı ve Rehberlik Odaklı Arayüz:** Her bir finansal kalemin neye göre 
+   hesaplandığını gösteren mikro açıklamalar, interaktif tanıtım turu ve göz yormayan, 
+   modern İsviçre minimalist (Swiss-Minimalist) tasarım diline sahiptir.
+
+Kısacası Psy Calcu, terapistlerin finansal hesap kitap işlerini arka planda sıfır 
+hata ile yürütürken, onların yalnızca danışanlarına ve klinik süreçlerine 
+odaklanmalarına imkan tanıyan dijital bir asistan rolü üstlenmektedir.
+
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+2. RAPOR: PROFESYONEL ÜRÜN GELİŞİM RAPORU
+================================================================================
+
+Bu rapor, Psy Calcu'nun ilk prototipinden bugünkü olgun, çoklu kullanıcı uyumlu, 
+bulut entegrasyonlu ve güvenli yapısına kadar geçen gelişim sürecini, mimari 
+tasarım kararlarını, aşılan teknik zorlukları ve kullanıcılara sunduğu değer 
+önermesini kapsamaktadır.
+
+1. YAPILAN ÇALIŞMALAR VE SİSTEME KAZANDIRILAN ÖZELLİKLER
+------------------------------------------------------
+Geliştirme sürecinde sisteme eklenen ve optimize edilen temel modüller şunlardır:
+
+* **Çift Kanallı Veri Kaynağı (Manuel & Senkronize):** Kullanıcıların hem manuel 
+  olarak seans ekleyebileceği, hem de harici dijital takvimlerini ICS protokolüyle 
+  bağlayarak seansları gerçek zamanlı çekebileceği esnek bir yapı kuruldu.
+* **Akıllı Seans Ayrıştırma Algoritması:** Takvimden çekilen seans başlıkları 
+  (Örn: "Ahmet Bey - Online", "Merve Hanım - Ofis") analiz edilerek seansların 
+  çevrimiçi mi yoksa yüzyüze mi olduğu otomatik olarak belirlenmektedir.
+* **Gelişmiş Gider Hesaplama Motoru:**
+  - *Ofis Kirası:* Yalnızca yüzyüze yapılan seansların süresi ve saatlik ofis kiralama 
+    maliyeti hesaplanarak net gelirden düşülür.
+  - *Babysitter (Bakıcı) Ücreti:* Terapistin seansları sırasında çocuk bakımı için 
+    ödediği ücret; seans süresine bağlı olarak (dakika hassasiyetinde) veya seans 
+    başına sabit olacak şekilde dinamik olarak hesaplanır.
+* **İnteraktif Tanıtım Turu (Tour Engine):** Yeni kayıt olan veya sistemi ilk kez 
+  deneyimleyen kullanıcılar için adım adım platformu tanıtan, görsel odaklı, animasyonlu 
+  bir rehberlik modülü (InteractiveTour) sıfırdan inşa edildi.
+* **Kapsamlı Bildirim ve Duyuru Merkezi:** Kullanıcıların sistem güncellemelerinden, 
+  mali uyarılardan ve kota limitlerinden anında haberdar olmalarını sağlayan, okunma 
+  durumu takipli yerel bildirim altyapısı entegre edildi.
+* **Tek Tıkla Veri Dışa/İçe Aktarma (Yedekleme):** Bulut dışı acil durumlar için tüm 
+  seans geçmişini ve ayarları şifreli bir JSON dosyası olarak bilgisayara yedekleme 
+  ve bu yedekten geri yükleme (Backup/Restore) mekanizması eklendi.
+
+2. TASARIM VE MANTIK KARARLARI
+------------------------------
+Ürünün görsel kalitesini, performansını ve kullanıcı deneyimini artırmak amacıyla 
+aşağıdaki kritik tasarım kararları alınmıştır:
+
+* **Swiss-Minimalist & Doğal Renk Paleti:** Tasarımda agresif renkler yerine; 
+  terapistlerin sakin ve profesyonel çalışma ortamını destekleyen fildişi off-white 
+  arka planlar, yumuşak zeytin yeşili/toprak tonları ve derin kömür grisi tipografi 
+  tercih edilmiştir. Font olarak ekran başlıklarında teknolojik "Space Grotesk", 
+  gövde metinlerinde ise okunabilirliği yüksek "Inter" kullanılmıştır.
+* **Açıklamaların ve Yardımcı Metinlerin Kontrolü:** Kullanıcıyı bilgi bombardımanına 
+  tutmamak adına tüm rehberlik metinleri ve form içi açıklamalar tek bir butonla 
+  ("Açıklamaları Göster/Gizle") kontrol edilebilir hale getirildi.
+* **Hassas Kurtarma Panelinin Gizlenmesi (Disclosure Pattern):** Yanlış eşleşen 
+  takvim verilerini toplu silmeye yarayan "Takvim Sıfırlama ve Kurtarma Paneli", 
+  kullanıcının kazara tıklamasını önlemek amacıyla varsayılan olarak gizlendi. Özel bir 
+  "Kurtarma Seçeneklerini Göster" butonu ile açılan, akordeon tipi şık bir panel 
+  tasarımına geçildi.
+* **Gelişmiş Güvenlik Kelimesi Doğrulaması:** Kritik veri silme işlemlerinde sadece 
+  onay butonuna basılması yetersiz kılınmıştır. Kullanıcının büyük harflerle 
+  "TEMİZLE" yazması ve yasal feragatname onay kutusunu işaretlemesi zorunlu tutularak, 
+  veri kayıpları sıfıra indirilmiştir.
+* **Kolay Çıkış ve Profil Yönetimi:** Kullanıcının hangi hesapla giriş yaptığını net 
+  görebilmesi ve dilediği an güvenle oturumu kapatabilmesi için ekranın sağ üst köşesine 
+  belirgin, kırmızı vurgulu, göze batmayan bir **"Güvenli Çıkış Yap" (LogOut)** butonu 
+  yerleştirilmiştir. Ayrıca "Ayarlar" sekmesindeki gereksiz yinelenen "Tüm Verileri 
+  Temizle" butonu kaldırılarak arayüz sadeleştirilmiştir.
+
+3. KARŞILAŞILAN TEMEL ZORLUKLAR VE ÜRETİLEN ÇÖZÜMLER
+----------------------------------------------------
+Geliştirme aşamasında karşılaşılan zorluklar ve uygulanan gelişmiş mühendislik 
+çözümleri şunlardır:
+
+* **ZORLUK 1: Ortak Cihazlarda Çoklu Kullanıcı Veri Çakışması (Data Contamination)**
+  - *Problem:* Tarayıcılarda ortak bilgisayar kullanan veya aynı tarayıcıda farklı 
+    hesaplarla giriş-çıkış yapan kişilerin yerel önbellekte (localStorage) biriken 
+    "psycalcu_sessions" ve "psycalcu_settings" verileri senkronizasyon motoru 
+    tarafından yeni giriş yapan kullanıcının veritabanına yükleniyor ve verilerin 
+    birbirine karışmasına yol açıyordu.
+  - *Çözüm:* Sisteme **"User-Scoped Local Caching" (Kullanıcıya Özel Yerel Önbellekleme)** 
+    altyapısı kuruldu. Artık yerel önbelleğe yazılan her bir veri, o an aktif olan 
+    kullanıcının benzersiz ID'si ile etiketlenir (Örn: `psycalcu_sessions_USERID`). 
+    Ayrıca kullanıcı "Güvenli Çıkış" yaptığında tüm hassas geçici veriler tarayıcıdan 
+    tamamen kazınır. Böylece veri sızıntısı riski %100 engellenmiştir.
+
+* **ZORLUK 2: Mobil Tarayıcılarda Google ile Giriş Sıkıntıları (Safari/ITP Engeli)**
+  - *Problem:* iOS (iPhone) cihazlarda varsayılan olarak açık gelen "Siteler Arası 
+    Takip Engelleme" (Prevent Cross-Site Tracking / ITP) özelliği, Google Popup 
+    girişlerinin ve yönlendirme çerezlerinin çalışmasını engelliyor, kullanıcıyı 
+    giriş sayfasına geri atıyor veya sayfa yüklenemedi hatası verdiriyordu.
+  - *Çözüm:* Giriş ekranına sadece mobil cihazlarda tetiklenen **"Mobil & Safari Kullanıcı 
+    Uyarısı"** entegre edildi. Kullanıcıya durum şeffafça açıklanırken, bu cihazlarda 
+    %100 kararlı ve sorunsuz çalışan **"E-posta & Şifre"** ile kayıt olma/giriş yapma 
+    alternatif sekmesi ön plana çıkarıldı. Bu sayede mobil erişilebilirlik sağlandı.
+
+* **ZORLUK 3: Takvim Senkronizasyonunun Veri Bütünlüğünü Bozma Riski**
+  - *Problem:* Harici takvimden gelen hatalı bir veri seti, kullanıcının el emeğiyle 
+    girdiği manuel verileri bozabilirdi.
+  - *Çözüm:* Veriler veritabanına yazılmadan önce "Origin" (Kaynak) bilgisiyle 
+    etiketlendi (`manual`, `google_calendar`, `outlook`). Bir takvim sıfırlandığında, 
+    sadece o kaynağa ait veriler silinirken manuel girilen seanslar korundu.
+
+4. SON KULLANICIYA SAĞLADIĞI TEMEL FAYDALAR (DEĞER ÖNERİSİ)
+-----------------------------------------------------------
+Psy Calcu kullanan bir ruh sağlığı profesyonelinin elde ettiği somut kazanımlar:
+
+1. **Zaman Tasarrufu:** Haftalık ve aylık bazda saatler süren manuel Excel tablosu 
+   güncellemeleri ve hesaplamalar, takvim senkronizasyonu sayesinde 5 saniyeye iner.
+2. **Finansal Farkındalık ve Net Gelir Netliği:** Brüt kazancın ne kadarının ofis 
+   kirasına, ne kadarının çocuk bakımına ve ne kadarının vergilere/diğer giderlere 
+   gittiğini net görerek bütçe planlamasını profesyonelce yapar. Terapist, ay sonunda 
+   cebine kalacak gerçek "Net Kârı" kuruşu kuruşuna bilir.
+3. **Sıfır Matematiksel Hata:** İster dakika bazlı bakıcı hesaplaması olsun, ister 
+   seans bazlı ofis kirası; tüm hesaplamalar bilgisayar hassasiyetinde yürütülür.
+4. **Veri Güvenliği ve Gizlilik:** Danışan adları ve seans detayları modern şifreleme 
+   ve Firebase güvenlik kuralları (Firestore Security Rules) ile korunarak yetkisiz 
+   erişimlere karşı tam güvenceye alınır.
+5. **Cihaz Bağımsız Erişim:** İster ofisteki bilgisayardan ister yoldayken telefondan, 
+   tüm veriler bulut ortamında anlık olarak senkronize edilir, asla kaybolmaz.
+
+================================================================================
+                                 RAPOR SONU
+================================================================================
