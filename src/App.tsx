@@ -134,6 +134,7 @@ export default function App() {
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
+  const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>((() => {
     const savedSessions = localStorage.getItem('psycalcu_sessions');
@@ -241,6 +242,15 @@ export default function App() {
       setShowExplanations(savedExplanations !== 'false');
     } catch (e) {
       setShowExplanations(true);
+    }
+  }, [user]);
+
+  // Set initial sync done to true for guest mode, and false for logged-in users initially
+  useEffect(() => {
+    if (!user) {
+      setIsInitialSyncDone(true);
+    } else {
+      setIsInitialSyncDone(false);
     }
   }, [user]);
 
@@ -428,6 +438,46 @@ export default function App() {
         if (savedSettings) {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
         }
+      } else {
+        // Immediately load user-specific cached data for a seamless instant UI transition on different devices
+        const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
+        const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
+        const savedSessions = localStorage.getItem(userSessionsKey);
+        const savedSettings = localStorage.getItem(userSettingsKey);
+        
+        if (savedSessions) {
+          try { 
+            const parsed = JSON.parse(savedSessions);
+            setSessions(autoCorrectPastSessions(parsed)); 
+          } catch (e) {}
+        } else {
+          setSessions([]);
+        }
+        
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings);
+            setSettings({
+              defaultSessionPrice: parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultSessionPrice,
+              defaultBabysitterFee: parsed.defaultBabysitterFee ?? DEFAULT_SETTINGS.defaultBabysitterFee,
+              defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
+              therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
+              calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
+              onlineCalendarWebcalUrl: parsed.onlineCalendarWebcalUrl ?? parsed.calendarWebcalUrl ?? DEFAULT_SETTINGS.onlineCalendarWebcalUrl,
+              faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
+              googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
+              googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
+            });
+          } catch (e) {}
+        } else {
+          setSettings(DEFAULT_SETTINGS);
+        }
+        
+        // Also initialize lastSavedRef to prevent immediate auto-saving before sync
+        lastSavedRef.current = {
+          settings: savedSettings || '',
+          sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]'
+        };
       }
     });
     return () => unsubscribe();
@@ -712,6 +762,7 @@ export default function App() {
         }
       } finally {
         setIsAuthSyncing(false);
+        setIsInitialSyncDone(true);
       }
     };
 
@@ -756,7 +807,7 @@ export default function App() {
     localStorage.setItem(localSettingsKey, JSON.stringify(settings));
     localStorage.setItem(localSessionsKey, JSON.stringify(sessions));
 
-    if (!user || isAuthSyncing || isQuotaExceeded) {
+    if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
       return;
     }
 
@@ -809,7 +860,7 @@ export default function App() {
         setIsCloudSaving(false);
       }
     };
-  }, [settings, sessions, user, isAuthSyncing, isQuotaExceeded]);
+  }, [settings, sessions, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
 
   // Automatic Background Calendar Sync on App Load
   const hasAutoSyncedRef = useRef(false);
