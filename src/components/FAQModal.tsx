@@ -151,17 +151,13 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
               <strong className="text-slate-800">Yerel Hafıza (Giriş Yapılmadan Önce):</strong> Uygulamayı giriş yapmadan kullanıyorsanız, verileriniz tarayıcınızın yerel depolama alanında (Local Storage) tutulur. Tarayıcıyı kapatıp açtığınızda verileriniz korunur; ancak tarayıcı çerezlerini/geçmişini tamamen temizlerseniz yerel verileriniz silinebilir. Bu nedenle ücretsiz üye olmanızı öneririz.
             </li>
           </ul>
+          <p className="text-[11px] text-[#cb997e] font-semibold bg-[#fdfbf7] p-2.5 rounded-xl border border-[#e5e1d8]/50 flex items-start gap-2 mt-2">
+            <span>💡</span>
+            <span>
+              <strong>Yedekleme & Manuel İndirme İpucu:</strong> Dilediğiniz her an seans kayıtlarınızı güvenceye almak veya bilgisayarınıza yerel bir yedek kaydetmek için, seans listesinin üzerinde yer alan E-Tablo entegrasyonunu kullanabilir veya verilerinizi Excel formatında indirebilirsiniz.
+            </span>
+          </p>
         </div>
-      )
-    },
-    {
-      category: 'pricing',
-      icon: <Sparkles className="w-5 h-5 text-[#cb997e]" />,
-      question: "Herhangi bir ücret veya sınırlama var mı?",
-      answer: (
-        <p className="text-slate-600 text-xs md:text-sm leading-relaxed">
-          Hayır, <strong>PsyCalcu tamamen ücretsizdir</strong>. Bireysel klinik ve bütçe yönetimi için herhangi bir süre, seans sayısı veya özellik kısıtlaması bulunmamaktadır. Tüm özelliklere (takvim entegrasyonu, yapay zeka günlük analizleri, detaylı muhasebe raporları ve bulut yedekleme) ücretsiz olarak erişebilirsiniz.
-        </p>
       )
     }
   ];

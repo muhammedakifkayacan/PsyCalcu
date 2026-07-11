@@ -306,6 +306,30 @@ export default function CalendarSyncGuide({
         </div>
       )}
 
+      {/* Clinician Best Practices Recommendation Card */}
+      <div className="bg-emerald-50/40 border border-emerald-100/80 p-6 rounded-2xl text-emerald-900 space-y-3 shadow-xs animate-fade-in">
+        <div className="flex items-center gap-2.5 text-emerald-800 font-bold">
+          <span className="text-lg">💡</span>
+          <h4 className="text-sm font-semibold tracking-wide">Klinisyenler İçin Takvim İpucu & En İyi Pratik</h4>
+        </div>
+        <p className="text-xs leading-relaxed text-emerald-800 font-medium">
+          Takvim entegrasyonunu aktif olarak kullanan psikologlarımıza seans takibini kolaylaştırmak için şu yöntemi tavsiye ediyoruz:
+        </p>
+        <div className="bg-white/95 p-4 rounded-xl border border-emerald-200/50 space-y-2 text-xs">
+          <p className="leading-relaxed text-slate-700">
+            Yeni bir danışan başladığında takvimdeki ilk etkinliği <strong className="text-emerald-700 font-semibold">"Danışan Adı Soyadı 1"</strong> (Örn: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[#cb997e] font-mono">Ahmet Yılmaz 1</code>) olarak isimlendirin. 
+          </p>
+          <p className="leading-relaxed text-slate-700">
+            Seanslar eklendikçe sayıları <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 2</strong>, <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 3</strong> diye ilerletin. Bu sayede:
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-slate-600">
+            <li>Danışanın o an <strong className="font-semibold text-slate-800">kaçıncı seansta</strong> olduğu bilgisini ek bir yere bakmadan doğrudan takvimde görürsünüz.</li>
+            <li>Seansa dair takvime aldığınız klinik notlar birbirine karışmaz, her seans bağımsız kalır.</li>
+            <li><strong className="font-semibold text-slate-800">Geliştirdiğimiz Akıllı Gruplama</strong> sayesinde, seans numarasından ötürü borç listesinde ayrı kutular açılmaz; ad-soyad eşleştiği için tüm borçlu seanslar tek bir danışan kartı altında birleştirilir.</li>
+          </ul>
+        </div>
+      </div>
+
       {/* ICS File Importer with Type Selector */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

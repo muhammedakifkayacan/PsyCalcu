@@ -33,7 +33,7 @@ const firebaseConfig = {
   projectId: "gen-lang-client-0612096853",
   appId: "1:497354453299:web:81b571322c1e1cbe384e46",
   apiKey: "AIzaSyAhJg0E6rhj7B-2DfcU5OkbRGPgfLMR-Yk",
-  authDomain: "gen-lang-client-0612096853.firebaseapp.com",
+  authDomain: "psy-calcu.vercel.app",
   storageBucket: "gen-lang-client-0612096853.firebasestorage.app",
   messagingSenderId: "497354453299"
 };

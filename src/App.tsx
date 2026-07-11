@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings, toTurkishUpper, AppNotification } from './types';
+import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -1158,13 +1158,14 @@ export default function App() {
     // Total unpaid amount
     const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
     
-    // Group by client
+    // Group by client using normalized name
     const clientGroups: Record<string, Session[]> = {};
     unpaidSessions.forEach(s => {
-      if (!clientGroups[s.clientName]) {
-        clientGroups[s.clientName] = [];
+      const normName = getNormalizedClientName(s.clientName);
+      if (!clientGroups[normName]) {
+        clientGroups[normName] = [];
       }
-      clientGroups[s.clientName].push(s);
+      clientGroups[normName].push(s);
     });
     
     // Map to array of client debt info
@@ -3363,7 +3364,7 @@ export default function App() {
                               return (
                                 <div key={s.id} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-slate-100">
                                   <div className="space-y-0.5">
-                                    <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                                    <div className="flex items-center gap-1.5 font-medium text-slate-700 flex-wrap">
                                       <span className="text-[11px]">{new Date(s.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
                                       <span className="text-[10px] text-slate-400">{s.time}</span>
                                       <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold tracking-wider ${
@@ -3371,6 +3372,11 @@ export default function App() {
                                       }`}>
                                         {isFaceToFace ? 'YÜZYÜZE' : 'ONLİNE'}
                                       </span>
+                                      {s.clientName !== debtor.clientName && (
+                                        <span className="text-[10px] font-bold text-[#cb997e] bg-[#fdfbf7] border border-[#e5e1d8]/80 px-1.5 py-0.5 rounded" title="Takvimdeki Etkinlik İsmi">
+                                          {s.clientName}
+                                        </span>
+                                      )}
                                     </div>
                                     {showNotes && s.notes && (
                                       <p className="text-[10px] text-slate-400 italic max-w-[200px] truncate" title={s.notes}>

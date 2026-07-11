@@ -60,3 +60,13 @@ export function toTurkishUpper(str: string): string {
   return str.toLocaleUpperCase('tr-TR');
 }
 
+export function getNormalizedClientName(name: string): string {
+  if (!name) return "";
+  let clean = name.trim();
+  // Regex to remove trailing numbers or patterns like " 1", " - 1", " 12", " (2)", " no 3", " seans 4", " seansı 4"
+  clean = clean.replace(/[\s\-\(\[\{]+(?:seans|no|no:|seansı)?\s*\d+[\)\}\]]*$/i, '');
+  // Strip any trailing spaces or dash noise
+  clean = clean.replace(/[\s\-:\(\)]+$/, '');
+  return clean.trim();
+}
+
