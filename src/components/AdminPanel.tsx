@@ -22,7 +22,16 @@ import {
   UserX,
   Trash2,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Settings,
+  Shield,
+  FileSpreadsheet,
+  Sparkles,
+  FileText,
+  ChevronDown,
+  Calendar,
+  PieChart,
+  CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +42,13 @@ interface Registration {
   status: 'approved' | 'pending' | 'rejected' | 'legacy_active';
   createdAt?: string;
   isLegacy?: boolean;
+  maxSessionsLimit?: string | number;
+  featuresAIAllowed?: boolean;
+  featuresExportAllowed?: boolean;
+  featuresCalendarAllowed?: boolean;
+  featuresAccountingAllowed?: boolean;
+  featuresDebtTrackerAllowed?: boolean;
+  adminNote?: string;
 }
 
 interface AdminPanelProps {
@@ -45,6 +61,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [search, setSearch] = useState('');
+  const [openSettingsUserId, setOpenSettingsUserId] = useState<string | null>(null);
+  const [tempNoteText, setTempNoteText] = useState<{ [userId: string]: string }>({});
 
   // Confirmation Modal with countdown state
   const [confirmModal, setConfirmModal] = useState<{
@@ -97,7 +115,14 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           email: data.email || '',
           displayName: data.displayName || '',
           status: data.status || 'pending',
-          createdAt: data.createdAt
+          createdAt: data.createdAt,
+          maxSessionsLimit: data.maxSessionsLimit ?? 'unlimited',
+          featuresAIAllowed: data.featuresAIAllowed !== false,
+          featuresExportAllowed: data.featuresExportAllowed !== false,
+          featuresCalendarAllowed: data.featuresCalendarAllowed !== false,
+          featuresAccountingAllowed: data.featuresAccountingAllowed !== false,
+          featuresDebtTrackerAllowed: data.featuresDebtTrackerAllowed !== false,
+          adminNote: data.adminNote || ''
         });
       });
       setRegistrations(list);
@@ -194,6 +219,28 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     }
   };
 
+  const handleUpdateAdvancedSettings = async (
+    userId: string, 
+    fields: { 
+      maxSessionsLimit?: string | number; 
+      featuresAIAllowed?: boolean; 
+      featuresExportAllowed?: boolean; 
+      featuresCalendarAllowed?: boolean; 
+      featuresAccountingAllowed?: boolean; 
+      featuresDebtTrackerAllowed?: boolean; 
+      adminNote?: string;
+    }
+  ) => {
+    try {
+      const ref = doc(db, 'registrations', userId);
+      await setDoc(ref, fields, { merge: true });
+      showToast('Kullanıcı kısıtlamaları ve ayarları başarıyla güncellendi.', 'success');
+    } catch (error) {
+      console.error("Error updating advanced settings:", error);
+      showToast('Ayarlar güncellenirken bir hata oluştu.', 'error');
+    }
+  };
+
   // Combine standard registrations and legacy users
   const combinedUsers = useMemo(() => {
     const list: Registration[] = registrations.map(r => ({ ...r, isLegacy: false }));
@@ -206,7 +253,14 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           displayName: lu.therapistName || 'Eski Terapist',
           status: 'pending',
           isLegacy: true,
-          createdAt: undefined
+          createdAt: undefined,
+          maxSessionsLimit: 'unlimited',
+          featuresAIAllowed: true,
+          featuresExportAllowed: true,
+          featuresCalendarAllowed: true,
+          featuresAccountingAllowed: true,
+          featuresDebtTrackerAllowed: true,
+          adminNote: ''
         });
       }
     });
@@ -353,10 +407,10 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
             {filteredRegistrations.map((reg) => (
               <div 
                 key={reg.userId} 
-                className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-[#fdfbf7]/50 transition-colors"
+                className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-[#fdfbf7]/50 transition-colors relative"
               >
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-serif text-slate-800 font-bold text-sm">
                       {reg.displayName || 'Bilinmeyen Kullanıcı'}
                     </span>
@@ -371,6 +425,43 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                       {reg.isLegacy && 'Eski Sistem Kaydı'}
                       {!reg.isLegacy && reg.status === 'pending' && 'Onay Bekliyor'}
                     </span>
+
+                    {/* Advanced Setting Badges */}
+                    {reg.maxSessionsLimit && reg.maxSessionsLimit !== 'unlimited' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider">
+                        ⚠️ En Fazla {reg.maxSessionsLimit} Seans
+                      </span>
+                    )}
+                    {reg.featuresAIAllowed === false && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-100 uppercase tracking-wider">
+                        🤖 AI Engelli
+                      </span>
+                    )}
+                    {reg.featuresExportAllowed === false && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wider">
+                        📊 Dışa Aktarım Engelli
+                      </span>
+                    )}
+                    {reg.featuresCalendarAllowed === false && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-100 uppercase tracking-wider">
+                        📅 Takvim Engelli
+                      </span>
+                    )}
+                    {reg.featuresAccountingAllowed === false && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider">
+                        📉 Rapor Engelli
+                      </span>
+                    )}
+                    {reg.featuresDebtTrackerAllowed === false && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-50 text-red-700 border border-red-100 uppercase tracking-wider">
+                        💸 Borç Engelli
+                      </span>
+                    )}
+                    {reg.adminNote && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider" title={reg.adminNote}>
+                        📌 {reg.adminNote}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400 font-mono">{reg.email}</p>
                   
@@ -416,6 +507,19 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                     </button>
                   )}
 
+                  {/* Settings Gear Button with Hover Effect */}
+                  <button
+                    onClick={() => setOpenSettingsUserId(openSettingsUserId === reg.userId ? null : reg.userId)}
+                    className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                      openSettingsUserId === reg.userId 
+                        ? 'bg-[#6b705c] border-[#6b705c] text-white' 
+                        : 'text-slate-400 hover:text-[#6b705c] hover:bg-slate-50 border-transparent hover:border-slate-100'
+                    }`}
+                    title="Gelişmiş Kısıtlamalar ve Ayarlar"
+                  >
+                    <Settings className={`w-4 h-4 transition-transform duration-300 ${openSettingsUserId === reg.userId ? 'rotate-90' : ''}`} />
+                  </button>
+
                   <button
                     onClick={() => openConfirmModal('delete', reg.userId, reg.email, reg.displayName, reg.isLegacy)}
                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-100 transition-colors cursor-pointer"
@@ -424,6 +528,159 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+
+                {/* Advanced Settings Dropdown / Popup Window */}
+                <AnimatePresence>
+                  {openSettingsUserId === reg.userId && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-6 top-[72px] z-30 w-80 bg-white border border-[#e5e1d8] rounded-[2rem] shadow-xl p-5 space-y-4 text-xs text-slate-700"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                        <span className="font-serif font-bold text-slate-800 flex items-center gap-1.5">
+                          <Settings className="w-4 h-4 text-[#cb997e]" />
+                          Gelişmiş Ayarlar
+                        </span>
+                        <button 
+                          onClick={() => setOpenSettingsUserId(null)}
+                          className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Section 1: Session Limit */}
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-600 flex items-center gap-1">
+                          <Shield className="w-3.5 h-3.5 text-slate-400" />
+                          Maksimum Seans Kotası
+                        </label>
+                        <select
+                          value={reg.maxSessionsLimit ?? 'unlimited'}
+                          onChange={(e) => handleUpdateAdvancedSettings(reg.userId, { maxSessionsLimit: e.target.value })}
+                          className="w-full px-2.5 py-2 text-xs rounded-xl border border-[#e5e1d8] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#6b705c]/30 cursor-pointer"
+                        >
+                          <option value="unlimited">Sınırsız (Önerilen)</option>
+                          <option value="10">10 Seans Sınırı</option>
+                          <option value="50">50 Seans Sınırı</option>
+                          <option value="100">100 Seans Sınırı</option>
+                          <option value="250">250 Seans Sınırı</option>
+                          <option value="500">500 Seans Sınırı</option>
+                        </select>
+                      </div>
+
+                      {/* Section 2: AI Daily Analysis */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-[#cb997e]" />
+                            Yapay Zeka Analiz İzni
+                          </span>
+                          <p className="text-[10px] text-slate-400">Günlük yapay zeka klinik asistanı erişimi</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresAIAllowed: !reg.featuresAIAllowed })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresAIAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresAIAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 3: Spreadsheet Export */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                            Excel / E-Tablo Dışa Aktarım
+                          </span>
+                          <p className="text-[10px] text-slate-400">Seans verilerini Excel/CSV indirme yetkisi</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresExportAllowed: !reg.featuresExportAllowed })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresExportAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresExportAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 4: Calendar Integration */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-rose-500" />
+                            Takvim Entegrasyonu
+                          </span>
+                          <p className="text-[10px] text-slate-400">Google Calendar entegrasyon erişimi</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresCalendarAllowed: reg.featuresCalendarAllowed !== false ? false : true })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresCalendarAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresCalendarAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 5: Accounting Reports */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <PieChart className="w-3.5 h-3.5 text-amber-500" />
+                            Muhasebe & Finans Raporları
+                          </span>
+                          <p className="text-[10px] text-slate-400">Haftalık/aylık detaylı gelir-gider grafikleri</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresAccountingAllowed: reg.featuresAccountingAllowed !== false ? false : true })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresAccountingAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresAccountingAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 6: Debt Tracker */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <CreditCard className="w-3.5 h-3.5 text-red-500" />
+                            Borç & Alacak Takibi
+                          </span>
+                          <p className="text-[10px] text-slate-400">Danışanların ödenmemiş seans bakiyesi takibi</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresDebtTrackerAllowed: reg.featuresDebtTrackerAllowed !== false ? false : true })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresDebtTrackerAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresDebtTrackerAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 7: Admin Private Note */}
+                      <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
+                        <label className="font-semibold text-slate-600 flex items-center gap-1">
+                          <FileText className="w-3.5 h-3.5 text-slate-400" />
+                          Yönetici Özel Notu
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Örn: VIP, Premium, Stajyer..."
+                            value={tempNoteText[reg.userId] !== undefined ? tempNoteText[reg.userId] : (reg.adminNote || '')}
+                            onChange={(e) => setTempNoteText(prev => ({ ...prev, [reg.userId]: e.target.value }))}
+                            className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-[#e5e1d8] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#6b705c]/30"
+                          />
+                          <button
+                            onClick={() => handleUpdateAdvancedSettings(reg.userId, { adminNote: tempNoteText[reg.userId] || '' })}
+                            className="px-3 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[11px] font-semibold rounded-xl cursor-pointer transition-colors shadow-xs"
+                          >
+                            Kaydet
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ))}
           </div>

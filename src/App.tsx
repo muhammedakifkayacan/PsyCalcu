@@ -31,7 +31,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Lightbulb,
-  LogOut
+  LogOut,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -54,6 +55,29 @@ import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQu
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
+
+// Reusable custom view for locked features controlled by the Admin
+const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
+  <div className="bg-white rounded-[2.5rem] border border-[#e5e1d8] p-8 md:p-12 text-center max-w-xl mx-auto shadow-xs my-12 animate-fade-in flex flex-col items-center justify-center space-y-5">
+    <div className="w-16 h-16 rounded-3xl bg-rose-50 flex items-center justify-center text-rose-500 relative">
+      {icon}
+      <div className="absolute -bottom-1 -right-1 bg-white border border-rose-100 rounded-full p-1 shadow-xs">
+        <span className="text-xs">🔒</span>
+      </div>
+    </div>
+    <div className="space-y-2">
+      <h3 className="text-xl font-serif font-bold text-slate-800">{title}</h3>
+      <p className="text-sm text-slate-500 leading-relaxed">
+        {description}
+      </p>
+    </div>
+    <div className="pt-3 border-t border-slate-100 w-full text-center">
+      <p className="text-xs text-slate-400 font-medium">
+        Bu özellik yöneticiniz tarafından geçici olarak sınırlandırılmıştır. Bilgi almak veya aktifleştirmek için lütfen <span className="font-semibold text-[#6b705c]">muhammedakifkayacan@gmail.com</span> ile iletişime geçin.
+      </p>
+    </div>
+  </div>
+);
 
 // Auto-correct any session before July 1, 2026 to be 0 TL and marked as 'paid'
 const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
@@ -128,6 +152,12 @@ export default function App() {
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
   const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [maxSessionsLimit, setMaxSessionsLimit] = useState<string | number>('unlimited');
+  const [featuresAIAllowed, setFeaturesAIAllowed] = useState<boolean>(true);
+  const [featuresExportAllowed, setFeaturesExportAllowed] = useState<boolean>(true);
+  const [featuresCalendarAllowed, setFeaturesCalendarAllowed] = useState<boolean>(true);
+  const [featuresAccountingAllowed, setFeaturesAccountingAllowed] = useState<boolean>(true);
+  const [featuresDebtTrackerAllowed, setFeaturesDebtTrackerAllowed] = useState<boolean>(true);
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
@@ -513,6 +543,12 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setRegistrationStatus(data.status || 'pending');
+          setMaxSessionsLimit(data.maxSessionsLimit ?? 'unlimited');
+          setFeaturesAIAllowed(data.featuresAIAllowed !== false);
+          setFeaturesExportAllowed(data.featuresExportAllowed !== false);
+          setFeaturesCalendarAllowed(data.featuresCalendarAllowed !== false);
+          setFeaturesAccountingAllowed(data.featuresAccountingAllowed !== false);
+          setFeaturesDebtTrackerAllowed(data.featuresDebtTrackerAllowed !== false);
           
           let regCreated = data.createdAt;
           // Protect and correct uzmpsikologbusra@gmail.com's registration date
@@ -905,6 +941,12 @@ export default function App() {
     setSessions([]);
     setSettings(DEFAULT_SETTINGS);
     setUser(null);
+    setMaxSessionsLimit('unlimited');
+    setFeaturesAIAllowed(true);
+    setFeaturesExportAllowed(true);
+    setFeaturesCalendarAllowed(true);
+    setFeaturesAccountingAllowed(true);
+    setFeaturesDebtTrackerAllowed(true);
   };
 
   // UI state
@@ -1289,6 +1331,14 @@ export default function App() {
       return;
     }
 
+    if (!existing && maxSessionsLimit !== 'unlimited') {
+      const limitNum = typeof maxSessionsLimit === 'string' ? parseInt(maxSessionsLimit, 10) : maxSessionsLimit;
+      if (!isNaN(limitNum) && sessions.length >= limitNum) {
+        showToast(`Yöneticiniz tarafından belirlenen maksimum seans limitine (${limitNum}) ulaştınız. Daha fazla seans eklemek için lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.`, 'error');
+        return;
+      }
+    }
+
     if (existing && isOlderThan7Days(existing.date)) {
       if (existing.date !== savedSession.date || existing.time !== savedSession.time) {
         showToast('7 günden eski seansların tarihi veya saati değiştirilemez!', 'error');
@@ -1491,6 +1541,10 @@ export default function App() {
   };
 
   const handleGenerateSummary = async () => {
+    if (featuresAIAllowed === false) {
+      showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      return;
+    }
     setIsSummaryLoading(true);
     setShowAiDetails(true);
     try {
@@ -1737,6 +1791,12 @@ export default function App() {
   };
 
   const handleManualCalendarSync = async (showNotificationOnNoChanges = true) => {
+    if (featuresCalendarAllowed === false) {
+      if (showNotificationOnNoChanges) {
+        showToast('Takvim entegrasyonu yönetici tarafından devre dışı bırakılmış!', 'error');
+      }
+      return;
+    }
     const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled } = settings;
     if (!calendarSyncEnabled) {
       if (showNotificationOnNoChanges) {
@@ -1845,6 +1905,10 @@ export default function App() {
 
   // Google Sheets Export Logic (Valid CSV format with UTF-8 BOM)
   const handleExportCSV = () => {
+    if (featuresExportAllowed === false) {
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      return;
+    }
     let csvContent = "\uFEFF"; // BOM for Excel/Sheets compatibility
     csvContent += "Tarih,Saat,Danışan Adı,Seans Tipi,Süre (Dakika),Seans Ücreti (₺),Bakıcı Gideri (₺),Ofis Kira Gideri (₺),Net Kazanç (₺),Notlar,Entegrasyon Durumu\n";
     
@@ -1883,6 +1947,10 @@ export default function App() {
   };
 
   const handleCopySessionsToClipboard = () => {
+    if (featuresExportAllowed === false) {
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      return;
+    }
     let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
     
     sessions.forEach(s => {
@@ -2338,29 +2406,29 @@ export default function App() {
           <button
             id="tab-stats"
             onClick={() => setActiveTab('stats')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
               activeTab === 'stats' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
-            Muhasebe Raporu
+            Muhasebe Raporu {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
           </button>
           <button
             id="tab-debts"
             onClick={() => setActiveTab('debts')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
               activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
-            Borç Takip
+            Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
           </button>
           <button
             id="tab-sync"
             onClick={() => setActiveTab('sync')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
               activeTab === 'sync' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
             }`}
           >
-            Takvim Entegrasyonu
+            Takvim Entegrasyonu {featuresCalendarAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
           </button>
           <button
             id="tab-backup"
@@ -3133,18 +3201,24 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setShowAiDetails(true);
-                        if (!aiSummaries[selectedDate]) {
-                          handleGenerateSummary();
-                        }
-                      }}
-                      className="px-5 py-2.5 bg-[#cb997e] hover:bg-[#b58368] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {aiSummaries[selectedDate] ? 'Analizi Detaylıca Göster' : 'Yapay Zeka ile Analiz Et'}
-                    </button>
+                    {featuresAIAllowed === false ? (
+                      <span className="text-xs text-rose-600 font-semibold bg-rose-50 border border-rose-100 px-4 py-2 rounded-full flex items-center gap-1.5 shrink-0 select-none">
+                        <span>🔒</span> Devre Dışı
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowAiDetails(true);
+                          if (!aiSummaries[selectedDate]) {
+                            handleGenerateSummary();
+                          }
+                        }}
+                        className="px-5 py-2.5 bg-[#cb997e] hover:bg-[#b58368] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {aiSummaries[selectedDate] ? 'Analizi Detaylıca Göster' : 'Yapay Zeka ile Analiz Et'}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div id="ai-summary-card" className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-sm p-6 md:p-8 mt-6 animate-fade-in">
@@ -3170,32 +3244,38 @@ export default function App() {
                           Detayları Gizle
                         </button>
 
-                        <button
-                          onClick={handleGenerateSummary}
-                          disabled={isSummaryLoading}
-                          className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
-                            isSummaryLoading 
-                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                              : 'bg-[#cb997e] hover:bg-[#b58368] text-white'
-                          }`}
-                        >
-                          {isSummaryLoading ? (
-                            <>
-                              <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                              Özetleniyor...
-                            </>
-                          ) : aiSummaries[selectedDate] ? (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5" />
-                              Analizi Yenile
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="w-3.5 h-3.5" />
-                              Yapay Zeka ile Analiz Et
-                            </>
-                          )}
-                        </button>
+                        {featuresAIAllowed === false ? (
+                          <span className="text-xs text-rose-600 font-semibold bg-rose-50 border border-rose-100 px-4 py-2.5 rounded-full flex items-center gap-1.5 shrink-0 select-none">
+                            <span>🔒</span> Devre Dışı
+                          </span>
+                        ) : (
+                          <button
+                            onClick={handleGenerateSummary}
+                            disabled={isSummaryLoading}
+                            className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                              isSummaryLoading 
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                : 'bg-[#cb997e] hover:bg-[#b58368] text-white'
+                            }`}
+                          >
+                            {isSummaryLoading ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                                Özetleniyor...
+                              </>
+                            ) : aiSummaries[selectedDate] ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Analizi Yenile
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3.5 h-3.5" />
+                                Yapay Zeka ile Analiz Et
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -3241,7 +3321,15 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.2 }}
             >
-              <StatsDashboard sessions={sessions} settings={settings} showExplanations={showExplanations} />
+              {featuresAccountingAllowed === false ? (
+                <FeatureLockedView 
+                  title="Muhasebe Raporu Sınırlandırıldı" 
+                  icon={<TrendingUp className="w-8 h-8" />} 
+                  description="Finansal muhasebe raporlarınız, seans istatistikleriniz ve aylık gelir-gider grafikleriniz geçici olarak devre dışıdır." 
+                />
+              ) : (
+                <StatsDashboard sessions={sessions} settings={settings} showExplanations={showExplanations} />
+              )}
             </motion.div>
           )}
 
@@ -3254,7 +3342,15 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              {/* Header Card */}
+              {featuresDebtTrackerAllowed === false ? (
+                <FeatureLockedView 
+                  title="Borç Takibi Sınırlandırıldı" 
+                  icon={<Wallet className="w-8 h-8" />} 
+                  description="Danışan seans ücretleri borç, alacak ve tahsilat takibi modülü geçici olarak devre dışıdır." 
+                />
+              ) : (
+                <>
+                  {/* Header Card */}
               <div className="bg-[#cb997e] p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
                 <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
                 <div className="max-w-2xl">
@@ -3416,6 +3512,8 @@ export default function App() {
                   )}
                 </div>
               </div>
+            </>
+          )}
             </motion.div>
           )}
 
@@ -3427,22 +3525,30 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.2 }}
             >
-              <CalendarSyncGuide
-                onImportSessions={handleImportSessions}
-                defaultPrice={settings.defaultSessionPrice}
-                defaultBabysitterFee={settings.defaultBabysitterFee}
-                defaultOfficeRentFee={settings.defaultOfficeRentFee}
-                settings={settings}
-                onSaveSettings={(updated) => setSettings(updated)}
-                showToast={showToast}
-                sessions={sessions}
-                onDeleteSessions={(ids) => {
-                  setSessions(prev => prev.filter(s => !ids.includes(s.id)));
-                }}
-                onGoToDate={(date) => setSelectedDate(date)}
-                setActiveTab={setActiveTab}
-                showExplanations={showExplanations}
-              />
+              {featuresCalendarAllowed === false ? (
+                <FeatureLockedView 
+                  title="Takvim Entegrasyonu Sınırlandırıldı" 
+                  icon={<CalendarIcon className="w-8 h-8" />} 
+                  description="Dış takvim dosyaları ve Google Calendar çift yönlü eşitleme modülü geçici olarak devre dışıdır." 
+                />
+              ) : (
+                <CalendarSyncGuide
+                  onImportSessions={handleImportSessions}
+                  defaultPrice={settings.defaultSessionPrice}
+                  defaultBabysitterFee={settings.defaultBabysitterFee}
+                  defaultOfficeRentFee={settings.defaultOfficeRentFee}
+                  settings={settings}
+                  onSaveSettings={(updated) => setSettings(updated)}
+                  showToast={showToast}
+                  sessions={sessions}
+                  onDeleteSessions={(ids) => {
+                    setSessions(prev => prev.filter(s => !ids.includes(s.id)));
+                  }}
+                  onGoToDate={(date) => setSelectedDate(date)}
+                  setActiveTab={setActiveTab}
+                  showExplanations={showExplanations}
+                />
+              )}
             </motion.div>
           )}
 
@@ -3487,27 +3593,38 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="space-y-2 pt-2">
-                    {/* Clipboard Copy Button */}
-                    <button
-                      type="button"
-                      onClick={handleCopySessionsToClipboard}
-                      className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                    >
-                      <FileSpreadsheet className="w-4 h-4" />
-                      Google E-Tablo için Kopyala
-                    </button>
+                  {featuresExportAllowed === false ? (
+                    <div className="space-y-2 pt-2 bg-rose-50/50 p-4 rounded-2xl border border-rose-100 flex flex-col items-center text-center">
+                      <span className="text-xs text-rose-700 font-semibold flex items-center gap-1.5 select-none">
+                        <span>🔒</span> Bu Özellik Devre Dışı Bırakıldı
+                      </span>
+                      <p className="text-[10px] text-rose-500 leading-relaxed font-medium">
+                        Seans verilerini Excel/CSV formatında dışa aktarma yetkiniz bulunmamaktadır. Bilgi almak için lütfen yöneticinizle iletişime geçin.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-2">
+                      {/* Clipboard Copy Button */}
+                      <button
+                        type="button"
+                        onClick={handleCopySessionsToClipboard}
+                        className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                      >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        Google E-Tablo için Kopyala
+                      </button>
 
-                    {/* Direct Export to Excel button */}
-                    <button
-                      type="button"
-                      onClick={handleExportCSV}
-                      className="w-full py-3 bg-[#cb997e]/10 hover:bg-[#cb997e]/25 text-[#a26848] text-xs font-semibold rounded-xl border border-[#cb997e]/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <span>📥</span>
-                      Excel / CSV Olarak İndir
-                    </button>
-                  </div>
+                      {/* Direct Export to Excel button */}
+                      <button
+                        type="button"
+                        onClick={handleExportCSV}
+                        className="w-full py-3 bg-[#cb997e]/10 hover:bg-[#cb997e]/25 text-[#a26848] text-xs font-semibold rounded-xl border border-[#cb997e]/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <span>📥</span>
+                        Excel / CSV Olarak İndir
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Offline Secure Backup Card */}
