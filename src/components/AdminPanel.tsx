@@ -384,7 +384,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       </div>
 
       {/* Registrations List */}
-      <div className="bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-xs overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-xs relative z-10">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
             <RefreshCw className="w-8 h-8 text-[#6b705c] animate-spin" />
@@ -404,10 +404,16 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           </div>
         ) : (
           <div className="divide-y divide-[#f5f5f0]">
-            {filteredRegistrations.map((reg) => (
+            {filteredRegistrations.map((reg, index) => (
               <div 
                 key={reg.userId} 
-                className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-[#fdfbf7]/50 transition-colors relative"
+                className={`p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-[#fdfbf7]/50 transition-colors relative ${
+                  openSettingsUserId === reg.userId ? 'z-30' : 'z-10'
+                } ${
+                  index === 0 ? 'rounded-t-[2.5rem]' : ''
+                } ${
+                  index === filteredRegistrations.length - 1 ? 'rounded-b-[2.5rem]' : ''
+                }`}
               >
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
