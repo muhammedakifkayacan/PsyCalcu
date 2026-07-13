@@ -63,6 +63,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
   // Filter sessions by date range
   const filteredSessions = useMemo(() => {
     return sessions.filter(s => {
+      if (s.type === 'non-session') return false; // Exclude non-session entries from accounting metrics entirely
       if (dateRange.start && s.date < dateRange.start) return false;
       if (dateRange.end && s.date > dateRange.end) return false;
       return true;

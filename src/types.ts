@@ -1,4 +1,4 @@
-export type SessionType = 'online' | 'face-to-face' | 'cancelled';
+export type SessionType = 'online' | 'face-to-face' | 'cancelled' | 'non-session';
 
 export interface Session {
   id: string;

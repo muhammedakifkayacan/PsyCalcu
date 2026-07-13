@@ -150,6 +150,12 @@ export default function SessionModal({
       setPrice(0);
       setHasBabysitterFee(false);
       setHasOfficeRentFee(false);
+    } else if (newType === 'non-session') {
+      // Non-session entries are not billable, so 0 price and no expenses
+      setPrice(0);
+      setHasBabysitterFee(false);
+      setHasOfficeRentFee(false);
+      setPaymentStatus('unpaid');
     } else if (newType === 'face-to-face') {
       if (price === 0) {
         setPrice(defaultPrice);
@@ -169,6 +175,13 @@ export default function SessionModal({
     e.preventDefault();
     if (!clientName.trim()) return;
 
+    const isNonSession = type === 'non-session';
+    const sessionPrice = isNonSession ? 0 : Number(price);
+    const hasBaby = isNonSession ? false : hasBabysitterFee;
+    const babyAmt = isNonSession ? 0 : (hasBaby ? Number(babysitterFeeAmount) : 0);
+    const hasOffice = isNonSession ? false : hasOfficeRentFee;
+    const officeAmt = isNonSession ? 0 : (hasOffice ? Number(officeRentFeeAmount) : 0);
+
     const sessionData: Session = {
       id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
       clientName: clientName.trim(),
@@ -176,15 +189,15 @@ export default function SessionModal({
       date,
       time,
       duration: Number(duration),
-      price: Number(price),
-      hasBabysitterFee,
-      babysitterFeeAmount: hasBabysitterFee ? Number(babysitterFeeAmount) : 0,
-      hasOfficeRentFee,
-      officeRentFeeAmount: hasOfficeRentFee ? Number(officeRentFeeAmount) : 0,
+      price: sessionPrice,
+      hasBabysitterFee: hasBaby,
+      babysitterFeeAmount: babyAmt,
+      hasOfficeRentFee: hasOffice,
+      officeRentFeeAmount: officeAmt,
       notes: notes.trim(),
       isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
       syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
-      paymentStatus: type === 'cancelled' ? 'unpaid' : paymentStatus
+      paymentStatus: (type === 'cancelled' || type === 'non-session') ? 'unpaid' : paymentStatus
     };
 
     onSave(sessionData);
@@ -234,7 +247,7 @@ export default function SessionModal({
           {/* Session Type Selector */}
           <div className="space-y-1">
             <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SEANS TİPİ</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => handleTypeChange('online')}
@@ -270,6 +283,18 @@ export default function SessionModal({
               >
                 <Ban className="w-3.5 h-3.5" />
                 İptal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTypeChange('non-session')}
+                className={`py-2 px-1 sm:px-2 rounded-xl border text-[11px] sm:text-[11px] font-semibold flex items-center justify-center gap-1 sm:gap-1 transition-all cursor-pointer ${
+                  type === 'non-session'
+                    ? 'bg-slate-100 border-slate-300 text-slate-800 ring-2 ring-slate-200'
+                    : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Seans Değil
               </button>
             </div>
           </div>
@@ -361,14 +386,19 @@ export default function SessionModal({
                   type="number"
                   required
                   min="0"
-                  value={price === 0 ? '' : price}
+                  disabled={type === 'cancelled' || type === 'non-session'}
+                  value={(type === 'cancelled' || type === 'non-session') ? 0 : (price === 0 ? '' : price)}
                   onChange={(e) => {
                     const val = e.target.value;
                     setPrice(val === '' ? '' : Number(val));
                     setIsPriceManuallyEdited(true);
                   }}
                   onFocus={(e) => e.target.select()}
-                  className="w-full pl-7 pr-2 py-1.5 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                  className={`w-full pl-7 pr-2 py-1.5 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                    (type === 'cancelled' || type === 'non-session')
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed font-medium'
+                      : 'bg-[#fdfbf7] border-[#e5e1d8]'
+                  }`}
                 />
               </div>
               {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
@@ -387,7 +417,7 @@ export default function SessionModal({
           </div>
 
           {/* Payment Status Selector */}
-          {type !== 'cancelled' && (
+          {type !== 'cancelled' && type !== 'non-session' && (
             <div className="space-y-1 bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] flex items-center justify-between animate-fade-in">
               <div>
                 <span className="text-xs font-bold text-[#6b705c] block">Ödeme Durumu</span>
@@ -432,7 +462,7 @@ export default function SessionModal({
                     checked={hasBabysitterFee}
                     onChange={(e) => setHasBabysitterFee(e.target.checked)}
                     className="sr-only peer"
-                    disabled={type === 'cancelled'}
+                    disabled={type === 'cancelled' || type === 'non-session'}
                   />
                   <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                 </label>
@@ -482,7 +512,7 @@ export default function SessionModal({
                     checked={hasOfficeRentFee}
                     onChange={(e) => setHasOfficeRentFee(e.target.checked)}
                     className="sr-only peer"
-                    disabled={type === 'cancelled'}
+                    disabled={type === 'cancelled' || type === 'non-session'}
                   />
                   <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                 </label>

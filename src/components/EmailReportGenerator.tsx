@@ -51,7 +51,7 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
   // Compute stats for selected month & its weeks
   const reportData = useMemo(() => {
     const todayStr = new Date().toLocaleDateString('sv-SE');
-    const monthSessions = sessions.filter(s => s.date.startsWith(selectedMonth));
+    const monthSessions = sessions.filter(s => s.date.startsWith(selectedMonth) && s.type !== 'non-session');
     
     let grossIncome = 0;
     let babysitterFees = 0;

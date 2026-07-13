@@ -15,6 +15,7 @@ import {
   RefreshCw,
   HelpCircle,
   FileSpreadsheet,
+  FileText,
   AlertCircle,
   XCircle,
   X,
@@ -40,7 +41,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts } from './types';
+import { Session, SessionType, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -1050,7 +1051,7 @@ export default function App() {
   const [searchTabQuery, setSearchTabQuery] = useState('');
   const [searchStartDate, setSearchStartDate] = useState('');
   const [searchEndDate, setSearchEndDate] = useState('');
-  const [searchType, setSearchType] = useState<'all' | 'online' | 'face-to-face' | 'cancelled'>('all');
+  const [searchType, setSearchType] = useState<'all' | 'online' | 'face-to-face' | 'cancelled' | 'non-session'>('all');
   const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -1143,6 +1144,7 @@ export default function App() {
         if (searchType === 'online' && session.type !== 'online') return false;
         if (searchType === 'face-to-face' && session.type !== 'face-to-face') return false;
         if (searchType === 'cancelled' && session.type !== 'cancelled') return false;
+        if (searchType === 'non-session' && session.type !== 'non-session') return false;
       }
 
       // 5. Payment status filter
@@ -1161,6 +1163,7 @@ export default function App() {
     let onlineCount = searchedAndFilteredSessions.filter(s => s.type === 'online').length;
     let faceToFaceCount = searchedAndFilteredSessions.filter(s => s.type === 'face-to-face').length;
     let cancelledCount = searchedAndFilteredSessions.filter(s => s.type === 'cancelled').length;
+    let nonSessionCount = searchedAndFilteredSessions.filter(s => s.type === 'non-session').length;
 
     let brütGelir = 0;
     let bakiciGideri = 0;
@@ -1169,7 +1172,7 @@ export default function App() {
     let odenmeyenMiktar = 0;
 
     searchedAndFilteredSessions.forEach(s => {
-      if (s.type !== 'cancelled') {
+      if (s.type !== 'cancelled' && s.type !== 'non-session') {
         brütGelir += s.price;
         bakiciGideri += s.babysitterFeeAmount || 0;
         ofisGideri += s.officeRentFeeAmount || 0;
@@ -1311,9 +1314,9 @@ export default function App() {
       return `${h}:${m}`;
     };
 
-    // Filter non-cancelled, unpaid, and realized (past or present) sessions
+    // Filter non-cancelled, non-session, unpaid, and realized (past or present) sessions
     const unpaidSessions = sessions.filter(s => {
-      if (s.type === 'cancelled' || s.paymentStatus === 'paid') return false;
+      if (s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
       const sessionDateTime = `${s.date}T${padTime(s.time)}`;
       return sessionDateTime <= nowStr;
     });
@@ -1378,6 +1381,8 @@ export default function App() {
       if (s.date.startsWith(currentYearMonth)) {
         if (s.type === 'cancelled') {
           cancelledCount++;
+        } else if (s.type === 'non-session') {
+          // Skip non-session from accounting metrics
         } else {
           grossIncome += Number(s.price) || 0;
           babysitterFees += s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
@@ -1415,7 +1420,7 @@ export default function App() {
     let activeCount = 0;
 
     filteredSessions.forEach(s => {
-      if (s.type !== 'cancelled') {
+      if (s.type !== 'cancelled' && s.type !== 'non-session') {
         dayGross += Number(s.price) || 0;
         dayBabysitter += s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
         dayOfficeRent += s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
@@ -1500,13 +1505,17 @@ export default function App() {
     localStorage.setItem('psycalcu_sessions', JSON.stringify([]));
   };
 
-  const handleToggleType = (id: string, currentType: 'online' | 'face-to-face' | 'cancelled') => {
+  const handleToggleType = (id: string, currentType: SessionType) => {
     const session = sessions.find(s => s.id === id);
     if (session && isOlderThan7Days(session.date)) {
       showToast('7 günden eski seansların tipi değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
     }
-    const nextTypeMap: Record<string, 'online' | 'face-to-face' | 'cancelled'> = {
+    if (currentType === 'non-session') {
+      showToast('Seans dışı notlar hızlı değiştirilemez. Düzenleme panelinden güncelleyin.', 'error');
+      return;
+    }
+    const nextTypeMap: Record<string, SessionType> = {
       'online': 'face-to-face',
       'face-to-face': 'cancelled',
       'cancelled': 'online'
@@ -1713,7 +1722,7 @@ export default function App() {
     } catch (err: any) {
       console.warn("Server call failed, generating local smart assessment:", err);
       
-      const activeSessions = filteredSessions ? filteredSessions.filter((s: any) => s.type !== 'cancelled') : [];
+      const activeSessions = filteredSessions ? filteredSessions.filter((s: any) => s.type !== 'cancelled' && s.type !== 'non-session') : [];
       const cancelledSessions = filteredSessions ? filteredSessions.filter((s: any) => s.type === 'cancelled') : [];
       const onlineCount = activeSessions.filter((s: any) => s.type === 'online').length;
       const f2fCount = activeSessions.filter((s: any) => s.type === 'face-to-face').length;
@@ -2060,11 +2069,11 @@ export default function App() {
     csvContent += "Tarih,Saat,Danışan Adı,Seans Tipi,Süre (Dakika),Seans Ücreti (₺),Bakıcı Gideri (₺),Ofis Kira Gideri (₺),Net Kazanç (₺),Notlar,Entegrasyon Durumu\n";
     
     sessions.forEach(s => {
-      const gross = s.type === 'cancelled' ? 0 : Number(s.price);
-      const baby = s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0;
-      const office = s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0;
+      const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
+      const baby = s.type === 'non-session' ? 0 : (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0);
+      const office = s.type === 'non-session' ? 0 : (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0);
       const net = Math.max(0, gross - (baby + office));
-      const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : 'İptal';
+      const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
       
       const row = [
@@ -2101,11 +2110,11 @@ export default function App() {
     let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
     
     sessions.forEach(s => {
-      const gross = s.type === 'cancelled' ? 0 : Number(s.price);
-      const baby = s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0;
-      const office = s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0;
+      const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
+      const baby = s.type === 'non-session' ? 0 : (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0);
+      const office = s.type === 'non-session' ? 0 : (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0);
       const net = Math.max(0, gross - (baby + office));
-      const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : 'İptal';
+      const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
       
       const row = [
@@ -2698,15 +2707,6 @@ export default function App() {
             Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
           </button>
           <button
-            id="tab-search"
-            onClick={() => setActiveTab('search')}
-            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-              activeTab === 'search' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
-            }`}
-          >
-            Detaylı Arama & Hesapla
-          </button>
-          <button
             id="tab-sync"
             onClick={() => setActiveTab('sync')}
             className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
@@ -3295,6 +3295,8 @@ export default function App() {
                             className={`group flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-2xl border transition-all ${
                               isCancelled 
                                 ? 'bg-red-50/20 border-red-100 opacity-60' 
+                                : session.type === 'non-session'
+                                ? 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/60'
                                 : session.isSyncedFromCalendar
                                 ? isFaceToFace 
                                   ? 'bg-amber-50/10 border-dashed border-[#cb997e]/60 hover:border-[#cb997e] hover:shadow-xs' 
@@ -3311,7 +3313,7 @@ export default function App() {
                                 {session.time}
                               </p>
                               <p className="text-[10px] text-slate-600 tracking-wider font-bold mt-0.5">
-                                {isCancelled ? 'İPTAL' : `${session.duration} DK`}
+                                {isCancelled ? 'İPTAL' : session.type === 'non-session' ? 'NOT / GÖREV' : `${session.duration} DK`}
                               </p>
                             </div>
 
@@ -3319,6 +3321,8 @@ export default function App() {
                             <div className={`hidden sm:block w-[3px] h-10 rounded-full shrink-0 ${
                               isCancelled 
                                 ? 'bg-red-300' 
+                                : session.type === 'non-session'
+                                ? 'bg-slate-400'
                                 : isFaceToFace 
                                 ? 'bg-amber-400' 
                                 : 'bg-emerald-400'
@@ -3333,6 +3337,10 @@ export default function App() {
                                 {isCancelled ? (
                                   <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <Ban className="w-2.5 h-2.5" /> İPTAL
+                                  </span>
+                                ) : session.type === 'non-session' ? (
+                                  <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
+                                    <FileText className="w-2.5 h-2.5" /> SEANS DIŞI NOT
                                   </span>
                                 ) : isFaceToFace ? (
                                   <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
@@ -3364,39 +3372,50 @@ export default function App() {
                             </div>
 
                             {/* Financial item state */}
-                            <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-2">
-                              <div>
-                                <p className={`text-sm font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
-                                  +₺{session.price}
-                                </p>
-                                {session.hasBabysitterFee && (
-                                  <p className="text-[10px] text-rose-500 font-semibold mt-0.5">
-                                    -₺{session.babysitterFeeAmount} (Bakıcı)
+                            {session.type !== 'non-session' ? (
+                              <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-2">
+                                <div>
+                                  <p className={`text-sm font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
+                                    +₺{session.price}
                                   </p>
+                                  {session.hasBabysitterFee && (
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-0.5">
+                                      -₺{session.babysitterFeeAmount} (Bakıcı)
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Payment Status Toggle Badge */}
+                                {!isCancelled && (
+                                  <button
+                                    onClick={() => handleTogglePaymentStatus(session.id)}
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
+                                      session.paymentStatus === 'paid'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                    }`}
+                                    title={session.paymentStatus === 'paid' ? 'Ödenmedi olarak işaretle' : 'Ödendi olarak işaretle'}
+                                  >
+                                    {session.paymentStatus === 'paid' ? '● ÖDENDİ' : '○ ÖDENMEDİ'}
+                                  </button>
                                 )}
                               </div>
-
-                              {/* Payment Status Toggle Badge */}
-                              {!isCancelled && (
-                                <button
-                                  onClick={() => handleTogglePaymentStatus(session.id)}
-                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
-                                    session.paymentStatus === 'paid'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                      : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                                  }`}
-                                  title={session.paymentStatus === 'paid' ? 'Ödenmedi olarak işaretle' : 'Ödendi olarak işaretle'}
-                                >
-                                  {session.paymentStatus === 'paid' ? '● ÖDENDİ' : '○ ÖDENMEDİ'}
-                                </button>
-                              )}
-                            </div>
+                            ) : (
+                              <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-center items-center py-1.5 px-3 bg-slate-100 border border-slate-200/50 rounded-xl min-w-[100px]">
+                                <span className="text-[10px] font-bold text-slate-500 tracking-wider">SEANS DIŞI</span>
+                                <span className="text-[9px] text-slate-400 mt-0.5">Mali Etki Yok</span>
+                              </div>
+                            )}
 
                             {/* Quick Actions (Hover visible on desktop, always visible on mobile) */}
                             <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0 flex-wrap">
                               {/* Toggle Type */}
                               <button
                                 onClick={() => {
+                                  if (session.type === 'non-session') {
+                                    showToast('Seans dışı notlar hızlı değiştirilemez.', 'error');
+                                    return;
+                                  }
                                   if (isOlderThan7Days(session.date)) {
                                     showToast('7 günden eski seansların tipi değiştirilemez! (Muhasebe kilitlenmiştir)', 'error');
                                     return;
@@ -3404,11 +3423,12 @@ export default function App() {
                                   handleToggleType(session.id, session.type);
                                 }}
                                 className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-colors cursor-pointer border md:border-transparent ${
-                                  isOlderThan7Days(session.date)
+                                  isOlderThan7Days(session.date) || session.type === 'non-session'
                                     ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-[#6b705c] hover:bg-slate-200/60 md:bg-transparent md:text-slate-500 md:hover:bg-slate-50'
                                 }`}
-                                title={isOlderThan7Days(session.date) ? '7 günden eski seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
+                                title={session.type === 'non-session' ? 'Seans dışı notlar hızlı değiştirilemez' : isOlderThan7Days(session.date) ? '7 günden eski seansların tipi değiştirilemez' : 'Seans Tipini Değiştir'}
+                                disabled={isOlderThan7Days(session.date) || session.type === 'non-session'}
                               >
                                 <RefreshCw className="w-4 h-4 md:w-3.5 md:h-3.5" />
                               </button>
@@ -3416,6 +3436,10 @@ export default function App() {
                               {/* Toggle Babysitter */}
                               <button
                                 onClick={() => {
+                                  if (session.type === 'non-session') {
+                                    showToast('Seans dışı notların bakıcı ücreti bulunmaz.', 'error');
+                                    return;
+                                  }
                                   if (isOlderThan7Days(session.date)) {
                                     showToast('7 günden eski seansların bakıcı ücreti değiştirilemez! (Muhasebe kilitlenmiştir)', 'error');
                                     return;
@@ -3423,13 +3447,14 @@ export default function App() {
                                   handleToggleBabysitter(session.id);
                                 }}
                                 className={`p-2.5 md:p-1.5 rounded-xl md:rounded-lg transition-all cursor-pointer border md:border-transparent ${
-                                  isOlderThan7Days(session.date)
+                                  isOlderThan7Days(session.date) || session.type === 'non-session'
                                     ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed opacity-40 md:bg-transparent md:border-transparent'
                                     : session.hasBabysitterFee 
                                     ? 'text-blue-700 bg-blue-100/80 border-blue-200 hover:bg-blue-100 md:bg-blue-50/50 md:text-blue-500 md:hover:bg-blue-50' 
                                     : 'text-slate-700 bg-slate-100/95 border-slate-200/50 hover:text-blue-600 hover:bg-blue-50 md:bg-transparent md:text-slate-400'
                                 }`}
-                                title={isOlderThan7Days(session.date) ? '7 günden eski seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
+                                title={session.type === 'non-session' ? 'Seans dışı notların bakıcı ücreti bulunmaz' : isOlderThan7Days(session.date) ? '7 günden eski seansların bakıcı ücreti değiştirilemez' : 'Bakıcı Ücretini Aç/Kapat'}
+                                disabled={isOlderThan7Days(session.date) || session.type === 'non-session'}
                               >
                                 <span className="text-xs font-bold font-serif leading-none">👶</span>
                               </button>
@@ -4096,6 +4121,7 @@ export default function App() {
                       <option value="online">Çevrimiçi Seanslar</option>
                       <option value="face-to-face">Yüz Yüze Seanslar</option>
                       <option value="cancelled">İptal Edilenler</option>
+                      <option value="non-session">Seans Dışı Notlar / Bloklar</option>
                     </select>
                   </div>
 
