@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -27,6 +27,21 @@ export default function SettingsModal({
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
 
+  const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
+  const [confirmCountdown, setConfirmCountdown] = useState(5);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (pendingSmartPriceToggle !== null && confirmCountdown > 0) {
+      interval = setInterval(() => {
+        setConfirmCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [pendingSmartPriceToggle, confirmCountdown]);
+
   useEffect(() => {
     if (isOpen) {
       setTherapistName(settings.therapistName);
@@ -34,6 +49,7 @@ export default function SettingsModal({
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
+      setPendingSmartPriceToggle(null);
     }
   }, [isOpen, settings]);
 
@@ -188,7 +204,8 @@ export default function SettingsModal({
                 disabled={!featuresSmartPriceMatchingAllowed}
                 onClick={() => {
                   if (featuresSmartPriceMatchingAllowed) {
-                    setEnableSmartClientPriceMatching(!enableSmartClientPriceMatching);
+                    setPendingSmartPriceToggle(!enableSmartClientPriceMatching);
+                    setConfirmCountdown(5);
                   }
                 }}
                 className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
@@ -264,6 +281,62 @@ export default function SettingsModal({
           </div>
         </form>
       </div>
+
+      {pendingSmartPriceToggle !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in" id="smart-price-confirm-overlay">
+          <div className="w-full max-w-sm bg-[#fdfbf7] rounded-3xl border border-[#e5e1d8] overflow-hidden shadow-2xl p-6 space-y-4 font-sans text-slate-800">
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="p-2 bg-amber-50 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-[#cb997e]" />
+              </div>
+              <h4 className="font-serif text-base font-bold text-[#6b705c] italic">
+                {pendingSmartPriceToggle ? 'Akıllı Fiyat Eşitleme Aktif Edilsin mi?' : 'Akıllı Fiyat Eşitleme Kapatılsın mı?'}
+              </h4>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              {pendingSmartPriceToggle ? (
+                <>
+                  Bu özelliği açmak istediğinize emin misiniz? <strong className="text-[#cb997e]">Bu tarihten sonra yaptığınız fiyat değişiklikleri</strong>, aynı danışanın ileri seanslarına otomatik olarak uygulanacaktır.
+                </>
+              ) : (
+                <>
+                  Bu özelliği kapatmak istediğinize emin misiniz? <strong className="text-rose-500">Bundan sonra yapacağınız fiyat değişiklikleri</strong> ileri seansları otomatik olarak etkilemeyecektir. <strong className="text-[#6b705c]">Geçmişteki düzenlemeler ise aynen kalacaktır.</strong>
+                </>
+              )}
+            </p>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingSmartPriceToggle(null)}
+                className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                disabled={confirmCountdown > 0}
+                onClick={() => {
+                  setEnableSmartClientPriceMatching(pendingSmartPriceToggle);
+                  setPendingSmartPriceToggle(null);
+                }}
+                className={`px-5 py-2 rounded-full text-white text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                  confirmCountdown > 0 
+                    ? 'bg-slate-300 cursor-not-allowed text-slate-500' 
+                    : 'bg-[#6b705c] hover:bg-[#585c4c] cursor-pointer'
+                }`}
+              >
+                {confirmCountdown > 0 ? (
+                  <span>Onayla ({confirmCountdown}s)</span>
+                ) : (
+                  <span>Onayla</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
