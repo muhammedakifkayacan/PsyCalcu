@@ -30,6 +30,7 @@ export interface AppSettings {
   faceToFaceCalendarWebcalUrl: string; // URL for face-to-face sessions calendar
   googleSheetId: string;
   googleSheetsLinked: boolean;
+  enableSmartClientPriceMatching?: boolean;
 }
 
 export interface DaySummary {
@@ -68,5 +69,42 @@ export function getNormalizedClientName(name: string): string {
   // Strip any trailing spaces or dash noise
   clean = clean.replace(/[\s\-:\(\)]+$/, '');
   return clean.trim();
+}
+
+/**
+ * Finds the latest session price for a given client (matching exact or variations like name 1, name-2).
+ * It will find sessions of the same normalized client name that are before or on the given date,
+ * and return the price of the most recent one.
+ * If no previous session is found, returns the default price.
+ */
+export function getSmartClientPrice(
+  clientName: string,
+  sessionDate: string,
+  sessions: Session[],
+  defaultPrice: number
+): number {
+  if (!clientName) return defaultPrice;
+  const targetNormalized = getNormalizedClientName(clientName);
+  
+  // Filter sessions that have the same normalized client name
+  // and are before or on the given sessionDate.
+  // Skip cancelled sessions as their price is usually 0.
+  const matchedSessions = sessions.filter(s => {
+    if (s.type === 'cancelled') return false;
+    const sNormalized = getNormalizedClientName(s.clientName);
+    return sNormalized === targetNormalized && s.date <= sessionDate;
+  });
+  
+  if (matchedSessions.length === 0) {
+    return defaultPrice;
+  }
+  
+  // Sort matched sessions by date descending, then time descending
+  matchedSessions.sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return b.time.localeCompare(a.time);
+  });
+  
+  return matchedSessions[0].price;
 }
 

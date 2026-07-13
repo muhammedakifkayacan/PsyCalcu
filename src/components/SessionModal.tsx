@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building } from 'lucide-react';
-import { Session, SessionType } from '../types';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
+import { Session, SessionType, getSmartClientPrice, getNormalizedClientName } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 
 interface SessionModalProps {
@@ -12,6 +12,8 @@ interface SessionModalProps {
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number;
   selectedDate: string; // prefill date
+  sessions: Session[];
+  enableSmartClientPriceMatching?: boolean;
 }
 
 export default function SessionModal({
@@ -23,6 +25,8 @@ export default function SessionModal({
   defaultBabysitterFee,
   defaultOfficeRentFee,
   selectedDate,
+  sessions,
+  enableSmartClientPriceMatching = false,
 }: SessionModalProps) {
   const [clientName, setClientName] = useState('');
   const [type, setType] = useState<SessionType>('online');
@@ -36,6 +40,7 @@ export default function SessionModal({
   const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState<number | string>(defaultOfficeRentFee);
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
+  const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
 
   // Determine if editing a past session (date is before today)
   const localTodayStr = (() => {
@@ -61,8 +66,19 @@ export default function SessionModal({
     ? (sessionToEdit.isSyncedFromCalendar || isOlderThan7Days(sessionToEdit.date)) 
     : false;
 
+  // Smart client price lookup effect
+  useEffect(() => {
+    if (isOpen && !sessionToEdit && enableSmartClientPriceMatching && !isPriceManuallyEdited && clientName.trim() && type !== 'cancelled') {
+      const matchedPrice = getSmartClientPrice(clientName, date, sessions, defaultPrice);
+      if (matchedPrice !== defaultPrice) {
+        setPrice(matchedPrice);
+      }
+    }
+  }, [clientName, date, sessions, enableSmartClientPriceMatching, isPriceManuallyEdited, isOpen, sessionToEdit, defaultPrice, type]);
+
   useEffect(() => {
     if (isOpen) {
+      setIsPriceManuallyEdited(false);
       if (sessionToEdit) {
         setClientName(sessionToEdit.clientName);
         setType(sessionToEdit.type);
@@ -318,11 +334,24 @@ export default function SessionModal({
                   onChange={(e) => {
                     const val = e.target.value;
                     setPrice(val === '' ? '' : Number(val));
+                    setIsPriceManuallyEdited(true);
                   }}
                   onFocus={(e) => e.target.select()}
                   className="w-full pl-7 pr-2 py-1.5 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
                 />
               </div>
+              {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
+                const matchedPrice = getSmartClientPrice(clientName, date, sessions, defaultPrice);
+                if (matchedPrice !== defaultPrice && Number(price) === matchedPrice) {
+                  return (
+                    <p className="text-[9px] sm:text-[10px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-1 animate-fade-in">
+                      <Sparkles className="w-3 h-3 text-[#cb997e]" />
+                      Akıllı fiyat uygulandı ({matchedPrice} ₺)
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
 

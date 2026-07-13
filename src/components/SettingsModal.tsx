@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Save, Landmark, Baby, User } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -9,6 +9,7 @@ interface SettingsModalProps {
   onSave: (settings: AppSettings) => void;
   showExplanations: boolean;
   onToggleExplanations: () => void;
+  featuresSmartPriceMatchingAllowed?: boolean;
 }
 
 export default function SettingsModal({ 
@@ -17,12 +18,14 @@ export default function SettingsModal({
   settings, 
   onSave, 
   showExplanations,
-  onToggleExplanations
+  onToggleExplanations,
+  featuresSmartPriceMatchingAllowed = true
 }: SettingsModalProps) {
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
+  const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
 
   useEffect(() => {
     if (isOpen) {
@@ -30,6 +33,7 @@ export default function SettingsModal({
       setDefaultSessionPrice(settings.defaultSessionPrice);
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
+      setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
     }
   }, [isOpen, settings]);
 
@@ -43,6 +47,7 @@ export default function SettingsModal({
       defaultSessionPrice: Number(defaultSessionPrice),
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
+      enableSmartClientPriceMatching,
     });
     onClose();
   };
@@ -152,6 +157,54 @@ export default function SettingsModal({
             {showExplanations && (
               <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
             )}
+          </div>
+
+          {/* Smart Client Price Matching Toggle */}
+          <div className="space-y-1">
+            <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-colors ${
+              !featuresSmartPriceMatchingAllowed ? 'border-rose-100 bg-rose-50/10' : 'border-[#e5e1d8] bg-[#fdfbf7]'
+            }`}>
+              <div className="space-y-0.5 max-w-[75%]">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Sparkles className="w-3.5 h-3.5 text-[#cb997e]" />
+                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Akıllı Fiyat Eşitleme</label>
+                  {!featuresSmartPriceMatchingAllowed && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-rose-50 text-rose-500 uppercase tracking-wide">
+                      <Lock className="w-2 h-2" /> Sınırlandırıldı
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Aynı danışanın farklı varyasyon seanslarında (örn. Zuhal Şen 1, Zuhal Şen 2) son girilen zamlı fiyatı ileri tarihli seanslara otomatik uygular.
+                </p>
+                {!featuresSmartPriceMatchingAllowed && (
+                  <p className="text-[9px] text-rose-500 font-medium mt-1">
+                    Bu özellik yöneticiniz tarafından sınırlandırılmıştır.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={!featuresSmartPriceMatchingAllowed}
+                onClick={() => {
+                  if (featuresSmartPriceMatchingAllowed) {
+                    setEnableSmartClientPriceMatching(!enableSmartClientPriceMatching);
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  !featuresSmartPriceMatchingAllowed ? 'bg-slate-100 cursor-not-allowed opacity-60' :
+                  enableSmartClientPriceMatching ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
+                }`}
+                role="switch"
+                aria-checked={enableSmartClientPriceMatching}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    enableSmartClientPriceMatching && featuresSmartPriceMatchingAllowed ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Toggle Explanations Switch */}

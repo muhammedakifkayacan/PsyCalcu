@@ -48,6 +48,7 @@ interface Registration {
   featuresCalendarAllowed?: boolean;
   featuresAccountingAllowed?: boolean;
   featuresDebtTrackerAllowed?: boolean;
+  featuresSmartPriceMatchingAllowed?: boolean;
   adminNote?: string;
 }
 
@@ -122,6 +123,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           featuresCalendarAllowed: data.featuresCalendarAllowed !== false,
           featuresAccountingAllowed: data.featuresAccountingAllowed !== false,
           featuresDebtTrackerAllowed: data.featuresDebtTrackerAllowed !== false,
+          featuresSmartPriceMatchingAllowed: data.featuresSmartPriceMatchingAllowed !== false,
           adminNote: data.adminNote || ''
         });
       });
@@ -228,6 +230,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       featuresCalendarAllowed?: boolean; 
       featuresAccountingAllowed?: boolean; 
       featuresDebtTrackerAllowed?: boolean; 
+      featuresSmartPriceMatchingAllowed?: boolean; 
       adminNote?: string;
     }
   ) => {
@@ -662,7 +665,24 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                         </button>
                       </div>
 
-                      {/* Section 7: Admin Private Note */}
+                      {/* Section 7: Smart Price Matching Permission */}
+                      <div className="flex items-center justify-between py-1 border-t border-slate-50 pt-2.5">
+                        <div className="space-y-0.5 text-left">
+                          <span className="font-semibold text-slate-600 flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            Akıllı Fiyat Eşitleme
+                          </span>
+                          <p className="text-[10px] text-slate-400">Zamlı fiyatların ileri seanslara otomatik eşlenmesi</p>
+                        </div>
+                        <button
+                          onClick={() => handleUpdateAdvancedSettings(reg.userId, { featuresSmartPriceMatchingAllowed: reg.featuresSmartPriceMatchingAllowed !== false ? false : true })}
+                          className={`w-10 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${reg.featuresSmartPriceMatchingAllowed !== false ? 'bg-[#6b705c]' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-xs transition-transform transform ${reg.featuresSmartPriceMatchingAllowed !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {/* Section 8: Admin Private Note */}
                       <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
                         <label className="font-semibold text-slate-600 flex items-center gap-1">
                           <FileText className="w-3.5 h-3.5 text-slate-400" />

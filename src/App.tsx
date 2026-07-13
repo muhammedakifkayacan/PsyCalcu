@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName } from './types';
+import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -111,6 +111,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   faceToFaceCalendarWebcalUrl: '',
   googleSheetId: '',
   googleSheetsLinked: false,
+  enableSmartClientPriceMatching: false,
 };
 
 export default function App() {
@@ -130,6 +131,7 @@ export default function App() {
           faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
           googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
           googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
+          enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
         };
       } catch (e) {}
     }
@@ -158,6 +160,7 @@ export default function App() {
   const [featuresCalendarAllowed, setFeaturesCalendarAllowed] = useState<boolean>(true);
   const [featuresAccountingAllowed, setFeaturesAccountingAllowed] = useState<boolean>(true);
   const [featuresDebtTrackerAllowed, setFeaturesDebtTrackerAllowed] = useState<boolean>(true);
+  const [featuresSmartPriceMatchingAllowed, setFeaturesSmartPriceMatchingAllowed] = useState<boolean>(true);
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
@@ -497,6 +500,7 @@ export default function App() {
               faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
               googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
               googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
+              enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
             });
           } catch (e) {}
         } else {
@@ -549,6 +553,7 @@ export default function App() {
           setFeaturesCalendarAllowed(data.featuresCalendarAllowed !== false);
           setFeaturesAccountingAllowed(data.featuresAccountingAllowed !== false);
           setFeaturesDebtTrackerAllowed(data.featuresDebtTrackerAllowed !== false);
+          setFeaturesSmartPriceMatchingAllowed(data.featuresSmartPriceMatchingAllowed !== false);
           
           let regCreated = data.createdAt;
           // Protect and correct uzmpsikologbusra@gmail.com's registration date
@@ -1754,7 +1759,11 @@ export default function App() {
           updatedCount++;
         }
       } else {
-        const nsWithTimestamp = { ...ns, updatedAt: Date.now() };
+        let finalPrice = ns.price;
+        if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled') {
+          finalPrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+        }
+        const nsWithTimestamp = { ...ns, price: finalPrice, updatedAt: Date.now() };
         toUpdate.push(nsWithTimestamp);
         addedList.push({
           id: nsWithTimestamp.id,
@@ -3709,6 +3718,7 @@ export default function App() {
         onSave={(updated) => setSettings(updated)}
         showExplanations={showExplanations}
         onToggleExplanations={toggleShowExplanations}
+        featuresSmartPriceMatchingAllowed={featuresSmartPriceMatchingAllowed}
       />
 
       {/* Session Add/Edit Modal Component */}
@@ -3721,6 +3731,8 @@ export default function App() {
         defaultBabysitterFee={settings.defaultBabysitterFee}
         defaultOfficeRentFee={settings.defaultOfficeRentFee}
         selectedDate={selectedDate}
+        sessions={sessions}
+        enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
       />
 
       {/* FAQ Modal Component */}
