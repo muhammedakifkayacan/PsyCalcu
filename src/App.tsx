@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   AlertCircle,
   XCircle,
+  X,
   Database,
   Download,
   Upload,
@@ -1039,6 +1040,7 @@ export default function App() {
   }, [calendarViewDate]);
 
   const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin'>('agenda');
+  const [headerSearchQuery, setHeaderSearchQuery] = useState('');
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -1176,6 +1178,24 @@ export default function App() {
       .filter(s => s.date === selectedDate)
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [sessions, selectedDate]);
+
+  // Search results for header search box
+  const searchedSessions = useMemo(() => {
+    if (!headerSearchQuery.trim()) return [];
+    const q = headerSearchQuery.trim().toLowerCase();
+    return sessions.filter(s => {
+      const clientMatch = s.clientName.toLowerCase().includes(q);
+      const notesMatch = s.notes ? s.notes.toLowerCase().includes(q) : false;
+      const typeMatch = s.type.toLowerCase().includes(q);
+      
+      const [year, month, day] = s.date.split('-');
+      const formattedDateStr = `${day}.${month}.${year}`;
+      const dateMatch = s.date.includes(q) || formattedDateStr.includes(q);
+      return clientMatch || notesMatch || typeMatch || dateMatch;
+    }).sort((a, b) => {
+      return b.date.localeCompare(a.date) || b.time.localeCompare(a.time);
+    });
+  }, [sessions, headerSearchQuery]);
 
   // Debt Calculations
   const debtsData = useMemo(() => {
@@ -2414,13 +2434,112 @@ export default function App() {
     <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
       
       {/* Header Navigation */}
-      <nav className="sticky top-0 z-40 flex flex-col md:flex-row items-center justify-between px-6 md:px-8 py-4 border-b border-[#e5e1d8] bg-white gap-4">
+      <nav className="sticky top-0 z-40 flex flex-col lg:flex-row items-center justify-between px-6 md:px-8 py-4 border-b border-[#e5e1d8] bg-white gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">P</div>
           <div>
             <h1 className="text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
             <p className="text-[10px] text-slate-400 font-semibold tracking-wider mt-1">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
           </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="relative w-full sm:max-w-xs md:max-w-md lg:max-w-xs z-50">
+          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+            <Search className="w-4 h-4 text-[#6b705c]" />
+          </div>
+          <input
+            type="text"
+            placeholder="Danışan, seans veya not ara..."
+            value={headerSearchQuery}
+            onChange={(e) => setHeaderSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] focus:ring-1 focus:ring-[#6b705c]/20 transition-all font-medium placeholder:text-slate-400 shadow-xs"
+          />
+          {headerSearchQuery && (
+            <button
+              onClick={() => setHeaderSearchQuery('')}
+              className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+
+          {headerSearchQuery.trim() && (
+            <div className="absolute top-full mt-2 left-0 right-0 max-h-80 overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1.5 animate-fade-in divide-y divide-slate-100">
+              <div className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                Seans Arama Sonuçları ({searchedSessions.length})
+              </div>
+              {searchedSessions.length === 0 ? (
+                <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium">
+                  Eşleşen seans bulunamadı.
+                </div>
+              ) : (
+                searchedSessions.map(session => {
+                  const [year, month, day] = session.date.split('-');
+                  const formattedDate = `${day}.${month}.${year}`;
+                  return (
+                    <div 
+                      key={session.id} 
+                      className="p-2 hover:bg-[#fdfbf7] rounded-xl transition-all flex items-center justify-between gap-2 group pt-2"
+                    >
+                      <div className="space-y-0.5 text-left min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-xs text-[#555a4a] truncate block max-w-[150px]">
+                            {session.clientName}
+                          </span>
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
+                            session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
+                            session.type === 'face-to-face' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
+                            'bg-rose-50 text-rose-600 border border-rose-100/50'
+                          }`}>
+                            {session.type === 'online' ? 'Çevrimiçi' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold font-mono">
+                          <span>{formattedDate}</span>
+                          <span>•</span>
+                          <span>{session.time}</span>
+                          <span>•</span>
+                          <span className="text-[#cb997e]">{session.price} ₺</span>
+                        </div>
+                        {session.notes && (
+                          <p className="text-[10px] text-slate-400 truncate max-w-[200px] italic">
+                            {session.notes}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => {
+                            setSelectedDate(session.date);
+                            setActiveTab('agenda');
+                            setHeaderSearchQuery('');
+                          }}
+                          className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all"
+                          title="Seans gününe git"
+                        >
+                          Git
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedDate(session.date);
+                            setEditingSession(session);
+                            setIsSessionModalOpen(true);
+                            setHeaderSearchQuery('');
+                          }}
+                          className="px-2 py-1 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all"
+                          title="Seansı düzenle"
+                        >
+                          Düzenle
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         {/* Navigation Tabs */}
