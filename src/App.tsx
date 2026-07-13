@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice } from './types';
+import { Session, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -1760,10 +1760,32 @@ export default function App() {
         }
       } else {
         let finalPrice = ns.price;
+        let finalBabysitterFee = ns.babysitterFeeAmount;
+        let finalOfficeRentFee = ns.officeRentFeeAmount;
         if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled') {
-          finalPrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+          const matchedCosts = getSmartClientCosts(
+            ns.clientName,
+            ns.date,
+            sessions,
+            settings.defaultSessionPrice,
+            settings.defaultBabysitterFee,
+            settings.defaultOfficeRentFee
+          );
+          finalPrice = matchedCosts.price;
+          if (ns.hasBabysitterFee) {
+            finalBabysitterFee = matchedCosts.babysitterFeeAmount;
+          }
+          if (ns.hasOfficeRentFee) {
+            finalOfficeRentFee = matchedCosts.officeRentFeeAmount;
+          }
         }
-        const nsWithTimestamp = { ...ns, price: finalPrice, updatedAt: Date.now() };
+        const nsWithTimestamp = { 
+          ...ns, 
+          price: finalPrice, 
+          babysitterFeeAmount: finalBabysitterFee,
+          officeRentFeeAmount: finalOfficeRentFee,
+          updatedAt: Date.now() 
+        };
         toUpdate.push(nsWithTimestamp);
         addedList.push({
           id: nsWithTimestamp.id,
@@ -2794,6 +2816,13 @@ export default function App() {
                                 // Check if there are sessions on this day
                                 const daySessions = sessions.filter(s => s.date === cell.dateStr);
                                 const hasSessions = daySessions.length > 0;
+                                const hasPriceIncrease = daySessions.some(s => 
+                                  s.type !== 'cancelled' && (
+                                    s.price > settings.defaultSessionPrice || 
+                                    (s.hasBabysitterFee && s.babysitterFeeAmount > settings.defaultBabysitterFee) || 
+                                    (s.hasOfficeRentFee && s.officeRentFeeAmount > settings.defaultOfficeRentFee)
+                                  )
+                                );
                                 
                                 return (
                                   <button
@@ -2810,7 +2839,9 @@ export default function App() {
                                           ? 'bg-[#6b705c] text-white font-bold shadow-sm'
                                           : isToday
                                             ? 'border border-[#6b705c] text-[#6b705c] font-semibold hover:bg-slate-50'
-                                            : 'text-slate-700 hover:bg-slate-100 font-medium'
+                                            : hasPriceIncrease
+                                              ? 'text-amber-800 bg-amber-50/50 hover:bg-amber-100/50 border border-amber-300/60 font-semibold'
+                                              : 'text-slate-700 hover:bg-slate-100 font-medium'
                                     }`}
                                   >
                                     <span className="text-xs">{cell.dayNum}</span>
@@ -2819,7 +2850,9 @@ export default function App() {
                                     {hasSessions && (
                                       <span 
                                         className={`absolute bottom-0.5 w-1 h-1 rounded-full ${
-                                          isSelected ? 'bg-white' : 'bg-[#cb997e]'
+                                          hasPriceIncrease
+                                            ? isSelected ? 'bg-amber-300' : 'bg-amber-500 animate-pulse'
+                                            : isSelected ? 'bg-white' : 'bg-[#cb997e]'
                                         }`} 
                                       />
                                     )}
@@ -2842,7 +2875,7 @@ export default function App() {
                                 Bugün
                               </button>
                               <span className="text-[9px] text-slate-400 font-medium">
-                                Seanslı günler noktalıdır
+                                Seanslar noktalı, zamlı seanslar ışıldar ✨
                               </span>
                               <button 
                                 type="button"
@@ -2865,6 +2898,13 @@ export default function App() {
                       const isToday = day.dateStr === new Date().toISOString().split('T')[0];
                       const daySessions = sessions.filter(s => s.date === day.dateStr);
                       const hasSessions = daySessions.length > 0;
+                      const hasPriceIncrease = daySessions.some(s => 
+                        s.type !== 'cancelled' && (
+                          s.price > settings.defaultSessionPrice || 
+                          (s.hasBabysitterFee && s.babysitterFeeAmount > settings.defaultBabysitterFee) || 
+                          (s.hasOfficeRentFee && s.officeRentFeeAmount > settings.defaultOfficeRentFee)
+                        )
+                      );
                       return (
                         <button
                           key={day.dateStr}
@@ -2872,9 +2912,19 @@ export default function App() {
                           className={`flex flex-col items-center justify-center p-2.5 rounded-2xl transition-all relative cursor-pointer ${
                             isSelected 
                               ? 'bg-[#6b705c] text-white shadow-md' 
-                              : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] border border-[#e5e1d8]/60 text-slate-600'
+                              : hasPriceIncrease
+                                ? 'bg-amber-50/30 hover:bg-amber-50/60 border-2 border-amber-300/80 text-slate-700 shadow-xs'
+                                : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] border border-[#e5e1d8]/60 text-slate-600'
                           }`}
                         >
+                          {hasPriceIncrease && (
+                            <div 
+                              className="absolute top-1.5 right-1.5" 
+                              title="Bu günde zamlı seans veya giderler var"
+                            >
+                              <Sparkles className={`w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-amber-500 animate-pulse'}`} />
+                            </div>
+                          )}
                           <span className={`text-[9px] tracking-widest font-bold ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
                             {toTurkishUpper(day.dayName)}
                           </span>
@@ -2886,7 +2936,11 @@ export default function App() {
                               <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-[#cb997e]'}`}></span>
                             )}
                             {hasSessions && (
-                              <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white/80' : 'bg-[#6b705c]'}`}></span>
+                              <span className={`w-1 h-1 rounded-full ${
+                                hasPriceIncrease
+                                  ? isSelected ? 'bg-amber-300' : 'bg-amber-500 animate-pulse'
+                                  : isSelected ? 'bg-white/80' : 'bg-[#6b705c]'
+                              }`}></span>
                             )}
                           </div>
                         </button>

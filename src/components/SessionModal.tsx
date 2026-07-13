@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
-import { Session, SessionType, getSmartClientPrice, getNormalizedClientName } from '../types';
+import { Session, SessionType, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 
 interface SessionModalProps {
@@ -41,6 +41,8 @@ export default function SessionModal({
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
+  const [isBabysitterFeeManuallyEdited, setIsBabysitterFeeManuallyEdited] = useState(false);
+  const [isOfficeRentFeeManuallyEdited, setIsOfficeRentFeeManuallyEdited] = useState(false);
 
   // Determine if editing a past session (date is before today)
   const localTodayStr = (() => {
@@ -66,19 +68,48 @@ export default function SessionModal({
     ? (sessionToEdit.isSyncedFromCalendar || isOlderThan7Days(sessionToEdit.date)) 
     : false;
 
-  // Smart client price lookup effect
+  // Smart client price and costs lookup effect
   useEffect(() => {
-    if (isOpen && !sessionToEdit && enableSmartClientPriceMatching && !isPriceManuallyEdited && clientName.trim() && type !== 'cancelled') {
-      const matchedPrice = getSmartClientPrice(clientName, date, sessions, defaultPrice);
-      if (matchedPrice !== defaultPrice) {
-        setPrice(matchedPrice);
+    if (isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled') {
+      const matchedCosts = getSmartClientCosts(
+        clientName,
+        date,
+        sessions,
+        defaultPrice,
+        defaultBabysitterFee,
+        defaultOfficeRentFee
+      );
+      if (!isPriceManuallyEdited && matchedCosts.price !== defaultPrice) {
+        setPrice(matchedCosts.price);
+      }
+      if (!isBabysitterFeeManuallyEdited && matchedCosts.babysitterFeeAmount !== defaultBabysitterFee) {
+        setBabysitterFeeAmount(matchedCosts.babysitterFeeAmount);
+      }
+      if (!isOfficeRentFeeManuallyEdited && matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee) {
+        setOfficeRentFeeAmount(matchedCosts.officeRentFeeAmount);
       }
     }
-  }, [clientName, date, sessions, enableSmartClientPriceMatching, isPriceManuallyEdited, isOpen, sessionToEdit, defaultPrice, type]);
+  }, [
+    clientName,
+    date,
+    sessions,
+    enableSmartClientPriceMatching,
+    isPriceManuallyEdited,
+    isBabysitterFeeManuallyEdited,
+    isOfficeRentFeeManuallyEdited,
+    isOpen,
+    sessionToEdit,
+    defaultPrice,
+    defaultBabysitterFee,
+    defaultOfficeRentFee,
+    type
+  ]);
 
   useEffect(() => {
     if (isOpen) {
       setIsPriceManuallyEdited(false);
+      setIsBabysitterFeeManuallyEdited(false);
+      setIsOfficeRentFeeManuallyEdited(false);
       if (sessionToEdit) {
         setClientName(sessionToEdit.clientName);
         setType(sessionToEdit.type);
@@ -341,12 +372,12 @@ export default function SessionModal({
                 />
               </div>
               {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
-                const matchedPrice = getSmartClientPrice(clientName, date, sessions, defaultPrice);
-                if (matchedPrice !== defaultPrice && Number(price) === matchedPrice) {
+                const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+                if (matchedCosts.price !== defaultPrice && Number(price) === matchedCosts.price) {
                   return (
-                    <p className="text-[9px] sm:text-[10px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-1 animate-fade-in">
+                    <p className="text-[9px] sm:text-[10px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-1 animate-fade-in" id="smart-price-badge">
                       <Sparkles className="w-3 h-3 text-[#cb997e]" />
-                      Akıllı fiyat uygulandı ({matchedPrice} ₺)
+                      Akıllı fiyat uygulandı ({matchedCosts.price} ₺)
                     </p>
                   );
                 }
@@ -408,20 +439,35 @@ export default function SessionModal({
               </div>
 
               {hasBabysitterFee && (
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setBabysitterFeeAmount(val === '' ? '' : Number(val));
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
-                  />
-                  <span className="text-[9px] text-slate-500">₺</span>
+                <div className="mt-1 flex flex-col gap-1 w-full">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBabysitterFeeAmount(val === '' ? '' : Number(val));
+                        setIsBabysitterFeeManuallyEdited(true);
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    />
+                    <span className="text-[9px] text-slate-500">₺</span>
+                  </div>
+                  {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
+                    const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+                    if (matchedCosts.babysitterFeeAmount !== defaultBabysitterFee && Number(babysitterFeeAmount) === matchedCosts.babysitterFeeAmount) {
+                      return (
+                        <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-babysitter-badge">
+                          <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
+                          Akıllı ücret ({matchedCosts.babysitterFeeAmount} ₺)
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>
@@ -443,20 +489,35 @@ export default function SessionModal({
               </div>
 
               {hasOfficeRentFee && (
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setOfficeRentFeeAmount(val === '' ? '' : Number(val));
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
-                  />
-                  <span className="text-[9px] text-slate-500">₺</span>
+                <div className="mt-1 flex flex-col gap-1 w-full">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOfficeRentFeeAmount(val === '' ? '' : Number(val));
+                        setIsOfficeRentFeeManuallyEdited(true);
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                    />
+                    <span className="text-[9px] text-slate-500">₺</span>
+                  </div>
+                  {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
+                    const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+                    if (matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee && Number(officeRentFeeAmount) === matchedCosts.officeRentFeeAmount) {
+                      return (
+                        <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-officerent-badge">
+                          <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
+                          Akıllı ücret ({matchedCosts.officeRentFeeAmount} ₺)
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>

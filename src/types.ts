@@ -108,3 +108,58 @@ export function getSmartClientPrice(
   return matchedSessions[0].price;
 }
 
+/**
+ * Finds the latest session price, babysitter fee, and office rent fee for a given client.
+ * Looks for non-cancelled sessions before or on the given session date.
+ */
+export function getSmartClientCosts(
+  clientName: string,
+  sessionDate: string,
+  sessions: Session[],
+  defaultPrice: number,
+  defaultBabysitterFee: number,
+  defaultOfficeRentFee: number
+): { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number } {
+  const result = {
+    price: defaultPrice,
+    babysitterFeeAmount: defaultBabysitterFee,
+    officeRentFeeAmount: defaultOfficeRentFee
+  };
+  if (!clientName) return result;
+  const targetNormalized = getNormalizedClientName(clientName);
+
+  // Find matched sessions for this client (non-cancelled, before or on sessionDate)
+  const matchedSessions = sessions.filter(s => {
+    if (s.type === 'cancelled') return false;
+    const sNormalized = getNormalizedClientName(s.clientName);
+    return sNormalized === targetNormalized && s.date <= sessionDate;
+  });
+
+  if (matchedSessions.length === 0) {
+    return result;
+  }
+
+  // Sort descending by date, then time
+  matchedSessions.sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return b.time.localeCompare(a.time);
+  });
+
+  // Price is the most recent session's price
+  result.price = matchedSessions[0].price;
+
+  // Find the most recent session where they paid a babysitter fee
+  const sessionWithBabysitter = matchedSessions.find(s => s.hasBabysitterFee && s.babysitterFeeAmount > 0);
+  if (sessionWithBabysitter) {
+    result.babysitterFeeAmount = sessionWithBabysitter.babysitterFeeAmount;
+  }
+
+  // Find the most recent session where they paid an office rent fee
+  const sessionWithOfficeRent = matchedSessions.find(s => s.hasOfficeRentFee && s.officeRentFeeAmount > 0);
+  if (sessionWithOfficeRent) {
+    result.officeRentFeeAmount = sessionWithOfficeRent.officeRentFeeAmount;
+  }
+
+  return result;
+}
+
