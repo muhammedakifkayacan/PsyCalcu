@@ -80,6 +80,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
     let faceToFaceCount = 0;
     let cancelledCount = 0;
     let pendingReceivables = 0;
+    let futureUnpaidIncome = 0;
     
     // Group by date for line chart
     const dateGroups: Record<string, { date: string; gross: number; expenses: number; net: number }> = {};
@@ -104,6 +105,8 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
           officeRentExpenses += sOfficeFee;
         } else if (s.date <= todayStr) {
           pendingReceivables += sPrice;
+        } else {
+          futureUnpaidIncome += sPrice;
         }
       }
 
@@ -154,6 +157,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       totalExpenses,
       netIncome,
       pendingReceivables,
+      futureUnpaidIncome,
       onlineCount,
       faceToFaceCount,
       cancelledCount,
@@ -307,9 +311,26 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               <Clock className="w-4 h-4" />
             </span>
           </div>
-          <div className="mt-2">
-            <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Henüz ödenmemiş seanslar (Detay için Tıklayın)</p>
+          <div className="mt-2 space-y-2">
+            <div>
+              <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Tarihi bugün veya geçmişte olan, ödenmemiş seanslar.</p>
+            </div>
+            
+            {(analytics.futureUnpaidIncome > 0 || analytics.grossIncome > 0) && (
+              <div className="text-[10px] text-slate-500 border-t border-amber-500/10 pt-2 space-y-1">
+                {analytics.futureUnpaidIncome > 0 && (
+                  <div className="flex justify-between items-center" title="Gelecek tarihler için planlanan seansların henüz ödenmemiş ücret toplamı">
+                    <span className="text-slate-400">Gelecek Planlanan:</span>
+                    <span className="font-semibold text-slate-600">+₺{analytics.futureUnpaidIncome.toLocaleString('tr-TR')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center border-t border-slate-100/80 pt-1 font-bold text-[#6b705c]" title="Ödenen brüt gelir + gerçekleşmiş alacak + gelecek planlanan seansların toplamı">
+                  <span>Tahmini Toplam Ciro:</span>
+                  <span>₺{(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome).toLocaleString('tr-TR')}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
