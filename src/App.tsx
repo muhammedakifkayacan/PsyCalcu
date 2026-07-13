@@ -33,7 +33,10 @@ import {
   ChevronRight,
   Lightbulb,
   LogOut,
-  Lock
+  Lock,
+  Filter,
+  Calculator,
+  CalendarRange
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -1039,9 +1042,16 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin'>('agenda');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search'>('agenda');
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
+  
+  // Advanced Search Tab States
+  const [searchTabQuery, setSearchTabQuery] = useState('');
+  const [searchStartDate, setSearchStartDate] = useState('');
+  const [searchEndDate, setSearchEndDate] = useState('');
+  const [searchType, setSearchType] = useState<'all' | 'online' | 'face-to-face' | 'cancelled'>('all');
+  const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -1102,6 +1112,92 @@ export default function App() {
     clientName: '',
     totalAmount: 0,
   });
+
+  // Gelişmiş Arama Filtreleme ve Hesaplama Memos
+  const searchedAndFilteredSessions = useMemo(() => {
+    return sessions.filter(session => {
+      // 1. Text filter
+      if (searchTabQuery.trim()) {
+        const query = toTurkishUpper(searchTabQuery.trim());
+        const matchName = toTurkishUpper(session.clientName).includes(query);
+        const matchNotes = session.notes ? toTurkishUpper(session.notes).includes(query) : false;
+        const matchTime = session.time.includes(query);
+        const matchPrice = String(session.price).includes(query);
+        if (!matchName && !matchNotes && !matchTime && !matchPrice) {
+          return false;
+        }
+      }
+
+      // 2. Start date filter
+      if (searchStartDate) {
+        if (session.date < searchStartDate) return false;
+      }
+
+      // 3. End date filter
+      if (searchEndDate) {
+        if (session.date > searchEndDate) return false;
+      }
+
+      // 4. Session type filter
+      if (searchType !== 'all') {
+        if (searchType === 'online' && session.type !== 'online') return false;
+        if (searchType === 'face-to-face' && session.type !== 'face-to-face') return false;
+        if (searchType === 'cancelled' && session.type !== 'cancelled') return false;
+      }
+
+      // 5. Payment status filter
+      if (searchPaymentStatus !== 'all') {
+        const isPaid = session.paymentStatus === 'paid';
+        if (searchPaymentStatus === 'paid' && !isPaid) return false;
+        if (searchPaymentStatus === 'unpaid' && isPaid) return false;
+      }
+
+      return true;
+    });
+  }, [sessions, searchTabQuery, searchStartDate, searchEndDate, searchType, searchPaymentStatus]);
+
+  const searchTabCalculations = useMemo(() => {
+    let totalSessions = searchedAndFilteredSessions.length;
+    let onlineCount = searchedAndFilteredSessions.filter(s => s.type === 'online').length;
+    let faceToFaceCount = searchedAndFilteredSessions.filter(s => s.type === 'face-to-face').length;
+    let cancelledCount = searchedAndFilteredSessions.filter(s => s.type === 'cancelled').length;
+
+    let brütGelir = 0;
+    let bakiciGideri = 0;
+    let ofisGideri = 0;
+    let odenenMiktar = 0;
+    let odenmeyenMiktar = 0;
+
+    searchedAndFilteredSessions.forEach(s => {
+      if (s.type !== 'cancelled') {
+        brütGelir += s.price;
+        bakiciGideri += s.babysitterFeeAmount || 0;
+        ofisGideri += s.officeRentFeeAmount || 0;
+        if (s.paymentStatus === 'paid') {
+          odenenMiktar += s.price;
+        } else {
+          odenmeyenMiktar += s.price;
+        }
+      }
+    });
+
+    let toplamGider = bakiciGideri + ofisGideri;
+    let netGelir = brütGelir - toplamGider;
+
+    return {
+      totalSessions,
+      onlineCount,
+      faceToFaceCount,
+      cancelledCount,
+      brütGelir,
+      bakiciGideri,
+      ofisGideri,
+      toplamGider,
+      netGelir,
+      odenenMiktar,
+      odenmeyenMiktar
+    };
+  }, [searchedAndFilteredSessions]);
 
   // Auto trigger tour for first-time logged-in users
   useEffect(() => {
@@ -2453,6 +2549,13 @@ export default function App() {
             placeholder="Danışan, seans veya not ara..."
             value={headerSearchQuery}
             onChange={(e) => setHeaderSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && headerSearchQuery.trim()) {
+                setSearchTabQuery(headerSearchQuery);
+                setActiveTab('search');
+                setHeaderSearchQuery('');
+              }
+            }}
             className="w-full pl-9 pr-8 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] focus:ring-1 focus:ring-[#6b705c]/20 transition-all font-medium placeholder:text-slate-400 shadow-xs"
           />
           {headerSearchQuery && (
@@ -2465,78 +2568,101 @@ export default function App() {
           )}
 
           {headerSearchQuery.trim() && (
-            <div className="absolute top-full mt-2 left-0 right-0 max-h-80 overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1.5 animate-fade-in divide-y divide-slate-100">
+            <div className="absolute top-full mt-2 left-0 right-0 max-h-[340px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1.5 animate-fade-in divide-y divide-slate-100">
               <div className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                 Seans Arama Sonuçları ({searchedSessions.length})
               </div>
               {searchedSessions.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium">
-                  Eşleşen seans bulunamadı.
+                <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium space-y-2">
+                  <div>Eşleşen seans bulunamadı.</div>
+                  <button
+                    onClick={() => {
+                      setSearchTabQuery(headerSearchQuery);
+                      setActiveTab('search');
+                      setHeaderSearchQuery('');
+                    }}
+                    className="px-3 py-1.5 bg-[#f5f5f0] hover:bg-[#e5e5df] border border-[#e5e1d8] rounded-full text-slate-600 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Search className="w-3 h-3" />
+                    Gelişmiş Arama Sayfasına Git
+                  </button>
                 </div>
               ) : (
-                searchedSessions.map(session => {
-                  const [year, month, day] = session.date.split('-');
-                  const formattedDate = `${day}.${month}.${year}`;
-                  return (
-                    <div 
-                      key={session.id} 
-                      className="p-2 hover:bg-[#fdfbf7] rounded-xl transition-all flex items-center justify-between gap-2 group pt-2"
+                <>
+                  <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+                    {searchedSessions.slice(0, 5).map(session => {
+                      const [year, month, day] = session.date.split('-');
+                      const formattedDate = `${day}.${month}.${year}`;
+                      return (
+                        <div 
+                          key={session.id} 
+                          className="p-2 hover:bg-[#fdfbf7] rounded-xl transition-all flex items-center justify-between gap-2 group pt-2"
+                        >
+                          <div className="space-y-0.5 text-left min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-[#555a4a] truncate block max-w-[150px]">
+                                {session.clientName}
+                              </span>
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
+                                session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
+                                session.type === 'face-to-face' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
+                                'bg-rose-50 text-rose-600 border border-rose-100/50'
+                              }`}>
+                                {session.type === 'online' ? 'Çevrimiçi' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold font-mono">
+                              <span>{formattedDate}</span>
+                              <span>•</span>
+                              <span>{session.time}</span>
+                              <span>•</span>
+                              <span className="text-[#cb997e]">{session.price} ₺</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                setSelectedDate(session.date);
+                                setActiveTab('agenda');
+                                setHeaderSearchQuery('');
+                              }}
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all"
+                              title="Seans gününe git"
+                            >
+                              Git
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedDate(session.date);
+                                setEditingSession(session);
+                                setIsSessionModalOpen(true);
+                                setHeaderSearchQuery('');
+                              }}
+                              className="px-2 py-1 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all"
+                              title="Seansı düzenle"
+                            >
+                              Düzenle
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="pt-2 px-1">
+                    <button
+                      onClick={() => {
+                        setSearchTabQuery(headerSearchQuery);
+                        setActiveTab('search');
+                        setHeaderSearchQuery('');
+                      }}
+                      className="w-full py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl text-amber-800 text-[10px] font-bold text-center flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                     >
-                      <div className="space-y-0.5 text-left min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-xs text-[#555a4a] truncate block max-w-[150px]">
-                            {session.clientName}
-                          </span>
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
-                            session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
-                            session.type === 'face-to-face' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
-                            'bg-rose-50 text-rose-600 border border-rose-100/50'
-                          }`}>
-                            {session.type === 'online' ? 'Çevrimiçi' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold font-mono">
-                          <span>{formattedDate}</span>
-                          <span>•</span>
-                          <span>{session.time}</span>
-                          <span>•</span>
-                          <span className="text-[#cb997e]">{session.price} ₺</span>
-                        </div>
-                        {session.notes && (
-                          <p className="text-[10px] text-slate-400 truncate max-w-[200px] italic">
-                            {session.notes}
-                          </p>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => {
-                            setSelectedDate(session.date);
-                            setActiveTab('agenda');
-                            setHeaderSearchQuery('');
-                          }}
-                          className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all"
-                          title="Seans gününe git"
-                        >
-                          Git
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedDate(session.date);
-                            setEditingSession(session);
-                            setIsSessionModalOpen(true);
-                            setHeaderSearchQuery('');
-                          }}
-                          className="px-2 py-1 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all"
-                          title="Seansı düzenle"
-                        >
-                          Düzenle
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
+                      <Search className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Tüm {searchedSessions.length} Sonucu Gelişmiş Arama Sayfasında Gör ✨</span>
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -2570,6 +2696,15 @@ export default function App() {
             }`}
           >
             Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
+          </button>
+          <button
+            id="tab-search"
+            onClick={() => setActiveTab('search')}
+            className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+              activeTab === 'search' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+            }`}
+          >
+            Detaylı Arama & Hesapla
           </button>
           <button
             id="tab-sync"
@@ -3866,6 +4001,333 @@ export default function App() {
                 userEmail={user?.email || undefined}
                 showExplanations={showExplanations}
               />
+            </motion.div>
+          )}
+
+          {activeTab === 'search' && (
+            <motion.div
+              key="search-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* Header Info */}
+              <div className="bg-[#6b705c] p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
+                <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
+                <div className="max-w-2xl">
+                  <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-semibold tracking-wider">GELİŞMİŞ ANALİZ</span>
+                  <h2 className="text-3xl font-serif mt-3">Sorgulama, Filtreleme & Muhasebe Hesaplama</h2>
+                  <p className="text-sm opacity-90 mt-2 leading-relaxed">
+                    Tüm seans geçmişinizde danışan ismi, seans notları veya tarih aralığına göre arama yapabilir; filtrelenmiş seansların toplam brüt gelirini, giderlerini ve net kârını anında hesaplayabilirsiniz.
+                  </p>
+                </div>
+              </div>
+
+              {/* Filters Block */}
+              <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[#e5e1d8] shadow-xs space-y-6">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <Filter className="w-5 h-5 text-[#6b705c]" />
+                  <h3 className="text-sm font-bold tracking-widest text-[#6b705c] uppercase">Dinamik Filtreleme Seçenekleri</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Search text query */}
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Danışan Adı veya Not İçeriği</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 w-4 h-4 text-[#a5a58d]" />
+                      <input
+                        type="text"
+                        placeholder="Kelime girip aratın (Örn: Ahmet, zamlı seans...)"
+                        value={searchTabQuery}
+                        onChange={(e) => setSearchTabQuery(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium"
+                      />
+                      {searchTabQuery && (
+                        <button
+                          onClick={() => setSearchTabQuery('')}
+                          className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Start Date */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Başlangıç Tarihi</label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={searchStartDate}
+                        onChange={(e) => setSearchStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium h-[38px]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* End Date */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Bitiş Tarihi</label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={searchEndDate}
+                        onChange={(e) => setSearchEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium h-[38px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  {/* Session Type Filter */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Seans Türü</label>
+                    <select
+                      value={searchType}
+                      onChange={(e: any) => setSearchType(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium text-slate-700 h-[38px]"
+                    >
+                      <option value="all">Tüm Türler (Hepsi)</option>
+                      <option value="online">Çevrimiçi Seanslar</option>
+                      <option value="face-to-face">Yüz Yüze Seanslar</option>
+                      <option value="cancelled">İptal Edilenler</option>
+                    </select>
+                  </div>
+
+                  {/* Payment Status Filter */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ödeme Durumu</label>
+                    <select
+                      value={searchPaymentStatus}
+                      onChange={(e: any) => setSearchPaymentStatus(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium text-slate-700 h-[38px]"
+                    >
+                      <option value="all">Tüm Durumlar (Hepsi)</option>
+                      <option value="paid">Ödenenler</option>
+                      <option value="unpaid">Ödenmeyenler</option>
+                    </select>
+                  </div>
+
+                  {/* Reset Filters */}
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setSearchTabQuery('');
+                        setSearchStartDate('');
+                        setSearchEndDate('');
+                        setSearchType('all');
+                        setSearchPaymentStatus('all');
+                      }}
+                      className="w-full h-[38px] border border-dashed border-[#cb997e] text-[#cb997e] hover:bg-[#cb997e]/5 text-xs font-bold rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Filtreleri Sıfırla
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Calculations Bento Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                
+                {/* Net Profit Card */}
+                <div className="bg-[#6b705c] p-6 rounded-[2rem] text-white shadow-md flex flex-col justify-between relative overflow-hidden md:col-span-2">
+                  <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-28 h-28 bg-white/5 rounded-full pointer-events-none" />
+                  
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-bold tracking-wider">FİLTRELENMİŞ NET KÂR</span>
+                      <h4 className="text-[10px] text-white/70 font-semibold font-sans mt-1">Bulunan Seansların Toplam Net Kâr Tutarı</h4>
+                    </div>
+                    <div className="p-2 bg-white/10 rounded-xl">
+                      <Calculator className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <h2 className="text-4xl font-serif">₺{searchTabCalculations.netGelir.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h2>
+                    <p className="text-[10px] opacity-80 mt-1 font-mono">Formül: Brüt Gelir (₺{searchTabCalculations.brütGelir.toLocaleString('tr-TR')}) - Toplam Gider (₺{searchTabCalculations.toplamGider.toLocaleString('tr-TR')})</p>
+                  </div>
+                </div>
+
+                {/* Financial Details */}
+                <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] flex flex-col justify-between space-y-4 shadow-xs">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-bold tracking-wider uppercase">BRÜT GELİR</span>
+                      <span className="font-bold text-slate-700">₺{searchTabCalculations.brütGelir.toLocaleString('tr-TR')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-bold tracking-wider uppercase">TOPLAM GİDER</span>
+                      <span className="font-bold text-slate-700">₺{searchTabCalculations.toplamGider.toLocaleString('tr-TR')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs pl-2 border-l-2 border-slate-200">
+                      <span className="text-slate-400 text-[11px]">Bakıcı Payı</span>
+                      <span className="text-slate-600 font-medium text-[11px]">₺{searchTabCalculations.bakiciGideri.toLocaleString('tr-TR')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs pl-2 border-l-2 border-slate-200">
+                      <span className="text-slate-400 text-[11px]">Ofis Kirası</span>
+                      <span className="text-slate-600 font-medium text-[11px]">₺{searchTabCalculations.ofisGideri.toLocaleString('tr-TR')}</span>
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-100 pt-3 text-[10px] text-slate-400 leading-normal font-semibold">
+                    * Hesaplamalara iptal edilen seanslar dahil değildir.
+                  </div>
+                </div>
+
+                {/* Payment Metrics & Counts */}
+                <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] flex flex-col justify-between space-y-4 shadow-xs">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-bold tracking-wider uppercase">TAHSİL EDİLEN</span>
+                      <span className="font-bold text-emerald-600">₺{searchTabCalculations.odenenMiktar.toLocaleString('tr-TR')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-bold tracking-wider uppercase">ALACAK (BEKLEYEN)</span>
+                      <span className="font-bold text-rose-500">₺{searchTabCalculations.odenmeyenMiktar.toLocaleString('tr-TR')}</span>
+                    </div>
+                    <div className="border-t border-slate-100 pt-2 flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase">
+                      <span>Bulunan Seans</span>
+                      <span>{searchTabCalculations.totalSessions} Adet</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100/50 px-1.5 py-0.5 rounded-full">
+                      {searchTabCalculations.onlineCount} Online
+                    </span>
+                    <span className="text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100/50 px-1.5 py-0.5 rounded-full">
+                      {searchTabCalculations.faceToFaceCount} Yüz Yüze
+                    </span>
+                    <span className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100/50 px-1.5 py-0.5 rounded-full">
+                      {searchTabCalculations.cancelledCount} İptal
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Filtered Sessions List */}
+              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-xs flex flex-col">
+                <div className="p-6 md:p-8 border-b border-[#f5f5f0] flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#fdfbf7]">
+                  <div>
+                    <h3 className="text-lg font-serif text-[#6b705c] italic">Sorgulama ve Arama Sonuçları</h3>
+                    {showExplanations && (
+                      <p className="text-xs text-slate-400 animate-fade-in">Filtrelerinize uyan toplam {searchedAndFilteredSessions.length} seans kaydı listeleniyor.</p>
+                    )}
+                  </div>
+                  
+                  <div className="text-xs font-semibold text-slate-500">
+                    Sıralama: <span className="text-[#cb997e]">En Yeni Seans En Üstte</span>
+                  </div>
+                </div>
+
+                <div className="p-6 divide-y divide-slate-100">
+                  {searchedAndFilteredSessions.length === 0 ? (
+                    <div className="text-center py-20 text-slate-400 text-xs flex flex-col items-center justify-center space-y-3">
+                      <Search className="w-10 h-10 text-slate-300 animate-pulse" />
+                      <div>
+                        <h4 className="font-bold text-slate-700">Hiçbir Sonuç Bulunamadı</h4>
+                        <p className="text-slate-400 mt-1 max-w-sm">
+                          Seçmiş olduğunuz arama kriterleri veya filtre seçenekleri ile eşleşen bir seans kaydı bulunmuyor. Lütfen filtrelerinizi sıfırlayın veya değiştirin.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {[...searchedAndFilteredSessions]
+                        .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time))
+                        .map(session => {
+                          const [year, month, day] = session.date.split('-');
+                          const formattedDate = `${day}.${month}.${year}`;
+                          const isFaceToFace = session.type === 'face-to-face';
+                          const isCancelled = session.type === 'cancelled';
+                          const isPaid = session.paymentStatus === 'paid';
+
+                          return (
+                            <div key={session.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 hover:bg-[#fdfbf7]/40 rounded-2xl border border-slate-100 gap-4 transition-all">
+                              <div className="space-y-1.5 text-left min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-sm text-slate-800">
+                                    {session.clientName}
+                                  </span>
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
+                                    session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
+                                    isFaceToFace ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
+                                    'bg-rose-50 text-rose-600 border border-rose-100/50'
+                                  }`}>
+                                    {session.type === 'online' ? 'Çevrimiçi' : isFaceToFace ? 'Yüz Yüze' : 'İptal'}
+                                  </span>
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
+                                    isPaid ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                  }`}>
+                                    {isPaid ? 'ÖDENDİ' : 'ÖDENMEDİ'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold font-mono">
+                                  <span className="text-slate-600">{formattedDate}</span>
+                                  <span>•</span>
+                                  <span>{session.time}</span>
+                                  <span>•</span>
+                                  <span className="text-[#cb997e] font-bold">₺{session.price}</span>
+                                </div>
+
+                                {session.notes && (
+                                  <p className="text-xs text-slate-500 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
+                                    <strong>Not:</strong> {session.notes}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end">
+                                {/* Toggle payment status shortcut button */}
+                                {!isCancelled && (
+                                  <button
+                                    onClick={() => handleTogglePaymentStatus(session.id)}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-xl cursor-pointer transition-colors border ${
+                                      isPaid 
+                                        ? 'bg-rose-50/50 hover:bg-rose-50 text-rose-600 border-rose-200' 
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                    }`}
+                                  >
+                                    {isPaid ? '✗ Ödenmedi Yap' : '✓ Ödendi Yap'}
+                                  </button>
+                                )}
+                                
+                                <button
+                                  onClick={() => {
+                                    setSelectedDate(session.date);
+                                    setActiveTab('agenda');
+                                  }}
+                                  className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                                >
+                                  Ajandada Git
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedDate(session.date);
+                                    setEditingSession(session);
+                                    setIsSessionModalOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-xl cursor-pointer transition-colors"
+                                >
+                                  Düzenle
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.div>
           )}
 
