@@ -635,49 +635,38 @@ export default function App() {
         
         if (cloudData) {
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
-          let localSessions: Session[] = [];
+          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
           
           if (shouldMigrate) {
             // User explicitly requested to migrate anonymous data into their existing cloud account
+            let localSessions: Session[] = [];
             const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
             if (savedSessionsStr) {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
-          } else {
-            // Standard flow: Use user-specific cached local sessions (for offline work support)
-            const userSessionsKey = `psycalcu_sessions_${user.uid}`;
-            const savedSessionsStr = localStorage.getItem(userSessionsKey);
-            if (savedSessionsStr) {
-              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
-            }
-          }
-          
-          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
-          
-          // Merge local and cloud sessions using updatedAt field
-          const localMap = new Map(localSessions.map(s => [s.id, s]));
-          const cloudIds = new Set(cloudSessions.map(s => s.id));
-          
-          // Keep local-only sessions (e.g. offline edits) if they are not mock sessions
-          const localOnly = localSessions.filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
-          
-          const mergedSessions = cloudSessions.map(cs => {
-            const ls = localMap.get(cs.id);
-            if (ls) {
-              const localTime = ls.updatedAt || 0;
-              const cloudTime = cs.updatedAt || 0;
-              // If local has a newer update, merge/use the local session
-              if (localTime > cloudTime) {
-                return ls;
+
+            // Merge local and cloud sessions using updatedAt field
+            const localMap = new Map(localSessions.map(s => [s.id, s]));
+            const cloudIds = new Set(cloudSessions.map(s => s.id));
+            
+            // Keep local-only sessions (e.g. offline edits) if they are not mock sessions
+            const localOnly = localSessions.filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
+            
+            const mergedSessions = cloudSessions.map(cs => {
+              const ls = localMap.get(cs.id);
+              if (ls) {
+                const localTime = ls.updatedAt || 0;
+                const cloudTime = cs.updatedAt || 0;
+                // If local has a newer update, merge/use the local session
+                if (localTime > cloudTime) {
+                  return ls;
+                }
               }
-            }
-            return cs;
-          });
-          
-          const finalSessions = autoCorrectPastSessions([...mergedSessions, ...localOnly]);
-          
-          // If the merged sessions list differs from cloud sessions, trigger a save back to the cloud
-          if (JSON.stringify(cloudSessions) !== JSON.stringify(finalSessions)) {
+              return cs;
+            });
+            
+            const finalSessions = autoCorrectPastSessions([...mergedSessions, ...localOnly]);
+            
             setSessions(finalSessions);
             setSettings(cloudData.settings);
             // Save the merged data to the cloud
@@ -686,22 +675,28 @@ export default function App() {
               settings: JSON.stringify(cloudData.settings),
               sessions: JSON.stringify(finalSessions)
             };
-          } else {
-            setSessions(cloudSessions);
-            setSettings(cloudData.settings);
-            lastSavedRef.current = {
-              settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(cloudSessions)
-            };
-          }
-          
-          // Wipe anonymous local storage if migrated to prevent re-migration or leak
-          if (shouldMigrate) {
+
+            // Wipe anonymous local storage
             localStorage.removeItem('psycalcu_sessions');
             localStorage.removeItem('psycalcu_settings');
             localStorage.removeItem('psycalcu_should_migrate');
             showToast('Yerel seanslarınız mevcut bulut hesabınızla başarıyla birleştirildi!', 'success');
           } else {
+            // Standard flow: Cloud is the absolute source of truth!
+            // No merge with stale local storage to prevent overwriting newer edits from other devices.
+            setSessions(cloudSessions);
+            setSettings(cloudData.settings);
+            
+            // Update the user-specific localStorage cache immediately with the newest cloud data
+            const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+            const userSettingsKey = `psycalcu_settings_${user.uid}`;
+            localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
+            localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
+
+            lastSavedRef.current = {
+              settings: JSON.stringify(cloudData.settings),
+              sessions: JSON.stringify(cloudSessions)
+            };
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           }
         } else {
