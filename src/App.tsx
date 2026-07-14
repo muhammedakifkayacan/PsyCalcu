@@ -910,8 +910,16 @@ export default function App() {
 
   // Automatic Background Calendar Sync on App Load
   const hasAutoSyncedRef = useRef(false);
+
+  // Reset auto sync ref on auth change to trigger sync for the new user
   useEffect(() => {
-    if (isInitialAuthCheckDone && !isAuthLoading && !isAuthSyncing) {
+    hasAutoSyncedRef.current = false;
+  }, [user]);
+
+  useEffect(() => {
+    // Only run when auth check is complete, not loading, not actively syncing auth, 
+    // AND the initial cloud database synchronization is fully finished!
+    if (isInitialAuthCheckDone && !isAuthLoading && !isAuthSyncing && isInitialSyncDone) {
       if (hasAutoSyncedRef.current) return;
       hasAutoSyncedRef.current = true;
 
@@ -921,7 +929,7 @@ export default function App() {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, settings]);
+  }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, isInitialSyncDone, settings]);
 
   const handleAuthSuccess = async (currentUser: User) => {
     // onAuthStateChanged is the master of data loading; just reset ref to force fetch
