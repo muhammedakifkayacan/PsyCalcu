@@ -16,6 +16,21 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
   const [selectedCard, setSelectedCard] = useState<'gross' | 'pending' | 'expenses' | 'net' | null>(null);
   const [detailSearchQuery, setDetailSearchQuery] = useState('');
 
+  const handleCardClick = (cardType: 'gross' | 'pending' | 'expenses' | 'net') => {
+    setSelectedCard(prev => {
+      const next = prev === cardType ? null : cardType;
+      if (next) {
+        setTimeout(() => {
+          const el = document.getElementById('accounting-details-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 120);
+      }
+      return next;
+    });
+  };
+
   // Compute calculated start & end dates based on selected preset
   const dateRange = useMemo(() => {
     const today = new Date();
@@ -279,100 +294,188 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Gross Income Card */}
         <div 
-          onClick={() => setSelectedCard(prev => prev === 'gross' ? null : 'gross')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between ${
-            selectedCard === 'gross' ? 'border-emerald-500 ring-2 ring-emerald-500/15 bg-emerald-50/5' : 'bg-white border-[#e5e1d8] shadow-sm'
+          onClick={() => handleCardClick('gross')}
+          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
+            selectedCard === 'gross' 
+              ? 'border-emerald-500 ring-2 ring-emerald-500/15 bg-emerald-50/20 shadow-xs' 
+              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
           }`}
           id="scorecard-gross"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-[10px] tracking-wider text-[#a5a58d] font-bold">ÖDENEN BRÜT GELİR</span>
-            <span className={`p-1 rounded-full ${selectedCard === 'gross' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600'}`}>
-              <ArrowUpRight className="w-4 h-4" />
-            </span>
+          <div>
+            <div className="flex justify-between items-start">
+              <span className="text-[10px] tracking-wider text-[#a5a58d] font-bold">ÖDENEN BRÜT GELİR</span>
+              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'gross' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100'}`}>
+                <ArrowUpRight className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-2xl font-serif text-[#6b705c]">₺{analytics.grossIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-slate-400 mt-1">Ödemesi tamamlanmış seans cirosu.</p>
+            </div>
           </div>
-          <div className="mt-2">
-            <h3 className="text-2xl font-serif text-[#6b705c]">₺{analytics.grossIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Ödemesi tamamlanmış seans cirosu (Detay için Tıklayın)</p>
+          
+          {/* Action indicator for UX clarity, extremely vital on mobile */}
+          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
+            {selectedCard === 'gross' ? (
+              <>
+                <span className="font-bold text-emerald-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  AKTİF FİLTRE
+                </span>
+                <span className="text-emerald-500/80 underline font-medium">Sıfırla</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-400 group-hover:text-emerald-600 transition-colors">Aşağıda Listele</span>
+                <span className="text-slate-300 group-hover:text-emerald-500 group-hover:translate-y-0.5 transition-all">↴</span>
+              </>
+            )}
           </div>
         </div>
 
         {/* Pending Receivables Card */}
         <div 
-          onClick={() => setSelectedCard(prev => prev === 'pending' ? null : 'pending')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between ${
-            selectedCard === 'pending' ? 'border-amber-500 ring-2 ring-amber-500/15 bg-amber-50/5' : 'bg-white border-[#e5e1d8] shadow-sm'
+          onClick={() => handleCardClick('pending')}
+          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
+            selectedCard === 'pending' 
+              ? 'border-amber-500 ring-2 ring-amber-500/15 bg-amber-50/20 shadow-xs' 
+              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
           }`}
           id="scorecard-pending"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-[10px] tracking-wider text-amber-600 font-bold">BEKLEYEN ALACAK</span>
-            <span className={`p-1 rounded-full ${selectedCard === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600'}`}>
-              <Clock className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-2 space-y-2">
-            <div>
-              <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Tarihi bugün veya geçmişte olan, ödenmemiş seanslar.</p>
+          <div>
+            <div className="flex justify-between items-start">
+              <span className="text-[10px] tracking-wider text-amber-600 font-bold">BEKLEYEN ALACAK</span>
+              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600 group-hover:bg-amber-100'}`}>
+                <Clock className="w-4 h-4" />
+              </span>
             </div>
-            
-            {(analytics.futureUnpaidIncome > 0 || analytics.grossIncome > 0) && (
-              <div className="text-[10px] text-slate-500 border-t border-amber-500/10 pt-2 space-y-1">
-                {analytics.futureUnpaidIncome > 0 && (
-                  <div className="flex justify-between items-center" title="Gelecek tarihler için planlanan seansların henüz ödenmemiş ücret toplamı">
-                    <span className="text-slate-400">Gelecek Planlanan:</span>
-                    <span className="font-semibold text-slate-600">+₺{analytics.futureUnpaidIncome.toLocaleString('tr-TR')}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center border-t border-slate-100/80 pt-1 font-bold text-[#6b705c]" title="Ödenen brüt gelir + gerçekleşmiş alacak + gelecek planlanan seansların toplamı">
-                  <span>Tahmini Toplam Ciro:</span>
-                  <span>₺{(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome).toLocaleString('tr-TR')}</span>
-                </div>
+            <div className="mt-2 space-y-2">
+              <div>
+                <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Tarihi bugün veya geçmişte olan, ödenmemiş seanslar.</p>
               </div>
+              
+              {(analytics.futureUnpaidIncome > 0 || analytics.grossIncome > 0) && (
+                <div className="text-[10px] text-slate-500 border-t border-amber-500/10 pt-2 space-y-1">
+                  {analytics.futureUnpaidIncome > 0 && (
+                    <div className="flex justify-between items-center" title="Gelecek tarihler için planlanan seansların henüz ödenmemiş ücret toplamı">
+                      <span className="text-slate-400">Gelecek Planlanan:</span>
+                      <span className="font-semibold text-slate-600">+₺{analytics.futureUnpaidIncome.toLocaleString('tr-TR')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center border-t border-slate-100/80 pt-1 font-bold text-[#6b705c]" title="Ödenen brüt gelir + gerçekleşmiş alacak + gelecek planlanan seansların toplamı">
+                    <span>Tahmini Toplam Ciro:</span>
+                    <span>₺{(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome).toLocaleString('tr-TR')}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Action indicator for UX clarity, extremely vital on mobile */}
+          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
+            {selectedCard === 'pending' ? (
+              <>
+                <span className="font-bold text-amber-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  AKTİF FİLTRE
+                </span>
+                <span className="text-amber-500/80 underline font-medium">Sıfırla</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-400 group-hover:text-amber-600 transition-colors">Aşağıda Listele</span>
+                <span className="text-slate-300 group-hover:text-amber-500 group-hover:translate-y-0.5 transition-all">↴</span>
+              </>
             )}
           </div>
         </div>
 
         {/* Total Expenses Card */}
         <div 
-          onClick={() => setSelectedCard(prev => prev === 'expenses' ? null : 'expenses')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between ${
-            selectedCard === 'expenses' ? 'border-orange-500 ring-2 ring-orange-500/15 bg-orange-50/5' : 'bg-white border-[#e5e1d8] shadow-sm'
+          onClick={() => handleCardClick('expenses')}
+          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
+            selectedCard === 'expenses' 
+              ? 'border-orange-500 ring-2 ring-orange-500/15 bg-orange-50/20 shadow-xs' 
+              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
           }`}
           id="scorecard-expenses"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-[10px] tracking-wider text-orange-600 font-bold">ÖDENEN GİDERLER</span>
-            <span className={`p-1 rounded-full ${selectedCard === 'expenses' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'}`}>
-              <ArrowDownRight className="w-4 h-4" />
-            </span>
+          <div>
+            <div className="flex justify-between items-start">
+              <span className="text-[10px] tracking-wider text-orange-600 font-bold">ÖDENEN GİDERLER</span>
+              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'expenses' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 group-hover:bg-orange-100'}`}>
+                <ArrowDownRight className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-2xl font-serif text-slate-700">₺{analytics.totalExpenses.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-slate-400 mt-1">
+                ₺{analytics.babysitterFees.toLocaleString('tr-TR')} bakıcı + ₺{analytics.officeRentExpenses.toLocaleString('tr-TR')} ofis gideri.
+              </p>
+            </div>
           </div>
-          <div className="mt-2">
-            <h3 className="text-2xl font-serif text-slate-700">₺{analytics.totalExpenses.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">
-              ₺{analytics.babysitterFees.toLocaleString('tr-TR')} bakıcı + ₺{analytics.officeRentExpenses.toLocaleString('tr-TR')} ofis gideri (Detay için Tıklayın)
-            </p>
+          
+          {/* Action indicator for UX clarity, extremely vital on mobile */}
+          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
+            {selectedCard === 'expenses' ? (
+              <>
+                <span className="font-bold text-orange-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                  AKTİF FİLTRE
+                </span>
+                <span className="text-orange-500/80 underline font-medium">Sıfırla</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-400 group-hover:text-orange-600 transition-colors">Giderleri Listele</span>
+                <span className="text-slate-300 group-hover:text-orange-500 group-hover:translate-y-0.5 transition-all">↴</span>
+              </>
+            )}
           </div>
         </div>
 
         {/* Net Profit Card */}
         <div 
-          onClick={() => setSelectedCard(prev => prev === 'net' ? null : 'net')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between ${
-            selectedCard === 'net' ? 'bg-[#505445] border-[#505445] text-white shadow-md' : 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
+          onClick={() => handleCardClick('net')}
+          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
+            selectedCard === 'net' 
+              ? 'bg-[#505445] border-[#505445] text-white shadow-md' 
+              : 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm hover:bg-[#5f6352]'
           }`}
           id="scorecard-net"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-[10px] tracking-wider text-white/80 font-bold">DÖNEM NET KÂR</span>
-            <span className="p-1 rounded-full bg-white/15 text-white">
-              <TrendingUp className="w-4 h-4" />
-            </span>
+          <div>
+            <div className="flex justify-between items-start">
+              <span className="text-[10px] tracking-wider text-white/80 font-bold">DÖNEM NET KÂR</span>
+              <span className="p-1.5 rounded-full bg-white/15 text-white transition-colors group-hover:bg-white/25">
+                <TrendingUp className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-2xl font-serif">₺{analytics.netIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-white/70 mt-1">Ödenen seansların net kazancı.</p>
+            </div>
           </div>
-          <div className="mt-2">
-            <h3 className="text-2xl font-serif">₺{analytics.netIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-white/70 mt-1">Ödenen seansların net kazancı (Detay için Tıklayın)</p>
+          
+          {/* Action indicator for UX clarity, extremely vital on mobile */}
+          <div className="mt-3 pt-2.5 border-t border-dashed border-white/10 flex items-center justify-between text-[10px] transition-all">
+            {selectedCard === 'net' ? (
+              <>
+                <span className="font-bold text-white flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                  AKTİF FİLTRE
+                </span>
+                <span className="text-white/80 underline font-medium">Sıfırla</span>
+              </>
+            ) : (
+              <>
+                <span className="text-white/60 group-hover:text-white transition-colors">Aşağıda Listele</span>
+                <span className="text-white/40 group-hover:text-white group-hover:translate-y-0.5 transition-all">↴</span>
+              </>
+            )}
           </div>
         </div>
       </div>
