@@ -501,6 +501,25 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         }`} 
         id="accounting-details-section"
       >
+        {selectedCard && (
+          <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50/60 text-amber-900 text-xs rounded-2xl border border-amber-200 animate-fadeIn">
+            <span className="text-sm">✨</span>
+            <div className="flex-1 leading-relaxed">
+              <span className="font-bold text-amber-800">Seçtiğiniz alana ait seanslar listeleniyor: </span>
+              <span className="text-slate-600">
+                Aşağıdaki tablo, tıkladığınız <strong className="text-[#6b705c] font-bold">{selectedCard === 'gross' ? 'Ödenen Brüt Gelir' : selectedCard === 'pending' ? 'Bekleyen Alacak' : selectedCard === 'expenses' ? 'Ödenen Giderler' : 'Dönem Net Kârı'}</strong> özet kartına göre filtrelenmiştir. Listeyi eski haline getirmek için <button onClick={() => setSelectedCard(null)} className="underline text-[#cb997e] hover:text-[#b07d62] font-bold cursor-pointer">filtreyi temizleyebilirsiniz</button>.
+              </span>
+            </div>
+            <button 
+              onClick={() => setSelectedCard(null)} 
+              className="p-1 hover:bg-amber-100 rounded-full text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+              title="Filtreyi Temizle"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
