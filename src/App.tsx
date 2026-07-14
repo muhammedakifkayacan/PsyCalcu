@@ -1202,6 +1202,43 @@ export default function App() {
     };
   }, [searchedAndFilteredSessions]);
 
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+
+  useEffect(() => {
+    let lastScrollY = window.pageYOffset || document.documentElement.scrollTop;
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+          
+          // Only collapse on mobile/tablet viewports (width < 1024px)
+          if (window.innerWidth < 1024) {
+            if (currentScrollY > 120) {
+              if (currentScrollY > lastScrollY) {
+                setIsHeaderCollapsed(true); // scrolling down -> collapse
+              } else if (currentScrollY < lastScrollY - 10) {
+                setIsHeaderCollapsed(false); // scrolling up -> expand (with 10px buffer)
+              }
+            } else {
+              setIsHeaderCollapsed(false); // near the top -> always expand
+            }
+          } else {
+            setIsHeaderCollapsed(false); // desktop -> always expand
+          }
+          
+          lastScrollY = Math.max(0, currentScrollY);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // Auto trigger tour for first-time logged-in users
   useEffect(() => {
     if (user) {
@@ -2539,7 +2576,9 @@ export default function App() {
     <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
       
       {/* Header Navigation */}
-      <nav className="sticky top-0 z-40 flex flex-col lg:flex-row items-center justify-between px-6 md:px-8 py-4 border-b border-[#e5e1d8] bg-white gap-4">
+      <nav className={`sticky top-0 z-40 flex flex-col lg:flex-row items-center justify-between px-6 md:px-8 border-b border-[#e5e1d8] bg-white transition-all duration-300 ${
+        isHeaderCollapsed ? 'gap-0 py-2 shadow-xs' : 'gap-4 py-4 shadow-none'
+      }`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">P</div>
           <div>
@@ -2549,7 +2588,11 @@ export default function App() {
         </div>
 
         {/* Search Bar */}
-        <div className="relative w-full sm:max-w-xs md:max-w-md lg:max-w-xs z-50">
+        <div className={`relative w-full sm:max-w-xs md:max-w-md lg:max-w-xs z-50 transition-all duration-300 lg:h-auto lg:opacity-100 lg:visible lg:scale-100 lg:pointer-events-auto ${
+          isHeaderCollapsed 
+            ? 'h-0 opacity-0 overflow-hidden pointer-events-none scale-95 mt-0' 
+            : 'h-auto opacity-100 scale-100 mt-1 sm:mt-0'
+        }`}>
           <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
             <Search className="w-4 h-4 text-[#6b705c]" />
           </div>
@@ -2678,7 +2721,11 @@ export default function App() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className={`flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden transition-all duration-300 lg:h-auto lg:opacity-100 lg:visible lg:scale-100 lg:pointer-events-auto ${
+          isHeaderCollapsed 
+            ? 'h-0 opacity-0 overflow-hidden border-0 p-0 pointer-events-none scale-95 mt-0' 
+            : 'h-auto opacity-100 scale-100 mt-1 sm:mt-0'
+        }`}>
           <button
             id="tab-agenda"
             onClick={() => setActiveTab('agenda')}
@@ -2737,7 +2784,11 @@ export default function App() {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className={`flex items-center gap-4 transition-all duration-300 lg:h-auto lg:opacity-100 lg:visible lg:scale-100 lg:pointer-events-auto ${
+          isHeaderCollapsed 
+            ? 'h-0 opacity-0 overflow-hidden pointer-events-none scale-95 mt-0' 
+            : 'h-auto opacity-100 scale-100 mt-1 sm:mt-0'
+        }`}>
           {settings.onlineCalendarWebcalUrl || settings.faceToFaceCalendarWebcalUrl ? (
             <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100" id="calendar-sync-active-pill">
               <span className="relative flex h-2 w-2">

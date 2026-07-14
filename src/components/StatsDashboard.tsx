@@ -15,15 +15,27 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [selectedCard, setSelectedCard] = useState<'gross' | 'pending' | 'expenses' | 'net' | null>(null);
   const [detailSearchQuery, setDetailSearchQuery] = useState('');
+  const [isHighlighted, setIsHighlighted] = useState(false);
 
   const handleCardClick = (cardType: 'gross' | 'pending' | 'expenses' | 'net') => {
     setSelectedCard(prev => {
       const next = prev === cardType ? null : cardType;
       if (next) {
+        setIsHighlighted(true);
+        setTimeout(() => setIsHighlighted(false), 2000); // Highlight for 2 seconds
+
         setTimeout(() => {
           const el = document.getElementById('accounting-details-section');
           if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const header = document.querySelector('nav');
+            const headerHeight = header ? header.offsetHeight : 80;
+            const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
+            const offsetPosition = elementPosition - headerHeight - 16; // Subtract header height with clear gap
+
+            window.scrollTo({
+              top: offsetPosition,
+              behavior: 'smooth'
+            });
           }
         }, 120);
       }
@@ -481,7 +493,14 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
       </div>
 
       {/* Session Details List and General Search Panel */}
-      <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-6 shadow-sm space-y-4 animate-fadeIn" id="accounting-details-section">
+      <div 
+        className={`rounded-[2rem] border p-6 space-y-4 animate-fadeIn transition-all duration-700 ${
+          isHighlighted 
+            ? 'bg-amber-50/20 border-amber-400 ring-4 ring-amber-500/20 shadow-md scale-[1.005]' 
+            : 'bg-white border-[#e5e1d8] shadow-sm'
+        }`} 
+        id="accounting-details-section"
+      >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
