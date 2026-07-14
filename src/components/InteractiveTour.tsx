@@ -368,10 +368,11 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
   };
 
   const handleFinish = () => {
-    if (dontShowAgain) {
-      const key = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
-      localStorage.setItem(key, 'true');
-    }
+    // Finishing the tour successfully should always mark it as completed so it doesn't auto-start again.
+    const key1 = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+    localStorage.setItem(key1, 'true');
+    localStorage.setItem('psycalcu_tour_completed', 'true');
+    
     if (showToast) {
       showToast("Tanıtım turu tamamlandı! Keyifli kullanımlar dileriz.", "success");
     }
@@ -381,8 +382,16 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
 
   const handleSkip = () => {
     if (dontShowAgain) {
-      const key = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
-      localStorage.setItem(key, 'true');
+      const key1 = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+      localStorage.setItem(key1, 'true');
+      localStorage.setItem('psycalcu_tour_completed', 'true');
+      if (showToast) {
+        showToast("Tanıtım turu kapatıldı ve bir daha gösterilmeyecek şekilde kaydedildi.", "success");
+      }
+    } else {
+      if (showToast) {
+        showToast("Tanıtım turu kapatıldı. SSS / Yardım sayfasından dilediğiniz zaman tekrar başlatabilirsiniz.", "info");
+      }
     }
     onClose();
     setCurrentStepIndex(0);
