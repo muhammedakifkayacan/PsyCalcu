@@ -28,6 +28,27 @@
         "author": { "type": "string" }
       },
       "required": ["id", "title", "message", "type", "createdAt"]
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "Therapist registration request and feature flags",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "status": { "type": "string", "enum": ["approved", "pending", "rejected", "legacy_active"] },
+        "createdAt": { "type": "string" },
+        "maxSessionsLimit": { "type": "integer" },
+        "featuresAIAllowed": { "type": "boolean" },
+        "featuresExportAllowed": { "type": "boolean" },
+        "featuresCalendarAllowed": { "type": "boolean" },
+        "featuresAccountingAllowed": { "type": "boolean" },
+        "featuresDebtTrackerAllowed": { "type": "boolean" },
+        "featuresSmartPriceMatchingAllowed": { "type": "boolean" },
+        "adminNote": { "type": "string" }
+      },
+      "required": ["userId", "email", "status"]
     }
   },
   "firestore": {
@@ -38,6 +59,10 @@
     "/announcements/{announcementId}": {
       "schema": "Announcement",
       "description": "Global administrator notifications and system-wide announcements"
+    },
+    "/registrations/{userId}": {
+      "schema": "Registration",
+      "description": "User registration documents containing membership statuses and granular feature flags."
     }
   }
 }

@@ -1,9 +1,67 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email == 'muhammedakifkayacan@gmail.com' && 
+             request.auth.token.email_verified == true;
+    }
+
+    // Default deny catch-all
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+    
+    // User data (settings & sessions backup)
+    match /users/{userId} {
+      // Users can only read & write their own data. Admin can inspect all users' records.
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+    
+    // Registration documents containing approval status & active feature permissions
+    match /registrations/{userId} {
+      // Users can read their own registration details. Admins can read all registrations.
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Normal users can create their registration requests, but must force status to 'pending'
+      // to prevent self-approval. Admins can write anything.
+      allow create: if (
+        isOwner(userId) && 
+        request.resource.data.status == 'pending' && 
+        request.resource.data.userId == request.auth.uid
+      ) || isAdmin();
+      
+      // Only admins can update user registration status or feature flags.
+      // (Exception: Büşra can auto-update her specific legacy createdAt date safely).
+      allow update: if isAdmin() || (
+        isOwner(userId) && 
+        request.auth.token.email == 'uzmpsikologbusra@gmail.com' &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.email == resource.data.email
+      );
+      
+      // Only admins can delete registration documents.
+      allow delete: if isAdmin();
+    }
+    
+    // System-wide Announcements
+    match /announcements/{announcementId} {
+      // Anyone logged in can read announcements.
+      allow read: if isSignedIn();
+      
+      // Only admins can post or edit global system announcements.
+      allow write: if isAdmin();
     }
   }
 }
-
