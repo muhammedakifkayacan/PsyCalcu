@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -26,6 +26,7 @@ export default function SettingsModal({
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
+  const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(5);
@@ -49,6 +50,7 @@ export default function SettingsModal({
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
+      setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
       setPendingSmartPriceToggle(null);
     }
   }, [isOpen, settings]);
@@ -64,6 +66,7 @@ export default function SettingsModal({
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
       enableSmartClientPriceMatching,
+      defaultLandingPage,
     });
     onClose();
   };
@@ -222,6 +225,33 @@ export default function SettingsModal({
                 />
               </button>
             </div>
+          </div>
+
+          {/* Default Landing Page Option */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Açılış Sekmesi</label>
+            <div className="relative">
+              <select
+                value={defaultLandingPage}
+                onChange={(e) => setDefaultLandingPage(e.target.value as any)}
+                className="w-full pl-4 pr-10 py-2.5 text-xs sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] appearance-none cursor-pointer font-semibold text-slate-700"
+              >
+                <option value="agenda">📅 Ajanda / Takvim</option>
+                <option value="stats">📊 Analiz & İstatistikler</option>
+                <option value="debts">💸 Borç Takip</option>
+                <option value="sync">🔄 Takvim Senkronizasyonu</option>
+                <option value="backup">💾 Veri Yedekleme</option>
+                <option value="search">🔍 Gelişmiş Arama</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
+                Uygulama ilk açıldığında sizi otomatik karşılayacak ana sekme.
+              </p>
+            )}
           </div>
 
           {/* Toggle Explanations Switch */}

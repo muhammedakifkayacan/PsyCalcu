@@ -31,6 +31,7 @@ export interface AppSettings {
   googleSheetId: string;
   googleSheetsLinked: boolean;
   enableSmartClientPriceMatching?: boolean;
+  defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search';
 }
 
 export interface DaySummary {

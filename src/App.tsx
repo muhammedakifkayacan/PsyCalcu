@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Calendar as CalendarIcon, 
   CalendarPlus,
@@ -117,6 +117,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   googleSheetId: '',
   googleSheetsLinked: false,
   enableSmartClientPriceMatching: false,
+  defaultLandingPage: 'agenda',
 };
 
 export default function App() {
@@ -137,6 +138,7 @@ export default function App() {
           googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
           googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
           enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
+          defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
         };
       } catch (e) {}
     }
@@ -506,6 +508,7 @@ export default function App() {
               googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
               googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
               enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
+              defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
             });
           } catch (e) {}
         } else {
@@ -1046,7 +1049,42 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTab, setActiveTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search'>('agenda');
+  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search'>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.defaultLandingPage) return parsed.defaultLandingPage;
+      }
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('psycalcu_settings_')) {
+          const val = localStorage.getItem(key);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (parsed.defaultLandingPage) return parsed.defaultLandingPage;
+          }
+        }
+      }
+    } catch (e) {}
+    return 'agenda';
+  });
+  const hasManuallyChangedTabRef = useRef(false);
+
+  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | ((prev: any) => any)) => {
+    hasManuallyChangedTabRef.current = true;
+    setActiveTabInternal(tab);
+  }, []);
+
+  const activeTab = activeTabInternal;
+
+  // Set initial active tab when settings are loaded/synced, if user hasn't interacted with tabs yet
+  useEffect(() => {
+    if (!hasManuallyChangedTabRef.current && settings.defaultLandingPage) {
+      setActiveTabInternal(settings.defaultLandingPage);
+    }
+  }, [settings.defaultLandingPage]);
+
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
   

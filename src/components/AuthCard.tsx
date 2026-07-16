@@ -6,7 +6,8 @@ import {
   signOut,
   googleProvider,
   signInWithPopup,
-  signInWithRedirect
+  signInWithRedirect,
+  sendPasswordResetEmail
 } from '../lib/firebase';
 import { User } from 'firebase/auth';
 import { 
@@ -38,6 +39,7 @@ interface AuthCardProps {
 export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true, onOpenFaq }: AuthCardProps) {
   const [activeTab, setActiveTab] = useState<'google' | 'email'>('google');
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -47,6 +49,40 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isIframe = window.self !== window.top;
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setInfoMessage('');
+    setLoading(true);
+
+    if (!email.trim()) {
+      setError('Lütfen e-posta adresinizi girin.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setInfoMessage('Şifre sıfırlama e-postası başarıyla gönderildi! Lütfen gelen kutunuzu (ve gereksiz/spam klasörünü) kontrol edin.');
+      if (showToast) {
+        showToast('Şifre sıfırlama e-postası gönderildi.', 'success');
+      }
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = 'Şifre sıfırlama e-postası gönderilirken bir hata oluştu.';
+      if (err.code === 'auth/user-not-found') {
+        errorMsg = 'Bu e-posta adresiyle kayıtlı bir kullanıcı bulunamadı.';
+      } else if (err.code === 'auth/invalid-email') {
+        errorMsg = 'Geçersiz bir e-posta adresi girdiniz.';
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,40 +252,99 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
 
       {/* Elegant Tab Switcher */}
-      <div className="flex bg-slate-100/80 p-1 rounded-2xl border border-slate-200/40">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('google');
-            setError('');
-            setInfoMessage('');
-          }}
-          className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-            activeTab === 'google'
-              ? 'bg-[#6b705c] text-white shadow-xs'
-              : 'text-slate-500 hover:text-[#6b705c]'
-          }`}
-        >
-          Hızlı Giriş
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('email');
-            setError('');
-            setInfoMessage('');
-          }}
-          className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-            activeTab === 'email'
-              ? 'bg-[#6b705c] text-white shadow-xs'
-              : 'text-slate-500 hover:text-[#6b705c]'
-          }`}
-        >
-          E-posta & Şifre
-        </button>
-      </div>
+      {!isForgotPassword && (
+        <div className="flex bg-slate-100/80 p-1 rounded-2xl border border-slate-200/40">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('google');
+              setError('');
+              setInfoMessage('');
+            }}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              activeTab === 'google'
+                ? 'bg-[#6b705c] text-white shadow-xs'
+                : 'text-slate-500 hover:text-[#6b705c]'
+            }`}
+          >
+            Hızlı Giriş
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('email');
+              setError('');
+              setInfoMessage('');
+            }}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              activeTab === 'email'
+                ? 'bg-[#6b705c] text-white shadow-xs'
+                : 'text-slate-500 hover:text-[#6b705c]'
+            }`}
+          >
+            E-posta & Şifre
+          </button>
+        </div>
+      )}
 
-      {activeTab === 'google' ? (
+      {isForgotPassword ? (
+        /* Password Reset View */
+        <form onSubmit={handlePasswordReset} className="space-y-4 animate-fade-in">
+          <div className="space-y-1.5">
+            <h3 className="text-sm font-bold text-slate-700 font-sans">Şifrenizi mi Unuttunuz?</h3>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Hesabınızın e-posta adresini girin, size şifrenizi güvenle sıfırlayabilmeniz için resmi bir bağlantı gönderelim.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">E-POSTA ADRESİNİZ</label>
+            <div className="relative">
+              <Mail className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="psikolog@ornek.com"
+                className="w-full pl-10 pr-3 py-2 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 bg-[#6b705c] hover:bg-[#585c4c] disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Gönderiliyor...
+                </>
+              ) : (
+                <>
+                  <KeyRound className="w-3.5 h-3.5 text-[#ffe8d6]" />
+                  Şifre Sıfırlama E-postası Gönder
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(false);
+                setError('');
+                setInfoMessage('');
+              }}
+              className="w-full text-center text-[11px] text-slate-500 hover:text-[#6b705c] font-semibold transition-colors py-1 cursor-pointer"
+            >
+              Giriş Ekranına Dön
+            </button>
+          </div>
+        </form>
+      ) : activeTab === 'google' ? (
         /* Tab 1: Google Quick Login */
         <div className="space-y-3">
           {/* Google Sign In */}
@@ -300,7 +395,22 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">ŞİFRENİZ</label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">ŞİFRENİZ</label>
+                {isLogin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPassword(true);
+                      setError('');
+                      setInfoMessage('');
+                    }}
+                    className="text-[10px] text-slate-400 hover:text-[#6b705c] font-bold transition-colors cursor-pointer animate-fade-in"
+                  >
+                    Şifremi Unuttum
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <KeyRound className="w-4.5 h-4.5 text-slate-400 absolute left-3 top-2.5" />
                 <input

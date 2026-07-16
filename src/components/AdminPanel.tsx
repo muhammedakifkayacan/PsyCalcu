@@ -10,7 +10,7 @@ import {
   setDoc,
   getDocs
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth, sendPasswordResetEmail } from '../lib/firebase';
 import { 
   Users, 
   Check, 
@@ -31,7 +31,8 @@ import {
   ChevronDown,
   Calendar,
   PieChart,
-  CreditCard
+  CreditCard,
+  KeyRound
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -64,6 +65,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [search, setSearch] = useState('');
   const [openSettingsUserId, setOpenSettingsUserId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState<{ [userId: string]: string }>({});
+  const [sendingResetUserId, setSendingResetUserId] = useState<string | null>(null);
 
   // Confirmation Modal with countdown state
   const [confirmModal, setConfirmModal] = useState<{
@@ -241,6 +243,23 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     } catch (error) {
       console.error("Error updating advanced settings:", error);
       showToast('Ayarlar güncellenirken bir hata oluştu.', 'error');
+    }
+  };
+
+  const handleSendPasswordReset = async (userId: string, email: string, displayName: string) => {
+    if (!email || email.includes('Eski Kayıt')) {
+      showToast('Eski kayıtlı kullanıcı henüz sisteme yeni e-postasıyla giriş yapmamıştır.', 'error');
+      return;
+    }
+    setSendingResetUserId(userId);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      showToast(`${displayName || email} kullanıcısına şifre sıfırlama e-postası başarıyla gönderildi.`, 'success');
+    } catch (error: any) {
+      console.error("Admin send password reset error:", error);
+      showToast(`Şifre sıfırlama e-postası gönderilirken hata oluştu: ${error.message || error}`, 'error');
+    } finally {
+      setSendingResetUserId(null);
     }
   };
 
@@ -683,7 +702,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                       </div>
 
                       {/* Section 8: Admin Private Note */}
-                      <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
+                      <div className="space-y-1.5 border-t border-slate-50 pt-2.5 pb-1">
                         <label className="font-semibold text-slate-600 flex items-center gap-1">
                           <FileText className="w-3.5 h-3.5 text-slate-400" />
                           Yönetici Özel Notu
@@ -704,6 +723,37 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                           </button>
                         </div>
                       </div>
+
+                      {/* Section 9: Password Reset (Only for standard email registered users) */}
+                      {!reg.isLegacy && reg.email && !reg.email.includes('Eski Kayıt') && (
+                        <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
+                          <label className="font-semibold text-slate-600 flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-[#cb997e]" />
+                            Kullanıcı Şifre Yenileme
+                          </label>
+                          <p className="text-[10px] text-slate-400 leading-relaxed mb-1">
+                            Kullanıcının şifresini sıfırlayabilmesi için e-posta adresine resmi bir sıfırlama bağlantısı gönderir.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={sendingResetUserId === reg.userId}
+                            onClick={() => handleSendPasswordReset(reg.userId, reg.email, reg.displayName)}
+                            className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:bg-slate-50 disabled:text-slate-400 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-[#e5e1d8]"
+                          >
+                            {sendingResetUserId === reg.userId ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                Gönderiliyor...
+                              </>
+                            ) : (
+                              <>
+                                <KeyRound className="w-3.5 h-3.5" />
+                                Sıfırlama E-postası Gönder
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>

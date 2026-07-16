@@ -9,6 +9,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  sendPasswordResetEmail,
   User
 } from 'firebase/auth';
 import { 
@@ -71,6 +72,7 @@ export {
   onAuthStateChanged,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult
+  getRedirectResult,
+  sendPasswordResetEmail
 };
 export type { User };
