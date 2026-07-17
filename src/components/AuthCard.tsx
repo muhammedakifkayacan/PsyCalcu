@@ -23,7 +23,8 @@ import {
   RefreshCw,
   Sparkles,
   Lock,
-  HelpCircle
+  HelpCircle,
+  X
 } from 'lucide-react';
 
 interface AuthCardProps {
@@ -34,9 +35,10 @@ interface AuthCardProps {
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   showExplanations?: boolean;
   onOpenFaq?: () => void;
+  onHideExplanations?: () => void;
 }
 
-export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true, onOpenFaq }: AuthCardProps) {
+export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessionsCount, showToast, showExplanations = true, onOpenFaq, onHideExplanations }: AuthCardProps) {
   const [activeTab, setActiveTab] = useState<'google' | 'email'>('google');
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -196,7 +198,18 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
               <ShieldCheck className="w-5 h-5 text-[#ffe8d6]" />
             </div>
             <div>
-              <span className="text-[10px] tracking-widest text-white/70 block font-semibold">AKTİF KULLANICI</span>
+              <span className="text-[10px] tracking-widest text-white/70 block font-semibold flex items-center gap-1">
+                AKTİF KULLANICI
+                {!showExplanations && (
+                  <div className="relative group inline-block">
+                    <HelpCircle className="w-3 h-3 text-[#ffe8d6]/70 hover:text-[#ffe8d6] cursor-help transition-colors" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-800 text-white text-[11px] p-2.5 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal border border-slate-700">
+                      <p>• Verileriniz Google Firestore bulut veritabanında şifreli olarak yedeklenmektedir.</p>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                    </div>
+                  </div>
+                )}
+              </span>
               <h4 className="text-sm font-bold font-mono truncate max-w-[200px]" title={user.email || ''}>
                 {user.email}
               </h4>
@@ -212,7 +225,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
         </div>
 
         {showExplanations && (
-          <div className="bg-white/10 rounded-2xl p-4 border border-white/5 space-y-2 animate-fade-in">
+          <div className="relative bg-white/10 rounded-2xl p-4 border border-white/5 space-y-2 animate-fade-in pr-12">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#ffe8d6]">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Bulut Senkronizasyonu Aktif
@@ -221,6 +234,15 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
               Seans verileriniz, takvim ayarlarınız ve muhasebe dökümleriniz güvenle Google Firestore veritabanına yedekleniyor. 
               Cihazınızı değiştirseniz veya tarayıcı geçmişini temizleseniz dahi kaybolmaz.
             </p>
+            {onHideExplanations && (
+              <button
+                onClick={onHideExplanations}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
+                title="Açıklamayı Gizle"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
       </div>

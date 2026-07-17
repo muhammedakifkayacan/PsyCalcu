@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
-import { Session, SessionType, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
+import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 
 interface SessionModalProps {
@@ -15,6 +15,9 @@ interface SessionModalProps {
   sessions: Session[];
   enableSmartClientPriceMatching?: boolean;
   userRole?: 'tenant' | 'owner';
+  rooms?: Room[];
+  prefilledRoomId?: string;
+  prefilledTime?: string;
 }
 
 export default function SessionModal({
@@ -29,6 +32,9 @@ export default function SessionModal({
   sessions,
   enableSmartClientPriceMatching = false,
   userRole = 'tenant',
+  rooms = [],
+  prefilledRoomId = '',
+  prefilledTime = ''
 }: SessionModalProps) {
   const [clientName, setClientName] = useState('');
   const [type, setType] = useState<SessionType>('online');
@@ -45,6 +51,7 @@ export default function SessionModal({
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
   const [isBabysitterFeeManuallyEdited, setIsBabysitterFeeManuallyEdited] = useState(false);
   const [isOfficeRentFeeManuallyEdited, setIsOfficeRentFeeManuallyEdited] = useState(false);
+  const [roomId, setRoomId] = useState('');
 
   // Determine if editing a past session (date is before today)
   const localTodayStr = (() => {
@@ -125,12 +132,13 @@ export default function SessionModal({
         setOfficeRentFeeAmount(sessionToEdit.officeRentFeeAmount ?? defaultOfficeRentFee);
         setNotes(sessionToEdit.notes || '');
         setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
+        setRoomId(sessionToEdit.roomId || '');
       } else {
         // New session
         setClientName('');
         setType('online');
         setDate(selectedDate);
-        setTime('10:00');
+        setTime(prefilledTime || '10:00');
         setDuration(50);
         setPrice(defaultPrice);
         setHasBabysitterFee(true);
@@ -139,9 +147,10 @@ export default function SessionModal({
         setOfficeRentFeeAmount(defaultOfficeRentFee);
         setNotes('');
         setPaymentStatus('unpaid');
+        setRoomId(prefilledRoomId || '');
       }
     }
-  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee]);
+  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime]);
 
   if (!isOpen) return null;
 
@@ -204,7 +213,8 @@ export default function SessionModal({
       notes: notes.trim(),
       isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
       syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
-      paymentStatus: (type === 'cancelled' || type === 'non-session') ? 'unpaid' : paymentStatus
+      paymentStatus: (type === 'cancelled' || type === 'non-session') ? 'unpaid' : paymentStatus,
+      roomId: roomId || undefined,
     };
 
     onSave(sessionData);
@@ -321,6 +331,28 @@ export default function SessionModal({
               )}
             </div>
           </div>
+
+          {/* Room Selector (Visible to Owners) */}
+          {userRole === 'owner' && rooms && rooms.length > 0 && (
+            <div className="space-y-1 animate-fade-in" id="modal-room-selector">
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">KLİNİK ODA SEÇİMİ</label>
+              <div className="relative">
+                <Building className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <select
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] cursor-pointer h-[38px] font-medium"
+                >
+                  <option value="">-- Herhangi bir odada (Atanmamış) --</option>
+                  {rooms.map(r => (
+                    <option key={r.id} value={r.id}>
+                      🛋️ {r.name} ({r.type === 'standard' ? 'Bireysel' : r.type === 'play-therapy' ? 'Oyun' : r.type === 'family-therapy' ? 'Aile & Çift' : r.type === 'group-therapy' ? 'Grup' : 'Diğer'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Calendar synced or past session warning */}
           {(sessionToEdit?.isSyncedFromCalendar || isPastSession) && (

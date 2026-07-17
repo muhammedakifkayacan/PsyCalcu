@@ -19,6 +19,14 @@ export interface Session {
   paymentStatus?: 'paid' | 'unpaid';
   updatedAt?: number; // timestamp in ms for conflict-free sync
   isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
+  roomId?: string; // Room association for property owners
+}
+
+export interface Room {
+  id: string;
+  name: string; // e.g. "Yetişkin Terapi Odası A"
+  type: 'standard' | 'play-therapy' | 'family-therapy' | 'group-therapy' | 'other';
+  color?: string; // e.g. "#6b705c" or a CSS color/class
 }
 
 export interface OwnerCalendar {
@@ -53,6 +61,7 @@ export interface AppSettings {
   defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search';
   userRole?: 'tenant' | 'owner';
   ownerCalendars?: OwnerCalendar[];
+  rooms?: Room[];
 }
 
 export interface DaySummary {

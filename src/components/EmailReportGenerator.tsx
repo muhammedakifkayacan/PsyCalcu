@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Mail, Copy, Check, Calendar, ArrowRight, Sparkles, TrendingUp, DollarSign, Clock } from 'lucide-react';
+import { Mail, Copy, Check, Calendar, ArrowRight, Sparkles, TrendingUp, DollarSign, Clock, HelpCircle } from 'lucide-react';
 import { Session, AppSettings, toTurkishUpper } from '../types';
 
 interface EmailReportGeneratorProps {
@@ -213,6 +213,15 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
           <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
             <Mail className="w-5 h-5 text-[#cb997e]" />
             E-posta Rapor Şablonları & Gönderimi
+            {!showExplanations && (
+              <div className="relative group inline-block">
+                <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors font-normal" />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                  <p>Seçtiğiniz ayın haftalık seans, gelir-gider ve net kâr dökümünü e-posta şablonu haline getirin ve kendinize iletin.</p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                </div>
+              </div>
+            )}
           </h3>
           {showExplanations && (
             <p className="text-xs text-slate-500 mt-1 animate-fade-in">

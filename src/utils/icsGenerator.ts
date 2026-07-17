@@ -1,10 +1,10 @@
-import { Session } from '../types';
+import { Session, Room } from '../types';
 
 /**
  * Generates an iCalendar (.ics) file for a given session and triggers the browser download.
  * Compatible with Apple Calendar, Google Calendar, Outlook, and mobile calendar applications.
  */
-export function downloadSessionAsICS(session: Session) {
+export function downloadSessionAsICS(session: Session, rooms?: Room[]) {
   const pad = (num: number) => String(num).padStart(2, '0');
 
   // Parse session date and time
@@ -24,15 +24,23 @@ export function downloadSessionAsICS(session: Session) {
   const dtEnd = formatICSDate(endDate);
   const dtStamp = formatICSDate(new Date());
 
+  // Find room if any
+  const room = rooms?.find(r => r.id === session.roomId);
+
   // Define details
   const typeText = session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal';
   const summary = `Seans: ${session.clientName} (${typeText})`;
-  const location = session.type === 'online' ? 'Online Görüntülü Görüşme' : session.type === 'face-to-face' ? 'Terapi Ofisi' : 'İptal Edildi';
+  const location = session.type === 'online' 
+    ? 'Online Görüntülü Görüşme' 
+    : session.type === 'face-to-face' 
+      ? (room ? `Terapi Ofisi - ${room.name}` : 'Terapi Ofisi') 
+      : 'İptal Edildi';
   
   // Format description
   const descriptionLines = [
     `Danışan: ${session.clientName}`,
     `Seans Tipi: ${typeText}`,
+    room ? `Oda: ${room.name}` : '',
     `Süre: ${session.duration} dakika`,
     session.notes ? `Notlar: ${session.notes}` : '',
     `Fiyat: ₺${session.price}`,

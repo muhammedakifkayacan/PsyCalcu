@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User } from 'lucide-react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '../types';
@@ -25,6 +25,7 @@ interface CalendarSyncGuideProps {
   onGoToDate?: (date: string) => void;
   setActiveTab?: (tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings') => void;
   showExplanations?: boolean;
+  onHideExplanations?: () => void;
 }
 
 export default function CalendarSyncGuide({
@@ -40,6 +41,7 @@ export default function CalendarSyncGuide({
   onGoToDate,
   setActiveTab,
   showExplanations = true,
+  onHideExplanations,
 }: CalendarSyncGuideProps) {
   const [dragActive, setDragActive] = useState(false);
   const [importType, setImportType] = useState<'online' | 'face-to-face'>('online');
@@ -353,7 +355,22 @@ export default function CalendarSyncGuide({
           <Calendar className="w-6 h-6" />
         </div>
         <div>
-          <h3 className="text-xl font-serif text-[#6b705c]">Çift Takvim Entegrasyonu</h3>
+          <h3 className="text-xl font-serif text-[#6b705c] flex items-center gap-1.5">
+            Çift Takvim Entegrasyonu
+            {!showExplanations && (
+              <div className="relative group inline-block">
+                <HelpCircle className="w-4 h-4 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors font-normal" />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-80 bg-slate-800 text-white text-xs p-4 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                  <div className="space-y-2">
+                    <p className="font-bold text-[#ffe8d6]">💡 Takvim Entegrasyonu İpuçları:</p>
+                    <p>• <strong>Ayrı Takvimler:</strong> Online ve Yüz Yüze seanslar ayrılarak ofis kirası otomasyonu sağlanır.</p>
+                    <p>• <strong>Klinik Not İpucu:</strong> Seansları takvimde <em>"Danışan Adı Soyadı 1"</em>, <em>"Danışan Adı Soyadı 2"</em> olarak yazın. Akıllı gruplamamız bunları otomatik birleştirir.</p>
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                </div>
+              </div>
+            )}
+          </h3>
           <p className="text-sm text-slate-500 mt-1">
             Online ve Yüzyüze seans takvimlerinizi (Google, Apple, Outlook vb.) ayrı ayrı bağlayarak otomatik finansal sınıflandırma yapın.
           </p>
@@ -362,7 +379,16 @@ export default function CalendarSyncGuide({
 
       {/* Explanation of Dual Calendar Flow */}
       {showExplanations && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#f5f5f0] p-6 rounded-2xl border border-[#e5e1d8]/60 text-slate-700 animate-fade-in">
+        <div className="relative grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#f5f5f0] p-6 rounded-2xl border border-[#e5e1d8]/60 text-slate-700 animate-fade-in pr-12">
+          {onHideExplanations && (
+            <button
+              onClick={onHideExplanations}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              title="Açıklamayı Gizle"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-[#6b705c] font-semibold">
               <HelpCircle className="w-5 h-5 shrink-0" />
@@ -399,35 +425,57 @@ export default function CalendarSyncGuide({
       )}
 
       {/* Clinician Best Practices Recommendation Card */}
-      <div className="bg-emerald-50/40 border border-emerald-100/80 p-6 rounded-2xl text-emerald-900 space-y-3 shadow-xs animate-fade-in">
-        <div className="flex items-center gap-2.5 text-emerald-800 font-bold">
-          <span className="text-lg">💡</span>
-          <h4 className="text-sm font-semibold tracking-wide">Klinisyenler İçin Takvim İpucu & En İyi Pratik</h4>
-        </div>
-        <p className="text-xs leading-relaxed text-emerald-800 font-medium">
-          Takvim entegrasyonunu aktif olarak kullanan psikologlarımıza seans takibini kolaylaştırmak için şu yöntemi tavsiye ediyoruz:
-        </p>
-        <div className="bg-white/95 p-4 rounded-xl border border-emerald-200/50 space-y-2 text-xs">
-          <p className="leading-relaxed text-slate-700">
-            Yeni bir danışan başladığında takvimdeki ilk etkinliği <strong className="text-emerald-700 font-semibold">"Danışan Adı Soyadı 1"</strong> (Örn: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[#cb997e] font-mono">Ahmet Yılmaz 1</code>) olarak isimlendirin. 
+      {showExplanations && (
+        <div className="relative bg-emerald-50/40 border border-emerald-100/80 p-6 rounded-2xl text-emerald-900 space-y-3 shadow-xs animate-fade-in pr-12">
+          {onHideExplanations && (
+            <button
+              onClick={onHideExplanations}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-emerald-100/60 text-emerald-700 hover:text-emerald-900 transition-colors cursor-pointer"
+              title="Açıklamayı Gizle"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          <div className="flex items-center gap-2.5 text-emerald-800 font-bold">
+            <span className="text-lg">💡</span>
+            <h4 className="text-sm font-semibold tracking-wide">Klinisyenler İçin Takvim İpucu & En İyi Pratik</h4>
+          </div>
+          <p className="text-xs leading-relaxed text-emerald-800 font-medium">
+            Takvim entegrasyonunu aktif olarak kullanan psikologlarımıza seans takibini kolaylaştırmak için şu yöntemi tavsiye ediyoruz:
           </p>
-          <p className="leading-relaxed text-slate-700">
-            Seanslar eklendikçe sayıları <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 2</strong>, <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 3</strong> diye ilerletin. Bu sayede:
-          </p>
-          <ul className="list-disc pl-5 space-y-1 text-slate-600">
-            <li>Danışanın o an <strong className="font-semibold text-slate-800">kaçıncı seansta</strong> olduğu bilgisini ek bir yere bakmadan doğrudan takvimde görürsünüz.</li>
-            <li>Seansa dair takvime aldığınız klinik notlar birbirine karışmaz, her seans bağımsız kalır.</li>
-            <li><strong className="font-semibold text-slate-800">Geliştirdiğimiz Akıllı Gruplama</strong> sayesinde, seans numarasından ötürü borç listesinde ayrı kutular açılmaz; ad-soyad eşleştiği için tüm borçlu seanslar tek bir danışan kartı altında birleştirilir.</li>
-          </ul>
+          <div className="bg-white/95 p-4 rounded-xl border border-emerald-200/50 space-y-2 text-xs">
+            <p className="leading-relaxed text-slate-700">
+              Yeni bir danışan başladığında takvimdeki ilk etkinliği <strong className="text-emerald-700 font-semibold">"Danışan Adı Soyadı 1"</strong> (Örn: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[#cb997e] font-mono">Ahmet Yılmaz 1</code>) olarak isimlendirin. 
+            </p>
+            <p className="leading-relaxed text-slate-700">
+              Seanslar eklendikçe sayıları <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 2</strong>, <strong className="text-emerald-700 font-semibold">Ahmet Yılmaz 3</strong> diye ilerletin. Bu sayede:
+            </p>
+            <ul className="list-disc pl-5 space-y-1 text-slate-600">
+              <li>Danışanın o an <strong className="font-semibold text-slate-800">kaçıncı seansta</strong> olduğu bilgisini ek bir yere bakmadan doğrudan takvimde görürsünüz.</li>
+              <li>Seansa dair takvime aldığınız klinik notlar birbirine karışmaz, her seans bağımsız kalır.</li>
+              <li><strong className="font-semibold text-slate-800">Geliştirdiğimiz Akıllı Gruplama</strong> sayesinde, seans numarasından ötürü borç listesinde ayrı kutular açılmaz; ad-soyad eşleştiği için tüm borçlu seanslar tek bir danışan kartı altında birleştirilir.</li>
+              <li><strong className="font-semibold text-slate-800">Akıllı Oda Rezervasyonu:</strong> Takvim etkinliğinin <strong>konum, açıklama veya notlar</strong> kısmına tanımladığınız terapi odalarından birinin adını yazın (Örn: <code>Zeytin Odası</code> veya <code>Mavi Oda</code>). Sistem seansı içeri aktarırken bu odayı otomatik olarak tespit edip rezerve eder, böylece oda doluluk durumunuz da kendiliğinden planlanır!</li>
+            </ul>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ICS File Importer with Type Selector */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h4 className="text-sm font-semibold text-[#6b705c]">
+            <h4 className="text-sm font-semibold text-[#6b705c] flex items-center gap-1.5">
               Yöntem A: Takvim (.ics) Dosyasından Seans Yükle
+              {!showExplanations && (
+                <div className="relative group inline-block">
+                  <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                    <p className="mb-1">Google/Apple takvimden dışa aktardığınız <strong>.ics</strong> dosyasını buraya yükleyerek seansları topluca aktarabilirsiniz.</p>
+                    <p className="text-[#ffe8d6]">• <strong>Akıllı Oda:</strong> Takvimde konum veya açıklama kısmına oda adı (Örn: <em>Mavi Oda</em>) yazarsanız seans o odaya otomatik atanır.</p>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                  </div>
+                </div>
+              )}
             </h4>
             {showExplanations && (
               <p className="text-xs text-slate-500 mt-0.5 animate-fade-in">
@@ -505,8 +553,18 @@ export default function CalendarSyncGuide({
       {/* Live URLs Config & Instant Sync buttons */}
       <div className="space-y-4 pt-4 border-t border-[#f5f5f0]">
         <div>
-          <h4 className="text-sm font-semibold text-[#6b705c]">
+          <h4 className="text-sm font-semibold text-[#6b705c] flex items-center gap-1.5">
             Yöntem B: Canlı Takvim WebCal Adreslerini Bağla
+            {!showExplanations && (
+              <div className="relative group inline-block">
+                <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                  <p className="mb-1">Takviminizin canlı abonelik adresini (webcal://...) ekleyerek seansların otomatik senkronize olmasını sağlayabilirsiniz.</p>
+                  <p className="text-[#ffe8d6]">• <strong>Akıllı Oda:</strong> Canlı takvim seans açıklamasında/konumunda oda adı geçerse, sistem seansı o odaya otomatik rezerve eder.</p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                </div>
+              </div>
+            )}
           </h4>
           {showExplanations && (
             <p className="text-xs text-slate-500 mt-0.5 animate-fade-in">

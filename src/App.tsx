@@ -43,10 +43,11 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
+import { Session, SessionType, Room, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
+import RoomManagement from './components/RoomManagement';
 import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
@@ -123,6 +124,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultLandingPage: 'agenda',
   userRole: undefined,
   ownerCalendars: [],
+  rooms: [],
 };
 
 export default function App() {
@@ -146,6 +148,7 @@ export default function App() {
           defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
           userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
           ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
+          rooms: parsed.rooms ?? DEFAULT_SETTINGS.rooms,
         };
       } catch (e) {}
     }
@@ -1058,7 +1061,7 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search'>(() => {
+  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms'>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_settings');
       if (saved) {
@@ -1080,7 +1083,7 @@ export default function App() {
   });
   const hasManuallyChangedTabRef = useRef(false);
 
-  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | ((prev: any) => any)) => {
+  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | ((prev: any) => any)) => {
     hasManuallyChangedTabRef.current = true;
     setActiveTabInternal(tab);
   }, []);
@@ -1106,6 +1109,8 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [prefilledRoomId, setPrefilledRoomId] = useState('');
+  const [prefilledTime, setPrefilledTime] = useState('');
   const [showNotes, setShowNotes] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_show_notes');
@@ -1145,6 +1150,14 @@ export default function App() {
       return next;
     });
   };
+
+  const handleHideExplanations = useCallback(() => {
+    setShowExplanations(false);
+    try {
+      const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
+      localStorage.setItem(key, 'false');
+    } catch (e) {}
+  }, [user]);
 
   const [showAiDetails, setShowAiDetails] = useState<boolean>(false);
   const [isFaqOpen, setIsFaqOpen] = useState<boolean>(false);
@@ -1885,6 +1898,18 @@ export default function App() {
     newSessions: Session[],
     syncedTypesFetched?: 'online' | 'face-to-face' | 'rent-income' | ('online' | 'face-to-face' | 'rent-income')[]
   ) => {
+    // Helper to automatically match rooms based on keywords in the imported session's notes/description/location
+    const findMatchedRoomId = (notesStr?: string) => {
+      if (!notesStr || !settings.rooms || settings.rooms.length === 0) return undefined;
+      const upperNotes = toTurkishUpper(notesStr);
+      for (const rm of settings.rooms) {
+        if (upperNotes.includes(toTurkishUpper(rm.name))) {
+          return rm.id;
+        }
+      }
+      return undefined;
+    };
+
     // 60 days cutoff logic (aligns with icsParser.ts)
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
@@ -1948,6 +1973,10 @@ export default function App() {
         // Determine if the incoming session is cancelled or before membership
         const isCancelledOrBeforeMembership = ns.price === 0 || ns.paymentStatus === 'paid';
 
+        // Auto-match room if not manually edited/set
+        const mergedNotes = ns.notes || existing.notes;
+        const matchedRoomId = findMatchedRoomId(mergedNotes) || existing.roomId;
+
         // Merge changed calendar fields, preserving custom user edits on price/payment status
         const updated = {
           ...existing,
@@ -1955,7 +1984,8 @@ export default function App() {
           date: ns.date,
           time: ns.time,
           duration: ns.duration,
-          notes: ns.notes || existing.notes,
+          notes: mergedNotes,
+          roomId: matchedRoomId,
           price: isCancelledOrBeforeMembership ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
           paymentStatus: isCancelledOrBeforeMembership ? 'paid' : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
           hasBabysitterFee: isCancelledOrBeforeMembership ? false : ns.hasBabysitterFee,
@@ -1998,8 +2028,13 @@ export default function App() {
             finalOfficeRentFee = matchedCosts.officeRentFeeAmount;
           }
         }
+        
+        // Match room for new session
+        const matchedRoomId = findMatchedRoomId(ns.notes);
+
         const nsWithTimestamp = { 
           ...ns, 
+          roomId: matchedRoomId || ns.roomId,
           price: finalPrice, 
           babysitterFeeAmount: finalBabysitterFee,
           officeRentFeeAmount: finalOfficeRentFee,
@@ -3007,6 +3042,17 @@ export default function App() {
           >
             Yedek & E-Tablo
           </button>
+          {settings.userRole === 'owner' && (
+            <button
+              id="tab-rooms"
+              onClick={() => setActiveTab('rooms')}
+              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                activeTab === 'rooms' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              }`}
+            >
+              Odalar & Doluluk 🛋️
+            </button>
+          )}
           {user?.email === 'muhammedakifkayacan@gmail.com' && (
             <button
               id="tab-admin"
@@ -3216,6 +3262,7 @@ export default function App() {
                   existingSessionsCount={sessions.length}
                   showToast={showToast}
                   showExplanations={showExplanations}
+                  onHideExplanations={handleHideExplanations}
                 />
 
                 {/* Expense Breakdown Card */}
@@ -3758,7 +3805,7 @@ export default function App() {
                               {!session.isSyncedFromCalendar && (
                                 <button
                                   onClick={() => {
-                                    downloadSessionAsICS(session);
+                                    downloadSessionAsICS(session, settings.rooms);
                                     showToast(`${session.clientName} seansı takvim dosyası indirildi.`, 'success');
                                   }}
                                   className="p-2.5 md:p-1.5 rounded-xl md:rounded-lg bg-indigo-50/80 md:bg-transparent border border-indigo-100 md:border-transparent text-indigo-700 md:text-indigo-500 hover:text-indigo-900 hover:bg-indigo-100 md:hover:bg-indigo-50 transition-all cursor-pointer font-bold"
@@ -4062,6 +4109,7 @@ export default function App() {
                   onGoToDate={(date) => setSelectedDate(date)}
                   setActiveTab={setActiveTab}
                   showExplanations={showExplanations}
+                  onHideExplanations={handleHideExplanations}
                 />
               )}
             </motion.div>
@@ -4198,6 +4246,58 @@ export default function App() {
                 showToast={showToast}
                 userEmail={user?.email || undefined}
                 showExplanations={showExplanations}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'rooms' && settings.userRole === 'owner' && (
+            <motion.div
+              key="rooms-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              <RoomManagement
+                rooms={settings.rooms || []}
+                onAddRoom={(newRoom) => {
+                  setSettings(prev => ({
+                    ...prev,
+                    rooms: [...(prev.rooms || []), newRoom]
+                  }));
+                  showToast(`"${newRoom.name}" odası başarıyla eklendi.`, 'success');
+                }}
+                onDeleteRoom={(roomId) => {
+                  const deletedRoom = (settings.rooms || []).find(r => r.id === roomId);
+                  setSettings(prev => ({
+                    ...prev,
+                    rooms: (prev.rooms || []).filter(r => r.id !== roomId)
+                  }));
+                  // Clear room reference from sessions
+                  setSessions(prev => prev.map(s => s.roomId === roomId ? { ...s, roomId: undefined, updatedAt: Date.now() } : s));
+                  if (deletedRoom) {
+                    showToast(`"${deletedRoom.name}" odası silindi ve bu odaya atanan seanslar serbest bırakıldı.`, 'info');
+                  }
+                }}
+                sessions={sessions}
+                selectedDate={selectedDate}
+                onDateChange={setSelectedDate}
+                onAddSessionForRoomAndHour={(roomId, time) => {
+                  setEditingSession(null);
+                  setPrefilledRoomId(roomId);
+                  setPrefilledTime(time);
+                  setIsSessionModalOpen(true);
+                }}
+                onEditSession={(session) => {
+                  setEditingSession(session);
+                  setPrefilledRoomId(session.roomId || '');
+                  setPrefilledTime(session.time);
+                  setIsSessionModalOpen(true);
+                }}
+                showToast={showToast}
+                showExplanations={showExplanations}
+                onHideExplanations={handleHideExplanations}
               />
             </motion.div>
           )}
@@ -4568,7 +4668,11 @@ export default function App() {
       {/* Session Add/Edit Modal Component */}
       <SessionModal
         isOpen={isSessionModalOpen}
-        onClose={() => setIsSessionModalOpen(false)}
+        onClose={() => {
+          setIsSessionModalOpen(false);
+          setPrefilledRoomId('');
+          setPrefilledTime('');
+        }}
         sessionToEdit={editingSession}
         onSave={handleSaveSession}
         defaultPrice={settings.defaultSessionPrice}
@@ -4578,6 +4682,9 @@ export default function App() {
         sessions={sessions}
         enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
         userRole={settings.userRole}
+        rooms={settings.rooms || []}
+        prefilledRoomId={prefilledRoomId}
+        prefilledTime={prefilledTime}
       />
 
       {/* FAQ Modal Component */}

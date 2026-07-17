@@ -1,0 +1,1901 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html>
+<html lang='tr' b:css='false' b:defaultmessages='false' b:layoutsVersion='3' b:responsive='true' b:selectBlogPageUrl='true' b:xid='true' xmlns='http://www.w3.org/1999/xhtml' xmlns:b='http://www.google.com/schemas/blogger/2011' xmlns:bexpr='http://www.google.com/schemas/blogger/2011/binding/expressions' xmlns:data='http://www.google.com/schemas/blogger/2011/data'>
+<head>
+  <meta charset='UTF-8'/>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
+  <title>PsyCalcu - Klinik &amp; Terapi Seans Planlayıcı ve Ofis Kira Yönetimi</title>
+  
+  <!-- Google Fonts: Inter and Space Grotesk -->
+  <link rel='preconnect' href='https://fonts.googleapis.com'/>
+  <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin='anonymous'/>
+  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap' rel='stylesheet'/>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src='https://cdn.tailwindcss.com'></script>
+  
+  <!-- Lucide Icons CDN -->
+  <script src='https://unpkg.com/lucide@latest'></script>
+
+  <script type='text/javascript'>
+    //<![CDATA[
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Space Grotesk', 'sans-serif'],
+          },
+          colors: {
+            primary: '#6b705c', // Sage Green
+            accent: '#cb997e',  // Warm Terracotta
+            charcoal: '#1d1d1f' // Apple Black
+          },
+          screens: {
+            '3xl': '1920px',
+            '4xl': '2560px',
+            '5xl': '3840px'
+          }
+        }
+      }
+    }
+    //]]>
+  </script>
+
+  <b:skin><![CDATA[
+    /* Apple-style Smooth Parallax Custom Core Styles */
+    html {
+      scroll-behavior: smooth;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #fbfbf9;
+      color: #1d1d1f;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+      transition: background-color 0.3s ease;
+    }
+
+    /* 4K & Ultra-Wide Display Optimizations - Proportional scaling to prevent horizontal stretching */
+    @media (min-width: 1920px) {
+      .max-w-7xl { max-width: 1360px !important; }
+      .max-w-6xl { max-width: 1200px !important; }
+      .max-w-5xl { max-width: 1080px !important; }
+      .max-w-4xl { max-width: 900px !important; }
+      body { font-size: 16px; }
+    }
+    @media (min-width: 2560px) {
+      .max-w-7xl { max-width: 1440px !important; }
+      .max-w-6xl { max-width: 1280px !important; }
+      .max-w-5xl { max-width: 1120px !important; }
+      .max-w-4xl { max-width: 960px !important; }
+      body { font-size: 18px; }
+    }
+    @media (min-width: 3840px) {
+      .max-w-7xl { max-width: 1600px !important; }
+      .max-w-6xl { max-width: 1400px !important; }
+      .max-w-5xl { max-width: 1200px !important; }
+      .max-w-4xl { max-width: 1000px !important; }
+      body { font-size: 22px; }
+    }
+
+    /* Floating Keyframe Animation */
+    @keyframes float-y {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-14px); }
+    }
+    .animate-float {
+      animation: float-y 6s ease-in-out infinite;
+    }
+    .animate-float-delay {
+      animation: float-y 6s ease-in-out infinite;
+      animation-delay: 3s;
+    }
+
+    /* Out-of-sync Gentle Bobbing/Swaying Animations for Dashboard Cards */
+    @keyframes bob-gentle-1 {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    @keyframes bob-gentle-2 {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-7px); }
+    }
+    @keyframes bob-gentle-3 {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-12px); }
+    }
+    .animate-bob-1 {
+      animation: bob-gentle-1 5.5s ease-in-out infinite;
+    }
+    .animate-bob-2 {
+      animation: bob-gentle-2 6.5s ease-in-out infinite;
+    }
+    .animate-bob-3 {
+      animation: bob-gentle-3 6s ease-in-out infinite;
+    }
+
+    /* Error Shake Animation */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+    .shake-element {
+      animation: shake 0.25s ease-in-out 2;
+    }
+
+    /* Organic Floating Background Glow Blobs */
+    @keyframes drift-blob-1 {
+      0%, 100% { transform: translate(0px, 0px) scale(1); }
+      33% { transform: translate(120px, -80px) scale(1.2); }
+      66% { transform: translate(-60px, 100px) scale(0.85); }
+    }
+    @keyframes drift-blob-2 {
+      0%, 100% { transform: translate(0px, 0px) scale(1); }
+      50% { transform: translate(-100px, 120px) scale(1.25); }
+    }
+    @keyframes drift-blob-3 {
+      0%, 100% { transform: translate(0px, 0px) scale(1); }
+      40% { transform: translate(80px, 90px) scale(0.9); }
+    }
+    .animate-drift-1 {
+      animation: drift-blob-1 25s ease-in-out infinite;
+    }
+    .animate-drift-2 {
+      animation: drift-blob-2 30s ease-in-out infinite;
+    }
+    .animate-drift-3 {
+      animation: drift-blob-3 28s ease-in-out infinite;
+    }
+
+    /* 3D Isometric Cards with Preservation of Depth and custom rotation */
+    .isometric-container {
+      perspective: 1500px;
+    }
+    .isometric-card {
+      transform: rotateX(20deg) rotateY(-12deg) rotateZ(3deg);
+      transform-style: preserve-3d;
+      transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .isometric-card:hover {
+      transform: rotateX(10deg) rotateY(-4deg) rotateZ(0deg) translateY(-12px);
+      box-shadow: 0 50px 100px -20px rgba(107, 112, 92, 0.22), 0 30px 60px -15px rgba(203, 153, 126, 0.14);
+    }
+    .isometric-card-right {
+      transform: rotateX(20deg) rotateY(12deg) rotateZ(-3deg);
+      transform-style: preserve-3d;
+      transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .isometric-card-right:hover {
+      transform: rotateX(10deg) rotateY(4deg) rotateZ(0deg) translateY(-12px);
+      box-shadow: 0 50px 100px -20px rgba(203, 153, 126, 0.22), 0 30px 60px -15px rgba(107, 112, 92, 0.14);
+    }
+
+    /* Glassmorphism navigation */
+    .glass-nav {
+      background: rgba(251, 251, 249, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    /* Standard Blogger Layout Overrides to Hide Default Widgets and Navbar */
+    #navbar-iframe, .navbar, .header-outer, .sidebar-outer, .footer-outer, .post-share-buttons {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    
+    .status-msg-wrap {
+      display: none !important;
+    }
+
+    /* Interactive animations & custom visual effects */
+    .hero-gradient {
+      background: radial-gradient(circle at 50% 50%, rgba(107, 112, 92, 0.08) 0%, transparent 60%);
+    }
+
+    .apple-card-hover {
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .apple-card-hover:hover {
+      transform: translateY(-10px) scale(1.02);
+      box-shadow: 0 40px 80px -20px rgba(0,0,0,0.1);
+    }
+
+    /* Scroll animations */
+    .scroll-reveal {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .scroll-reveal.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Custom Input Range styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #e5e1d8;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #6b705c;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    /* Premium shadow effects & Glows */
+    .shadow-premium {
+      box-shadow: 0 30px 60px -15px rgba(107, 112, 92, 0.12), 0 15px 30px -10px rgba(203, 153, 126, 0.08);
+    }
+    .shadow-premium-hover {
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .shadow-premium-hover:hover {
+      transform: translateY(-8px) scale(1.01);
+      box-shadow: 0 40px 80px -20px rgba(107, 112, 92, 0.18), 0 20px 40px -15px rgba(203, 153, 126, 0.12);
+    }
+
+    /* Standardized typography and prose style for Blogger pages */
+    .post-body-content p, .prose p {
+      margin-bottom: 1.5rem;
+      line-height: 1.8;
+    }
+    .post-body-content h2, .prose h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: #1d1d1f;
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    .post-body-content ul, .prose ul {
+      list-style-type: disc;
+      padding-left: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .post-body-content li, .prose li {
+      margin-bottom: 0.5rem;
+    }
+  ]]></b:skin>
+
+  <!-- Conditional CSS for supporting all Blogger pages (post, search, page, error) -->
+  <b:if cond='!data:view.isHomepage'>
+    <style>
+      #hero-section, #problems, #features, #calculator, #sync, #pricing, #home-blog-section, #faq {
+        display: none !important;
+      }
+      #main-blog-container {
+        display: block !important;
+      }
+    </style>
+  <b:else/>
+    <style>
+      #main-blog-container {
+        display: none !important;
+      }
+    </style>
+  </b:if>
+</head>
+<body class='antialiased selection:bg-accent/30 selection:text-slate-900 relative'>
+
+  <!-- Soft Animated Background Glows -->
+  <div class='fixed inset-0 pointer-events-none overflow-hidden z-0'>
+    <div class='absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#6b705c]/8 blur-[120px] animate-drift-1'></div>
+    <div class='absolute top-[40%] -right-40 w-[550px] h-[550px] rounded-full bg-[#cb997e]/10 blur-[130px] animate-drift-2'></div>
+    <div class='absolute -bottom-40 left-[20%] w-[700px] h-[700px] rounded-full bg-[#fafae6]/40 blur-[140px] animate-drift-3'></div>
+  </div>
+
+  <!-- Blogger Body Sections Required for Blogger Theme Validation -->
+
+  <!-- Top Glass Navigation (Apple Minimalist Style) -->
+  <header class='fixed top-0 left-0 w-full z-50 glass-nav transition-all duration-300'>
+    <div class='max-w-7xl mx-auto px-6 h-16 flex items-center justify-between'>
+      <a href='#' class='flex items-center gap-2.5 font-display text-lg font-bold tracking-tight text-slate-900'>
+        <div class='w-8 h-8 rounded-xl flex items-center justify-center text-white font-black' style='background: #6b705c;'>
+          Ψ
+        </div>
+        <span>Psy<span class='font-normal text-slate-500'>Calcu</span></span>
+      </a>
+      
+      <nav class='hidden md:flex items-center gap-8 text-xs font-semibold text-slate-600'>
+        <a href='#features' class='hover:text-slate-900 transition-colors'>Özellikler</a>
+        <a href='#calculator' class='hover:text-slate-900 transition-colors'>Kazanç Hesaplayıcı</a>
+        <a href='#sync' class='hover:text-slate-900 transition-colors'>Takvim Entegrasyonu</a>
+        <a href='#pricing' class='hover:text-slate-900 transition-colors'>Planlar</a>
+        <a href='#faq' class='hover:text-slate-900 transition-colors'>S.S.S</a>
+      </nav>
+
+      <div class='flex items-center gap-3'>
+        <a href='#contact' class='px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-full transition-all shadow-sm'>
+          Hemen Keşfet
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section with Apple Parallax Feel -->
+  <section id='hero-section' class='relative pt-32 pb-24 md:pt-40 md:pb-36 overflow-hidden bg-gradient-to-b from-[#f5f5f0] via-[#fafae6]/20 to-[#fbfbf9]'>
+    <div class='absolute inset-0 z-0 opacity-40 pointer-events-none hero-gradient' id='hero-parallax-bg'></div>
+
+    <div class='max-w-4xl mx-auto px-6 text-center relative z-10'>
+      <div class='inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200/80 rounded-full text-[10px] font-bold text-slate-600 tracking-wider mb-6 shadow-xs'>
+        <span class='w-1.5 h-1.5 rounded-full bg-accent animate-pulse'></span>
+        <span>YENİ NESİL TERAPİST VE KLİNİK PLANLAMA PLATFORMU</span>
+      </div>
+      
+      <h1 class='font-display text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.1] mb-6'>
+        Seanslarınızı Yönetin,<br/>
+        <span class='text-transparent bg-clip-text' style='background-image: linear-gradient(135deg, #6b705c 0%, #cb997e 100%);'>Finansal Netliğe Ulaşın</span>
+      </h1>
+      
+      <p class='text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mb-10 font-normal'>
+        Psikologlar, terapistler ve klinik sahipleri için optimize edilmiş akıllı finansal seans planlayıcı. Takviminizi bağlayın, masrafları otomatik hesaplayın ve hakedişlerinizi anında izleyin.
+      </p>
+
+      <div class='flex flex-col sm:flex-row items-center justify-center gap-4 mb-16'>
+        <a href='#features' class='w-full sm:w-auto px-8 py-3.5 bg-slate-950 hover:bg-slate-900 text-white font-semibold rounded-full text-sm transition-all shadow-md flex items-center justify-center gap-2'>
+          Özellikleri İncele
+          <i data-lucide='arrow-down' class='w-4 h-4'></i>
+        </a>
+        <a href='#calculator' class='w-full sm:w-auto px-8 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold rounded-full text-sm transition-all shadow-2xs flex items-center justify-center gap-2'>
+          Gelir Simülatörü
+        </a>
+      </div>
+
+      <!-- Floating Parallax Elements -->
+      <div class='absolute -left-12 top-1/2 w-24 h-24 rounded-full bg-accent/10 backdrop-blur-xl border border-accent/20 flex items-center justify-center text-accent text-3xl font-bold font-display parallax-wrapper animate-float hidden lg:flex' data-speed='-0.12' id='floating-badge-1' style='transition: transform 0.1s ease-out;'>
+        Ψ
+      </div>
+      <div class='absolute -right-16 top-1/3 w-28 h-28 rounded-2xl bg-primary/10 backdrop-blur-xl border border-primary/20 flex items-center justify-center text-[#6b705c] text-4xl font-extrabold font-display parallax-wrapper animate-float-delay hidden lg:flex' data-speed='0.18' id='floating-badge-2' style='transition: transform 0.1s ease-out;'>
+        ₺
+      </div>
+
+      <!-- App Mockup Display (Designed visually using PsyCalcu's actual design rules) -->
+      <div class='parallax-wrapper w-full' data-speed='0.05' id='hero-mockup-wrapper' style='transition: transform 0.1s ease-out;'>
+        <div class='relative max-w-3xl mx-auto bg-white rounded-3xl p-3.5 border border-slate-200 shadow-2xl transition-all duration-700 hover:scale-[1.01]'>
+        <div class='bg-slate-900 rounded-2xl p-2 overflow-hidden shadow-inner'>
+          <div class='bg-[#fbfbf9] rounded-[12px] p-5 sm:p-7 text-left border border-slate-800/10'>
+            
+            <!-- Simulated Interface Header -->
+            <div class='flex items-center justify-between border-b border-slate-200/60 pb-4 mb-6'>
+              <div class='flex items-center gap-2.5'>
+                <span class='w-3 h-3 rounded-full bg-red-400'></span>
+                <span class='w-3 h-3 rounded-full bg-yellow-400'></span>
+                <span class='w-3 h-3 rounded-full bg-green-400'></span>
+                <span class='text-xs font-bold text-slate-400 font-mono ml-2'>PSYCALCU WORKSPACE v2.6</span>
+              </div>
+              <div class='flex items-center gap-2'>
+                <span class='px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full flex items-center gap-1'>
+                  <span class='w-1 h-1 rounded-full bg-emerald-500 animate-ping'></span> AKTİF SEANS
+                </span>
+              </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class='grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6'>
+              <div class='bg-[#f4f3ec] p-4 rounded-xl border border-slate-200/50'>
+                <span class='text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1'>Toplam Seans Geliri</span>
+                <span class='text-xl font-bold font-display text-slate-800'>₺32.400</span>
+              </div>
+              <div class='bg-[#f4f3ec] p-4 rounded-xl border border-slate-200/50'>
+                <span class='text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1'>Toplam Ofis Kirası</span>
+                <span class='text-xl font-bold font-display text-red-600'>₺5.400</span>
+              </div>
+              <div class='bg-emerald-50 p-4 rounded-xl border border-emerald-100/50' style='background-color: rgba(107, 112, 92, 0.08);'>
+                <span class='text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1'>Net Hakediş Kazancı</span>
+                <span class='text-xl font-bold font-display text-emerald-800'>₺27.000</span>
+              </div>
+            </div>
+
+            <!-- List Row Simulated Items -->
+            <div class='space-y-3 h-[156px] overflow-hidden relative'>
+              <div class='flex items-center justify-between p-3.5 bg-white border border-slate-200/60 rounded-xl hover:border-slate-300 transition-all'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-9 h-9 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center text-xs font-bold'>MY</div>
+                  <div>
+                    <span class='text-xs font-bold text-slate-800 block'>Melis Yılmaz (Face to Face)</span>
+                    <span class='text-[10px] text-slate-500 font-mono'>Seans Süresi: 50 Dk | Oda 3</span>
+                  </div>
+                </div>
+                <div class='text-right'>
+                  <span class='text-xs font-bold text-slate-800 block'>₺1.800</span>
+                  <span class='text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full'>Ödendi</span>
+                </div>
+              </div>
+
+              <div class='flex items-center justify-between p-3.5 bg-white border border-slate-200/60 rounded-xl hover:border-slate-300 transition-all'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-9 h-9 rounded-full bg-[#cb997e]/10 text-[#cb997e] flex items-center justify-center text-xs font-bold'>OD</div>
+                  <div>
+                    <span class='text-xs font-bold text-slate-800 block'>Ömer Demir (Online Seans)</span>
+                    <span class='text-[10px] text-slate-500 font-mono'>Seans Süresi: 50 Dk | Google Meet</span>
+                  </div>
+                </div>
+                <div class='text-right'>
+                  <span class='text-xs font-bold text-slate-800 block'>₺1.500</span>
+                  <span class='text-[9px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full'>Beklemede</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM SECTION: Terapistlerin Hesap Yönetim Süreci -->
+  <section id='problems' class='py-24 bg-[#fafae6]/10 border-t border-slate-100'>
+    <div class='max-w-6xl mx-auto px-6'>
+      <div class='text-center max-w-2xl mx-auto mb-16 scroll-reveal'>
+        <span class='text-xs font-bold text-amber-600 tracking-widest block mb-2.5'>GELİR VE GİDER TAKİBİ</span>
+        <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
+          Terapistlerin ve Klinik Sahiplerinin Hesap Yönetim Süreci
+        </h2>
+        <p class='text-sm text-slate-500 mt-4 leading-relaxed'>
+          Seans sistemiyle çalışmak ve zamanı serbestçe planlayabilmek harika bir ayrıcalıktır. Ancak seansların arkasındaki gelir-gider takibini, borçları ve hakediş hesaplarını manuel yürütmek zaman ve enerji kaybına yol açabilir.
+        </p>
+      </div>
+
+      <div class='grid grid-cols-1 md:grid-cols-3 gap-8'>
+        
+        <!-- Problem Card 1 -->
+        <div class='bg-white p-8 rounded-3xl border border-slate-200/60 shadow-xs flex flex-col justify-between h-80 scroll-reveal relative overflow-hidden group hover:border-[#6b705c]/30 transition-all duration-300'>
+          <div class='absolute top-0 right-0 w-24 h-24 bg-[#6b705c]/5 rounded-bl-full pointer-events-none'></div>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-[#6b705c] bg-[#6b705c]/10 font-bold z-10'>
+            <i data-lucide='calculator' class='w-6 h-6'></i>
+          </div>
+          <div class='z-10'>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Manuel Hesaplama Karmaşası</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Her seans sonrası saatlik ofis kiralama ücretlerini, varsa diğer giderlerinizi veya klinik komisyonlarını sürekli elle ya da basit tablolarda hesaplamak, yoğun günlerinizde yorucu olabilir ve gözden kaçan detaylara yol açabilir.
+            </p>
+          </div>
+        </div>
+
+        <!-- Problem Card 2 -->
+        <div class='bg-white p-8 rounded-3xl border border-slate-200/60 shadow-xs flex flex-col justify-between h-80 scroll-reveal relative overflow-hidden group hover:border-[#6b705c]/30 transition-all duration-300'>
+          <div class='absolute top-0 right-0 w-24 h-24 bg-[#6b705c]/5 rounded-bl-full pointer-events-none'></div>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-[#6b705c] bg-[#6b705c]/10 font-bold z-10'>
+            <i data-lucide='clock' class='w-6 h-6'></i>
+          </div>
+          <div class='z-10'>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Borç ve Alacak Takibinin Zorlaşması</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              İptal olan seansların kira durumunu, geriye dönük borçları ve ödenen/bekleyen seans bakiyelerini takviminizle entegre biçimde izlemediğinizde, bütçenizi ve net kazancınızı doğru tespit etmek güçleşir.
+            </p>
+          </div>
+        </div>
+
+        <!-- Problem Card 3 -->
+        <div class='bg-white p-8 rounded-3xl border border-slate-200/60 shadow-xs flex flex-col justify-between h-80 scroll-reveal relative overflow-hidden group hover:border-[#6b705c]/30 transition-all duration-300'>
+          <div class='absolute top-0 right-0 w-24 h-24 bg-[#6b705c]/5 rounded-bl-full pointer-events-none'></div>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-[#6b705c] bg-[#6b705c]/10 font-bold z-10'>
+            <i data-lucide='alert-triangle' class='w-6 h-6'></i>
+          </div>
+          <div class='z-10'>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Klinikler İçin Çoklu Danışan ve Terapist Takibi</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Klinik veya ortak ofis alanı işletiyorsanız, orada seans gerçekleştiren birden fazla terapistin hangi gün ve saatlerde odaları kullandığını ve buna bağlı ödeme dengesini tek tek takip etmek ciddi bir operasyonel süreçtir.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Bento Grid of Beautifully Crafted Features -->
+  <section id='features' class='py-24 bg-white border-t border-slate-100'>
+    <div class='max-w-6xl mx-auto px-6'>
+      <div class='text-center max-w-2xl mx-auto mb-20 scroll-reveal' id='feat-title-reveal'>
+        <span class='text-xs font-bold text-emerald-600 tracking-widest block mb-2.5'>KOLAYLAŞTIRILMIŞ ÇÖZÜM</span>
+        <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
+          PsyCalcu ile Gelir-Gider Takibi Çok Daha Pratik
+        </h2>
+        <p class='text-sm text-slate-500 mt-4 leading-relaxed'>
+          Manuel hesapları, karmaşık tabloları ve borç takibini bir kenara bırakın. PsyCalcu takviminizi otomatik olarak izler, seans başı gelir-gider durumunu saniyeler içinde çıkararak net hakedişinizi raporlar.
+        </p>
+      </div>
+
+      <div class='grid grid-cols-1 md:grid-cols-3 gap-8'>
+        
+        <!-- Feature 1 -->
+        <div class='bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 apple-card-hover flex flex-col justify-between h-80 scroll-reveal'>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #6b705c;'>
+            <i data-lucide='calendar' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Çift Yönlü Takvim Entegrasyonu</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Google Calendar, iCloud Calendar ve Outlook takvimlerinizdeki randevuları Webcal protokolüyle tek tıkla senkronize edin.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class='bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 apple-card-hover flex flex-col justify-between h-80 scroll-reveal'>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #cb997e;'>
+            <i data-lucide='landmark' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Gerçekçi Gider Kesintileri</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Saatlik ofis kiralama ücretleri ile seans esnasında çalışan bakıcı masraflarını seans ücretinden otomatik olarak hesaplayıp düşün.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class='bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 apple-card-hover flex flex-col justify-between h-80 scroll-reveal'>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #1e293b;'>
+            <i data-lucide='building' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Klinik &amp; Çoklu Mülk Yönetimi</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Ofis mülk sahipleri için kiracı psikologların takvimlerini bağlayarak seans başı toplanacak kira gelirlerini tek panelde gruplayın.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Parallax Simulator Section -->
+  <section id='calculator' class='py-24 bg-slate-900 text-white relative overflow-hidden'>
+    <div class='absolute inset-0 z-0 opacity-15 pointer-events-none'>
+      <div class='absolute top-12 right-12 w-96 h-96 rounded-full blur-3xl' style='background: #cb997e;'></div>
+      <div class='absolute bottom-12 left-12 w-96 h-96 rounded-full blur-3xl' style='background: #6b705c;'></div>
+    </div>
+
+    <div class='max-w-5xl mx-auto px-6 relative z-10'>
+      <div class='grid grid-cols-1 lg:grid-cols-2 gap-16 items-center'>
+        
+        <div class='space-y-6 scroll-reveal'>
+          <span class='text-xs font-bold tracking-widest text-slate-400 block'>ETKİLEŞİMLİ SİMÜLATÖR</span>
+          <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight'>
+            Finansal Gelir &amp; Gider Dengeni Canlı Test Et
+          </h2>
+          <p class='text-sm text-slate-400 leading-relaxed font-normal'>
+            Aşağıdaki sürgüleri kullanarak aylık seans adedi, saatlik seans ücreti ve saatlik ofis kiralama masraflarını ayarlayarak aylık net kazancınızı anında analiz edin.
+          </p>
+
+          <div class='space-y-6 pt-4'>
+            <!-- Range 1 -->
+            <div class='space-y-2'>
+              <div class='flex justify-between text-xs font-bold text-slate-300'>
+                <span>AYLIK SEANS ADEDİ</span>
+                <span class='font-mono text-accent' id='val-sessions'>30 Seans</span>
+              </div>
+              <input type='range' id='range-sessions' min='10' max='120' value='30' />
+            </div>
+
+            <!-- Range 2 -->
+            <div class='space-y-2'>
+              <div class='flex justify-between text-xs font-bold text-slate-300'>
+                <span>ORTALAMA SEANS ÜCRETİ (₺)</span>
+                <span class='font-mono text-accent' id='val-price'>₺1.600</span>
+              </div>
+              <input type='range' id='range-price' min='600' max='5000' step='100' value='1600' />
+            </div>
+
+            <!-- Range 3 -->
+            <div class='space-y-2'>
+              <div class='flex justify-between text-xs font-bold text-slate-300'>
+                <span>OFİS KİRA BEDELİ (SAATLİK ₺)</span>
+                <span class='font-mono text-accent' id='val-rent'>₺350</span>
+              </div>
+              <input type='range' id='range-rent' min='100' max='1000' step='50' value='350' />
+            </div>
+          </div>
+        </div>
+
+        <!-- Result Side Card -->
+        <div class='bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 scroll-reveal'>
+          <h3 class='text-xs font-bold text-slate-300 tracking-widest mb-6 pb-2 border-b border-white/5'>AYLIK TAHMİNİ RAPORLAMA</h3>
+          
+          <div class='space-y-4 mb-8 text-sm'>
+            <div class='flex justify-between items-center py-2 border-b border-white/5'>
+              <span class='text-xs text-slate-400'>Brüt Ciro Geliri</span>
+              <span class='font-bold font-mono text-slate-200' id='res-gross'>₺48.000</span>
+            </div>
+            <div class='flex justify-between items-center py-2 border-b border-white/5'>
+              <span class='text-xs text-slate-400'>Toplam Ofis Kirası Gideri</span>
+              <span class='font-bold font-mono text-red-400' id='res-rent'>₺10.500</span>
+            </div>
+            <div class='flex justify-between items-center py-2'>
+              <span class='text-xs text-slate-400'>Bakıcı Masrafı (Opsiyonel)</span>
+              <div class='flex items-center gap-2'>
+                <input type='checkbox' id='chk-baby' checked='checked' class='accent-accent rounded cursor-pointer w-4 h-4' />
+                <span class='font-bold font-mono text-slate-300' id='res-baby'>₺4.500</span>
+              </div>
+            </div>
+          </div>
+
+          <div class='p-6 rounded-2xl text-center border' style='background-color: rgba(203, 153, 126, 0.12); border-color: rgba(203, 153, 126, 0.2);'>
+            <span class='text-[10px] font-bold text-accent tracking-wider block mb-1'>TAHMİNİ NET HAKEDİŞ KAZANCI</span>
+            <span class='text-3xl sm:text-4xl font-extrabold font-display text-white block' id='res-net'>₺33.000</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 3D ISOMETRIC CLINICAL DASHBOARD SHOWCASE SECTION -->
+  <section id='isometric-showcase' class='py-28 bg-gradient-to-b from-[#fbfbf9] to-[#f5f5f0] border-t border-slate-100 relative overflow-hidden'>
+    <!-- Floating glowing background circles for blur effect -->
+    <div class='absolute top-1/4 left-1/3 w-96 h-96 bg-[#cb997e]/10 rounded-full blur-3xl pointer-events-none'></div>
+    <div class='absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-[#6b705c]/10 rounded-full blur-[140px] pointer-events-none'></div>
+
+    <div class='max-w-6xl mx-auto px-6 relative z-10'>
+      <div class='text-center max-w-3xl mx-auto mb-20 scroll-reveal'>
+        <span class='text-xs font-bold text-accent tracking-widest block mb-2.5'>GÖRSEL YÖNETİM PANELİ</span>
+        <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight'>
+          Klinik Ofislerinizi ve Seans Hakedişlerini Canlı İzleyin
+        </h2>
+        <p class='text-sm text-slate-500 mt-4 leading-relaxed'>
+          Ofis kiralayan tüm terapistlerin seans sayılarını, oda kullanımlarını ve hakedişlerini tek bir akıllı ekranda 3D perspektifle takip edin.
+        </p>
+      </div>
+
+      <!-- Isometric 3D Grid Container -->
+      <div class='grid grid-cols-1 lg:grid-cols-3 gap-12 items-center isometric-container pt-8'>
+        
+        <!-- Column 1: Room Occupancy 3D Card (Left leaning isometric) -->
+        <div class='animate-bob-1'>
+          <div class='isometric-card bg-white/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-200/80 shadow-premium hover:shadow-2xl scroll-reveal space-y-6 relative overflow-hidden group'>
+            <div class='absolute top-0 left-0 w-full h-1.5 bg-[#6b705c]'></div>
+            <div class='flex items-center justify-between'>
+              <div class='flex items-center gap-2'>
+                <div class='w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse'></div>
+                <span class='text-[10px] font-bold text-slate-400 tracking-wider'>ODA DOLULUK DURUMU</span>
+              </div>
+              <i data-lucide='door-open' class='w-4 h-4 text-[#6b705c]'></i>
+            </div>
+            
+            <div class='space-y-3.5' id='iso-rooms-container'>
+              <!-- Room 1 -->
+              <div class='flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-all'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-[10px] font-bold text-emerald-700'>O1</div>
+                  <div>
+                    <span class='text-xs font-bold text-slate-800 block'>Oda 1 (Bireysel Terapi)</span>
+                    <span class='text-[9px] text-slate-400 font-medium'>Psk. Ahmet Yılmaz</span>
+                  </div>
+                </div>
+                <span class='text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full'>Dolu</span>
+              </div>
+              <!-- Room 2 -->
+              <div class='flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-all'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-400'>O2</div>
+                  <div>
+                    <span class='text-xs font-bold text-slate-800 block'>Oda 2 (Oyun Terapisi)</span>
+                    <span class='text-[9px] text-slate-400 font-medium'>Boş - Rezervasyon Yok</span>
+                  </div>
+                </div>
+                <span class='text-[9px] font-bold text-slate-400 bg-slate-100 px-2.5 py-0.5 rounded-full'>Boş</span>
+              </div>
+              <!-- Room 3 -->
+              <div class='flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-all'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-[10px] font-bold text-emerald-700'>O3</div>
+                  <div>
+                    <span class='text-xs font-bold text-slate-800 block'>Oda 3 (Yetişkin Terapi)</span>
+                    <span class='text-[9px] text-slate-400 font-medium'>Dr. Elif Nazlı</span>
+                  </div>
+                </div>
+                <span class='text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full'>Dolu</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 2: Therapist Live Earnings 3D Card (Center showcase with blur and depth effects) -->
+        <div class='animate-bob-2'>
+          <div class='bg-slate-900 text-white p-7 rounded-[2rem] border border-white/10 shadow-2xl scroll-reveal space-y-6 relative overflow-hidden group scale-105 z-20'>
+            <!-- Absolute blurring ambient glow inside the card -->
+            <div class='absolute -top-12 -right-12 w-40 h-40 bg-accent/20 rounded-full blur-2xl pointer-events-none'></div>
+            <div class='absolute -bottom-12 -left-12 w-40 h-40 bg-[#6b705c]/20 rounded-full blur-2xl pointer-events-none'></div>
+            
+            <div class='flex items-center justify-between pb-3 border-b border-white/10'>
+              <div class='flex items-center gap-2'>
+                <div class='w-2 h-2 rounded-full bg-accent animate-ping'></div>
+                <span class='text-[10px] font-bold text-accent tracking-wider'>KLİNİK KAZANÇ MERKEZİ</span>
+              </div>
+              <span class='text-[9px] font-mono text-slate-400 bg-white/5 px-2.5 py-0.5 rounded-full'>TEMMUZ 2026</span>
+            </div>
+
+            <div class='py-3 text-center'>
+              <span class='text-[10px] text-slate-400 block mb-1'>KLİNİK TOPLAM KİRA GELİRİ</span>
+              <span class='text-4xl font-extrabold font-display text-white tracking-tight' id='iso-total-rent'>₺23,450</span>
+            </div>
+
+            <div class='space-y-3.5' id='iso-therapists-container'>
+              <!-- Therapist 1 -->
+              <div class='flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors border border-white/5'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-8 h-8 rounded-full bg-accent/10 text-accent flex items-center justify-center text-xs font-bold'>MD</div>
+                  <div>
+                    <span class='text-xs font-bold block'>Psk. Melis Demir</span>
+                    <span class='text-[9px] text-slate-400'>18 Seans (Oda 3)</span>
+                  </div>
+                </div>
+                <span class='text-xs font-mono font-bold text-slate-200'>₺6,300</span>
+              </div>
+              <!-- Therapist 2 -->
+              <div class='flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors border border-white/5'>
+                <div class='flex items-center gap-3'>
+                  <div class='w-8 h-8 rounded-full bg-[#6b705c]/20 text-[#6b705c] flex items-center justify-center text-xs font-bold'>ÖC</div>
+                  <div>
+                    <span class='text-xs font-bold block'>Dr. Özgür Can</span>
+                    <span class='text-[9px] text-slate-400'>12 Seans (Oda 1)</span>
+                  </div>
+                </div>
+                <span class='text-xs font-mono font-bold text-slate-200'>₺4,200</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 3: Calendar Activity Stream (Right leaning isometric) -->
+        <div class='animate-bob-3'>
+          <div class='isometric-card-right bg-white/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-200/80 shadow-premium hover:shadow-2xl scroll-reveal space-y-6 relative overflow-hidden group'>
+            <div class='absolute top-0 right-0 w-full h-1.5 bg-[#cb997e]'></div>
+            <div class='flex items-center justify-between'>
+              <div class='flex items-center gap-2'>
+                <i data-lucide='refresh-cw' class='w-4 h-4 text-accent animate-spin' style='animation-duration: 8s;'></i>
+                <span class='text-[10px] font-bold text-slate-400 tracking-wider'>TAKVİM AKTİVİTE AKIŞI</span>
+              </div>
+              <span class='text-[9px] text-slate-400 font-semibold'>Gecikme: 1.2sn</span>
+            </div>
+
+            <div class='space-y-3 h-[148px] overflow-hidden relative' id='iso-activity-container'>
+              <!-- Log 1 -->
+              <div class='flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl opacity-100 transition-all'>
+                <div class='p-1.5 rounded-lg bg-emerald-50 text-emerald-600 mt-0.5 shrink-0'>
+                  <i data-lucide='calendar' class='w-3.5 h-3.5'></i>
+                </div>
+                <div class='text-left'>
+                  <span class='text-[11px] font-bold text-slate-800 block'>iCal Senkronize Edildi</span>
+                  <p class='text-[9px] text-slate-500 leading-normal'>Melis Demir takvimi üzerinden 1 yeni seans algılandı.</p>
+                  <span class='text-[8px] font-mono text-slate-400 mt-1 block'>Şimdi</span>
+                </div>
+              </div>
+              <!-- Log 2 -->
+              <div class='flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl opacity-100 transition-all'>
+                <div class='p-1.5 rounded-lg bg-[#cb997e]/10 text-accent mt-0.5 shrink-0'>
+                  <i data-lucide='coins' class='w-3.5 h-3.5'></i>
+                </div>
+                <div class='text-left'>
+                  <span class='text-[11px] font-bold text-slate-800 block'>Kira Hakedişi Eklendi</span>
+                  <p class='text-[9px] text-slate-500 leading-normal'>Seans başı ₺350 kira ücreti klinik bakiyesine aktarıldı.</p>
+                  <span class='text-[8px] font-mono text-slate-400 mt-1 block'>2 dakika önce</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Interactive Room & Permission Simulator Card -->
+      <div class='max-w-4xl mx-auto mt-20 pt-12 border-t border-slate-200/60 scroll-reveal'>
+        <div class='text-center max-w-2xl mx-auto mb-10'>
+          <span class='text-xs font-bold text-accent tracking-widest block mb-2'>ETKİLEŞİMLİ DEMO</span>
+          <h3 class='font-display text-xl sm:text-2xl font-extrabold text-slate-900'>
+            Mülk Sahibi Oda Yetkilendirme &amp; Müsaitlik Paneli
+          </h3>
+          <p class='text-xs text-slate-500 mt-2 leading-relaxed font-normal'>
+            Terapistlerin odalara erişim yetkilerini simüle edin. Aşağıda terapistlerin yetkilerini açıp kapatarak, takvim senkronizasyonu sırasında çakışmaların ve yetkisiz oda kullanımlarının nasıl akıllıca engellendiğini canlı test edin.
+          </p>
+        </div>
+
+        <div class='bg-white rounded-3xl border border-slate-200/80 shadow-premium overflow-hidden p-6 md:p-8'>
+          <div class='grid grid-cols-1 md:grid-cols-12 gap-8'>
+            <!-- Sol Sütun: Yetki Matrisi Kontrolü (5-cols) -->
+            <div class='md:col-span-5 space-y-5 border-r border-slate-100 pr-0 md:pr-6 text-left'>
+              <h4 class='text-xs font-bold text-slate-900 tracking-wider flex items-center gap-2'>
+                <i data-lucide='shield-check' class='w-4 h-4 text-[#6b705c]'></i>
+                TERAPİST YETKİ MATRİSİ
+              </h4>
+              <p class='text-[11px] text-slate-500 font-normal leading-relaxed'>
+                Terapistlerin hangi oda tiplerini rezerve edebileceğini mülk sahibi olarak buradan yönetirsiniz. Yetki durumunu değiştirip alt kısımdaki simülasyonları başlatın.
+              </p>
+
+              <!-- Therapist 1 Toggles -->
+              <div class='p-3.5 bg-slate-50 border border-slate-200/40 rounded-2xl space-y-3'>
+                <div class='flex items-center justify-between'>
+                  <div class='flex items-center gap-2'>
+                    <div class='w-6 h-6 rounded-full bg-accent/10 text-accent flex items-center justify-center text-[10px] font-bold'>MD</div>
+                    <span class='text-xs font-bold text-slate-800'>Psk. Melis Demir</span>
+                  </div>
+                  <span class='text-[9px] font-mono font-bold text-slate-400 bg-white border border-slate-200/60 px-1.5 py-0.5 rounded'>Çocuk</span>
+                </div>
+                <div class='flex flex-wrap gap-2'>
+                  <button id='btn-perm-melis-std' onclick='togglePermission("melis", "std")' class='px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 cursor-pointer'>
+                    <span>✓ Standart</span>
+                  </button>
+                  <button id='btn-perm-melis-play' onclick='togglePermission("melis", "play")' class='px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 cursor-pointer'>
+                    <span>✓ Oyun Ter.</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Therapist 2 Toggles -->
+              <div class='p-3.5 bg-slate-50 border border-slate-200/40 rounded-2xl space-y-3'>
+                <div class='flex items-center justify-between'>
+                  <div class='flex items-center gap-2'>
+                    <div class='w-6 h-6 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center text-[10px] font-bold'>ÖC</div>
+                    <span class='text-xs font-bold text-slate-800'>Dr. Özgür Can</span>
+                  </div>
+                  <span class='text-[9px] font-mono font-bold text-slate-400 bg-white border border-slate-200/60 px-1.5 py-0.5 rounded'>Yetişkin</span>
+                </div>
+                <div class='flex flex-wrap gap-2'>
+                  <button id='btn-perm-ozgur-std' onclick='togglePermission("ozgur", "std")' class='px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 cursor-pointer'>
+                    <span>✓ Standart</span>
+                  </button>
+                  <button id='btn-perm-ozgur-play' onclick='togglePermission("ozgur", "play")' class='px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-red-50 text-red-700 border-red-200 flex items-center gap-1 cursor-pointer'>
+                    <span>✗ Oyun Ter.</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sağ Sütun: Odalar ve Simülasyon Akışı (7-cols) -->
+            <div class='md:col-span-7 space-y-6 flex flex-col justify-between text-left'>
+              <div class='space-y-4'>
+                <h4 class='text-xs font-bold text-slate-900 tracking-wider flex items-center justify-between'>
+                  <span class='flex items-center gap-2'>
+                    <i data-lucide='door-open' class='w-4 h-4 text-[#cb997e]'></i>
+                    KLİNİK ODALARI VE MEVCUT PLAN
+                  </span>
+                  <span class='px-2 py-0.5 bg-emerald-50 text-emerald-700 font-mono text-[9px] rounded-full font-bold animate-pulse'>CANLI</span>
+                </h4>
+
+                <!-- Room list with status -->
+                <div class='grid grid-cols-1 sm:grid-cols-2 gap-3.5'>
+                  <!-- Room 1 Visual -->
+                  <div class='p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col justify-between h-[85px] transition-all' id='sim-room-1'>
+                    <div class='flex justify-between items-start'>
+                      <span class='text-[11px] font-bold text-slate-800'>Oda 1 (Standart Terapi)</span>
+                      <span class='text-[9px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 font-bold rounded' id='sim-room-1-badge'>Boş</span>
+                    </div>
+                    <span class='text-[10px] text-slate-400 font-normal leading-normal' id='sim-room-1-desc'>Müsait</span>
+                  </div>
+
+                  <!-- Room 2 Visual -->
+                  <div class='p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col justify-between h-[85px] transition-all' id='sim-room-2'>
+                    <div class='flex justify-between items-start'>
+                      <span class='text-[11px] font-bold text-slate-800'>Oda 2 (Oyun Terapisi)</span>
+                      <span class='text-[9px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 font-bold rounded' id='sim-room-2-badge'>Boş</span>
+                    </div>
+                    <span class='text-[10px] text-slate-400 font-normal leading-normal' id='sim-room-2-desc'>Müsait - Sadece Yetkili Terapistler</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Interactive Actions Panel -->
+              <div class='space-y-3 pt-3 border-t border-slate-100'>
+                <span class='text-[10px] font-bold text-slate-400 uppercase tracking-wider block'>TAKVİM ENTEGRASYON SİMÜLASYONU</span>
+                <div class='grid grid-cols-1 sm:grid-cols-2 gap-2.5'>
+                  <button onclick='simulateBooking("melis", "play")' class='px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer'>
+                    <i data-lucide='calendar' class='w-3.5 h-3.5'></i>
+                    Melis: Oyun Terapisi (#Oda2)
+                  </button>
+                  <button onclick='simulateBooking("ozgur", "play")' class='px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer'>
+                    <i data-lucide='calendar' class='w-3.5 h-3.5'></i>
+                    Özgür: Oyun Terapisi (#Oda2)
+                  </button>
+                </div>
+                
+                <!-- Live Console Logger for Simulation -->
+                <div class='bg-slate-950 p-3 rounded-xl text-left border border-slate-800/20 font-mono text-[10px] text-slate-300 min-h-[56px] flex flex-col justify-center' id='sim-console'>
+                  <span class='text-[#cb997e] font-bold mb-1'>&gt; Sistem Hazır.</span>
+                  <span class='text-slate-500'>Terapistlerin yetki butonlarını değiştirdikten sonra, takvimden seans senkronizasyonu tetiklemek için simülasyon butonlarına tıklayın.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Sync Calendar Guide Section -->
+  <section id='sync' class='py-24 bg-[#fafae6]/10 relative border-t border-slate-100'>
+    <div class='max-w-6xl mx-auto px-6'>
+      <div class='grid grid-cols-1 lg:grid-cols-2 gap-16 items-center'>
+        
+        <div class='space-y-6 scroll-reveal'>
+          <span class='text-xs font-bold text-accent tracking-wider block'>KUSURSUZ ENTEGRASYON</span>
+          <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight'>
+            Takviminizi Tek Kez Bağlayın, Seansları Otomatik Çekin
+          </h2>
+          <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+            PsyCalcu uygulaması, Google Takvim, Apple iCloud ve Outlook ile tam uyumludur. iCal/Webcal protokolüyle takviminize yeni bir seans eklendiğinde uygulama bu verileri saniyeler içerisinde çeker ve bütçe raporlarına ekler.
+          </p>
+          
+          <div class='space-y-4 pt-2 text-xs text-slate-700 font-medium'>
+            <div class='flex items-start gap-3'>
+              <div class='w-6 h-6 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0 font-bold'>1</div>
+              <p>Google veya Apple takviminizin gizli iCal adresini kopyalayın.</p>
+            </div>
+            <div class='flex items-start gap-3'>
+              <div class='w-6 h-6 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0 font-bold'>2</div>
+              <p>Kopyaladığınız iCal linkini PsyCalcu entegrasyon sekmesine yapıştırın.</p>
+            </div>
+            <div class='flex items-start gap-3'>
+              <div class='w-6 h-6 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0 font-bold'>3</div>
+              <p>Artık her yeni randevu bütçe tablonuza ve hakedişinize otomatik yansır.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class='bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl relative scroll-reveal'>
+          <div class='absolute -top-3.5 -right-3.5 px-3 py-1 bg-[#6b705c] text-white text-[9px] font-bold rounded-lg tracking-widest shadow-sm'>
+            SSL ŞİFRELİ BAĞLANTI
+          </div>
+          <h3 class='font-display text-sm font-bold text-slate-900 mb-4'>Kolay Entegrasyon Ekranı</h3>
+          <div class='space-y-4 text-xs'>
+            <div class='p-4 bg-slate-50 rounded-xl border border-slate-200/50 space-y-1.5'>
+              <label class='text-[9px] font-bold text-slate-500 tracking-wider block'>ÇEVRİMİÇİ (ONLINE) SEANS TAKVİMİ URL</label>
+              <input type='text' disabled='disabled' value='webcal://calendar.google.com/calendar/ical/...' class='w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-400 font-mono focus:outline-none'/>
+            </div>
+            <div class='p-4 bg-slate-50 rounded-xl border border-slate-200/50 space-y-1.5'>
+              <label class='text-[9px] font-bold text-slate-500 tracking-wider block'>YÜZ YÜZE SEANS TAKVİMİ URL</label>
+              <input type='text' disabled='disabled' value='webcal://calendar.google.com/calendar/ical/...' class='w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-400 font-mono focus:outline-none'/>
+            </div>
+            <div class='flex justify-between items-center pt-2'>
+              <span class='text-[9px] text-slate-400 font-semibold'>Güvenlik Sertifikası: Aktif</span>
+              <button disabled='disabled' class='px-4 py-2 bg-emerald-600 text-white text-[9px] font-bold rounded-full flex items-center gap-1.5 opacity-80'>
+                <span class='w-1.5 h-1.5 rounded-full bg-white animate-ping'></span> Bağlantı Sağlandı
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Plans Section -->
+  <section id='pricing' class='py-24 bg-white border-t border-slate-100'>
+    <div class='max-w-5xl mx-auto px-6'>
+      <div class='text-center max-w-2xl mx-auto mb-16 scroll-reveal'>
+        <span class='text-xs font-bold text-slate-400 tracking-widest block mb-2'>KULLANIM PLANLARI</span>
+        <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
+          Bütçenize En Uygun Üyelik Paketini Seçin
+        </h2>
+      </div>
+
+      <div class='grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto'>
+        
+        <!-- Individual Plan -->
+        <div class='bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200 flex flex-col justify-between h-full hover:border-slate-400 transition-all scroll-reveal'>
+          <div>
+            <span class='text-[9px] font-bold text-slate-500 tracking-wider bg-white border border-slate-200 px-3 py-1 rounded-full block w-max mb-4'>BİREYSEL PLAN</span>
+            <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Terapist Modülü</h3>
+            <p class='text-xs text-slate-500 mb-6'>Bağımsız çalışan psikologlar ve psikiyatristler için ideal plan.</p>
+            <div class='mb-6'>
+              <span class='text-3xl font-extrabold text-slate-900'>₺349</span>
+              <span class='text-xs text-slate-400'> / Aylık</span>
+            </div>
+            <ul class='space-y-3 text-xs text-slate-600 mb-8'>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Sınırsız Seans &amp; Danışan Kaydı</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Çift Takvim Entegrasyonu</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Otomatik Bakıcı &amp; Ofis Kirası Hesabı</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> PDF &amp; Google E-Tablo Raporları</li>
+            </ul>
+          </div>
+          <button class='w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center transition-colors'>
+            Bireysel Başla
+          </button>
+        </div>
+
+        <!-- Owner/Multi-Calendar Plan -->
+        <div class='bg-slate-950 p-8 rounded-3xl border border-slate-800 text-white flex flex-col justify-between h-full relative overflow-hidden scroll-reveal'>
+          <div class='absolute top-3 right-3 bg-accent text-slate-950 text-[8px] font-bold px-2 py-0.5 rounded-md'>
+            KLİNİK SAHİPLERİ
+          </div>
+          <div>
+            <span class='text-[9px] font-bold text-accent tracking-wider bg-white/10 px-3 py-1 rounded-full block w-max mb-4'>ÇOKLU YÖNETİM</span>
+            <h3 class='font-display text-xl font-bold text-white mb-2'>Ofis Sahibi Modülü</h3>
+            <p class='text-xs text-slate-400 mb-6'>Klinik kiralayan mülk sahipleri ve çoklu ortaklı klinikler için plan.</p>
+            <div class='mb-6'>
+              <span class='text-3xl font-extrabold text-white'>₺749</span>
+              <span class='text-xs text-slate-400'> / Aylık</span>
+            </div>
+            <ul class='space-y-3 text-xs text-slate-300 mb-8'>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> 10 Adete Kadar Kiracı Takvimi Bağlama</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Kiracı Terapist Bazlı Hakediş Yönetimi</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Ofis Kira Gelirleri Otomatik Takibi</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Gelişmiş Filtreleme &amp; Borç Takip</li>
+            </ul>
+          </div>
+          <button class='w-full py-3 bg-accent hover:opacity-90 text-slate-950 text-xs font-bold rounded-xl text-center transition-all'>
+            Klinik Hesabı Başlat
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Dynamic Blogger Section containing both Homepage Insights & Listing Views -->
+  <b:section id='main' showaddelement='true'>
+    <b:widget id='Blog1' locked='true' title='Blog Yazıları' type='Blog' visible='true'>
+      <b:includable id='main'>
+        
+        <!-- 1. Homepage Dynamic Blog Section -->
+        <b:if cond='data:view.isHomepage'>
+          <section id='home-blog-section' class='py-24 bg-white border-t border-slate-100 relative overflow-hidden'>
+            <!-- Background glowing gradients -->
+            <div class='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#fafae6]/30 rounded-full blur-3xl -z-10 pointer-events-none'></div>
+
+            <div class='max-w-6xl mx-auto px-6'>
+              <div class='text-center max-w-2xl mx-auto mb-16 scroll-reveal'>
+                <span class='text-xs font-bold text-accent tracking-widest block mb-2.5'>GÜNCEL YAZILAR VE REHBERLER</span>
+                <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
+                  Terapistler İçin Finansal Okuryazarlık ve İpuçları
+                </h2>
+                <p class='text-sm text-slate-500 mt-4 leading-relaxed'>
+                  Klinik yönetimi, vergi planlaması, seans verimliliği ve takvim optimizasyonu konularında uzmanlarımızdan pratik rehberler.
+                </p>
+              </div>
+
+              <div class='grid grid-cols-1 md:grid-cols-3 gap-8'>
+                <b:if cond='data:posts.size != 0'>
+                  <!-- Loop actual Blogger posts on Homepage -->
+                  <b:loop values='data:posts' var='post'>
+                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs shadow-premium-hover scroll-reveal group'>
+                      <div>
+                        <div class='relative h-48 overflow-hidden bg-slate-100'>
+                          <b:if cond='data:post.firstImageUrl'>
+                            <div class='absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500' expr:style='&quot;background-image: url(&quot; + data:post.firstImageUrl + &quot;);&quot;'></div>
+                          <b:else/>
+                            <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                              <i data-lucide='book-open' class='w-12 h-12 text-[#6b705c] opacity-60'></i>
+                            </div>
+                          </b:if>
+                          
+                          <!-- Dynamic Label Category -->
+                          <b:if cond='data:post.labels'>
+                            <b:loop index='i' values='data:post.labels' var='label'>
+                              <b:if cond='data:i == 0'>
+                                <a expr:href='data:label.url' class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm hover:bg-[#6b705c] hover:text-white transition-all z-10'>
+                                  <data:label.name/>
+                                </a>
+                              </b:if>
+                            </b:loop>
+                          <b:else/>
+                            <span class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm'>
+                              REHBER
+                            </span>
+                          </b:if>
+                        </div>
+                        <div class='p-6 sm:p-8 space-y-3'>
+                          <div class='flex items-center gap-2 text-[10px] font-semibold text-slate-400'>
+                            <span><data:post.date/></span>
+                            <span>•</span>
+                            <span><data:post.author/></span>
+                          </div>
+                          <h3 class='font-display text-lg font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors'>
+                            <a expr:href='data:post.url'><data:post.title/></a>
+                          </h3>
+                          <p class='text-xs text-slate-500 leading-relaxed font-normal line-clamp-3'>
+                            <data:post.snippet/>...
+                          </p>
+                        </div>
+                      </div>
+                      <div class='px-6 sm:px-8 pb-8 pt-2'>
+                        <a expr:href='data:post.url' class='inline-flex items-center gap-1.5 text-xs font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors'>
+                          Okumaya Başla <i data-lucide='arrow-up-right' class='w-4 h-4'></i>
+                        </a>
+                      </div>
+                    </article>
+                  </b:loop>
+                <b:else/>
+                  <!-- Fallback Placeholders if no posts exist yet -->
+                  <!-- Blog Card 1 -->
+                  <article class='bg-[#fbfbf9] rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs shadow-premium-hover scroll-reveal group'>
+                    <div>
+                      <div class='relative h-48 overflow-hidden bg-slate-100'>
+                        <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <i data-lucide='landmark' class='w-12 h-12 text-[#6b705c] opacity-60'></i>
+                        </div>
+                        <span class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm'>FİNANSAL REHBER</span>
+                      </div>
+                      <div class='p-6 sm:p-8 space-y-3'>
+                        <div class='flex items-center gap-2 text-[10px] font-semibold text-slate-400'>
+                          <span>15 Temmuz 2026</span>
+                          <span>•</span>
+                          <span>5 Dk Okuma</span>
+                        </div>
+                        <h3 class='font-display text-lg font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors'>
+                          Terapistler İçin Gelir ve Gider Dengesini Sağlamanın 5 Yolu
+                        </h3>
+                        <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+                          Saatlik ofis giderleri, vergilendirme süreçleri and gizli giderleri optimize ederek seans başı net kazancınızı nasıl %25 artırabilirsiniz?
+                        </p>
+                      </div>
+                    </div>
+                    <div class='px-6 sm:px-8 pb-8 pt-2'>
+                      <a href='#' class='inline-flex items-center gap-1.5 text-xs font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors'>
+                        Okumaya Başla <i data-lucide='arrow-up-right' class='w-4 h-4'></i>
+                      </a>
+                    </div>
+                  </article>
+
+                  <!-- Blog Card 2 -->
+                  <article class='bg-[#fbfbf9] rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs shadow-premium-hover scroll-reveal group'>
+                    <div>
+                      <div class='relative h-48 overflow-hidden bg-slate-100'>
+                        <div class='absolute inset-0 bg-gradient-to-br from-[#cb997e]/20 to-[#6b705c]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <i data-lucide='building' class='w-12 h-12 text-[#cb997e] opacity-60'></i>
+                        </div>
+                        <span class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm'>KLİNİK YÖNETİMİ</span>
+                      </div>
+                      <div class='p-6 sm:p-8 space-y-3'>
+                        <div class='flex items-center gap-2 text-[10px] font-semibold text-slate-400'>
+                          <span>10 Temmuz 2026</span>
+                          <span>•</span>
+                          <span>7 Dk Okuma</span>
+                        </div>
+                        <h3 class='font-display text-lg font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors'>
+                          Klinik Kiralama Süreçlerinde Gizli Masraflardan Kaçınma Rehberi
+                        </h3>
+                        <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+                          Ortak ofislerde seans başı ödeme yaparken dikkat etmeniz gerekenler, boş oda maliyetleri ve takvim uyuşmazlıkları ile baş etme yöntemleri.
+                        </p>
+                      </div>
+                    </div>
+                    <div class='px-6 sm:px-8 pb-8 pt-2'>
+                      <a href='#' class='inline-flex items-center gap-1.5 text-xs font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors'>
+                        Okumaya Başla <i data-lucide='arrow-up-right' class='w-4 h-4'></i>
+                      </a>
+                    </div>
+                  </article>
+
+                  <!-- Blog Card 3 -->
+                  <article class='bg-[#fbfbf9] rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs shadow-premium-hover scroll-reveal group'>
+                    <div>
+                      <div class='relative h-48 overflow-hidden bg-slate-100'>
+                        <div class='absolute inset-0 bg-gradient-to-br from-[#1e293b]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <i data-lucide='calendar' class='w-12 h-12 text-[#1e293b] opacity-60'></i>
+                        </div>
+                        <span class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm'>TEKNOLOJİ REHBERİ</span>
+                      </div>
+                      <div class='p-6 sm:p-8 space-y-3'>
+                        <div class='flex items-center gap-2 text-[10px] font-semibold text-slate-400'>
+                          <span>02 Temmuz 2026</span>
+                          <span>•</span>
+                          <span>4 Dk Okuma</span>
+                        </div>
+                        <h3 class='font-display text-lg font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors'>
+                          Google Takvim Entegrasyonu ile Seans Kaçırma Kabusuna Son
+                        </h3>
+                        <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+                          Takviminizi bütçe takip platformuna bağlamanın faydaları. Otomatik iCal senkronizasyonu ile randevu çakışmalarının ve iptal seans kaçaklarının önüne geçin.
+                        </p>
+                      </div>
+                    </div>
+                    <div class='px-6 sm:px-8 pb-8 pt-2'>
+                      <a href='#' class='inline-flex items-center gap-1.5 text-xs font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors'>
+                        Okumaya Başla <i data-lucide='arrow-up-right' class='w-4 h-4'></i>
+                      </a>
+                    </div>
+                  </article>
+                </b:if>
+              </div>
+            </div>
+          </section>
+        </b:if>
+
+        <!-- 2. Non-Homepage Dynamic Blog Listing / Single Post View Container -->
+        <div id='main-blog-container' class='max-w-6xl mx-auto px-6 pt-32 pb-24' style='display: none;'>
+          <b:if cond='data:view.isMultipleItems'>
+            
+            <b:if cond='data:view.isSearch'>
+              <!-- Search Results View (Keep the current vertical listing format) -->
+              <div class='max-w-3xl mx-auto'>
+                <div class='text-center mb-12'>
+                  <span class='text-xs font-bold text-[#cb997e] tracking-widest block mb-2'>ARAMA SONUÇLARI</span>
+                  <h1 class='font-display text-2xl sm:text-3xl font-extrabold text-slate-900'>
+                    &quot;<data:view.search.query/>&quot; için bulunan yazılar
+                  </h1>
+                </div>
+                
+                <b:loop values='data:posts' var='post'>
+                  <article class='bg-white p-8 md:p-14 rounded-[2rem] border border-slate-200/60 shadow-premium mb-12 relative overflow-hidden'>
+                    <div class='absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#6b705c] to-[#cb997e]'></div>
+                    <span class='inline-flex items-center gap-1.5 px-3.5 py-1 bg-[#6b705c]/10 text-[#6b705c] rounded-full text-[10px] font-bold tracking-wider mb-5'>
+                      Makale
+                    </span>
+                    <h2 class='font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 mb-4 hover:text-[#6b705c] transition-colors'>
+                      <a expr:href='data:post.url'><data:post.title/></a>
+                    </h2>
+                    <div class='text-xs text-slate-500 mb-6 font-semibold'>
+                      Yazar: <span class='text-slate-700'><data:post.author/></span>
+                    </div>
+                    <p class='text-xs sm:text-sm text-slate-500 leading-relaxed mb-6'>
+                      <data:post.snippet/>...
+                    </p>
+                    <a expr:href='data:post.url' class='inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded-full text-xs font-semibold transition-all shadow-md'>
+                      Yazıyı Oku <i data-lucide='arrow-right' class='w-3.5 h-3.5'></i>
+                    </a>
+                  </article>
+                </b:loop>
+              </div>
+            <b:else/>
+              <!-- Archive / Label / General Listing View - Beautiful 3-Column Grid! -->
+              <div class='mb-12 text-center max-w-2xl mx-auto'>
+                <span class='text-xs font-bold text-[#cb997e] tracking-widest block mb-2'>
+                  <b:if cond='data:view.isLabelSearch'>
+                    ETİKET: <data:view.search.label/>
+                  <b:else/>
+                    TÜM YAZILARIMIZ
+                  </b:if>
+                </span>
+                <h1 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
+                  <b:if cond='data:view.isLabelSearch'>
+                    &quot;<data:view.search.label/>&quot; Kategorisindeki Yazılar
+                  <b:else/>
+                    PsyCalcu Blog ve Arşiv
+                  </b:if>
+                </h1>
+              </div>
+
+              <div class='grid grid-cols-1 md:grid-cols-3 gap-8'>
+                <b:loop values='data:posts' var='post'>
+                  <!-- Dynamic Blog Card identical to homepage -->
+                  <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs shadow-premium-hover group'>
+                    <div>
+                      <div class='relative h-48 overflow-hidden bg-slate-100'>
+                        <b:if cond='data:post.firstImageUrl'>
+                          <div class='absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500' expr:style='&quot;background-image: url(&quot; + data:post.firstImageUrl + &quot;);&quot;'></div>
+                        <b:else/>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                            <i data-lucide='book-open' class='w-12 h-12 text-[#6b705c] opacity-60'></i>
+                          </div>
+                        </b:if>
+                        
+                        <!-- Dynamic Label Category -->
+                        <b:if cond='data:post.labels'>
+                          <b:loop index='i' values='data:post.labels' var='label'>
+                            <b:if cond='data:i == 0'>
+                              <a expr:href='data:label.url' class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm hover:bg-[#6b705c] hover:text-white transition-all z-10'>
+                                <data:label.name/>
+                              </a>
+                            </b:if>
+                          </b:loop>
+                        <b:else/>
+                          <span class='absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-slate-700 tracking-wider shadow-sm'>
+                            MAKALE
+                          </span>
+                        </b:if>
+                      </div>
+                      <div class='p-6 sm:p-8 space-y-3'>
+                        <div class='flex items-center gap-2 text-[10px] font-semibold text-slate-400'>
+                          <span><data:post.date/></span>
+                          <span>•</span>
+                          <span><data:post.author/></span>
+                        </div>
+                        <h3 class='font-display text-lg font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors'>
+                          <a expr:href='data:post.url'><data:post.title/></a>
+                        </h3>
+                        <p class='text-xs text-slate-500 leading-relaxed font-normal line-clamp-3'>
+                          <data:post.snippet/>...
+                        </p>
+                      </div>
+                    </div>
+                    <div class='px-6 sm:px-8 pb-8 pt-2'>
+                      <a expr:href='data:post.url' class='inline-flex items-center gap-1.5 text-xs font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors'>
+                        Okumaya Başla <i data-lucide='arrow-up-right' class='w-4 h-4'></i>
+                      </a>
+                    </div>
+                  </article>
+                </b:loop>
+              </div>
+            </b:if>
+
+          <b:else/>
+            <!-- Single Post/Page view (Item) -->
+            <b:loop values='data:posts' var='post'>
+              <article class='bg-white p-8 md:p-14 rounded-[2rem] border border-slate-200/60 shadow-premium mb-12 relative overflow-hidden max-w-4xl mx-auto'>
+                <div class='absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#6b705c] to-[#cb997e]'></div>
+                
+                <div class='flex flex-wrap items-center gap-2.5 text-xs font-bold text-[#cb997e] tracking-wider mb-5'>
+                  <span>PAYLAŞIM TARİHİ: <data:post.date/></span>
+                  <span class='text-slate-300'>•</span>
+                  <span>YAZAR: <data:post.author/></span>
+                  <b:if cond='data:post.labels'>
+                    <span class='text-slate-300'>•</span>
+                    <span class='text-slate-500'>ETİKETLER:</span>
+                    <b:loop values='data:post.labels' var='label'>
+                      <a expr:href='data:label.url' class='px-2 py-0.5 bg-[#6b705c]/10 text-[#6b705c] hover:bg-[#6b705c] hover:text-white rounded-md transition-colors text-[10px] lowercase tracking-normal font-semibold'>
+                        <data:label.name/>
+                      </a>
+                    </b:loop>
+                  </b:if>
+                </div>
+                
+                <h1 class='font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 mb-8 leading-[1.1]'>
+                  <data:post.title/>
+                </h1>
+                
+                <div class='prose prose-slate max-w-none text-sm sm:text-base leading-relaxed text-slate-700 font-normal prose-headings:font-display prose-headings:font-bold prose-a:text-[#cb997e] prose-strong:text-slate-900 post-body-content'>
+                  <data:post.body/>
+                </div>
+                
+                <!-- Comments / Back link -->
+                <div class='mt-12 pt-8 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4'>
+                  <a href='/' class='inline-flex items-center gap-2 text-xs font-bold text-[#6b705c] hover:text-slate-900 transition-colors'>
+                    <i data-lucide='arrow-left' class='w-4 h-4'></i> Ana Sayfaya Dön
+                  </a>
+                </div>
+              </article>
+            </b:loop>
+          </b:if>
+        </div>
+
+      </b:includable>
+    </b:widget>
+  </b:section>
+
+  <!-- FAQ Section -->
+  <section id='faq' class='py-20 bg-[#fbfbf9] border-t border-slate-100'>
+    <div class='max-w-3xl mx-auto px-6'>
+      <div class='text-center mb-12 scroll-reveal'>
+        <h2 class='font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900'>Sıkça Sorulan Sorular</h2>
+      </div>
+
+      <div class='space-y-4 text-xs font-medium text-slate-700'>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Google/iCloud takvim bağlantısı güvenli midir?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Evet, kesinlikle. Bağlantı sadece takviminizi okumak üzere standart iCalendar protokolü ile kurulur. Danışan isimleri veya seans detayları hiçbir şekilde harici veritabanlarında saklanmaz. Tüm hesaplamalar tamamen tarayıcınızda gerçekleşir.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Çoklu kiracı takvim desteği nasıl çalışır?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Klinik veya ofis sahibiyseniz, ofisinizi kiralayan tüm terapistlerin takvim adreslerini sisteme ekleyebilirsiniz. Sistem her terapistten gelen seans adetlerini hesaplar, seans başı kira ücretlerini belirleyip toplam hakediş raporunu hazırlar.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact & Footer -->
+  <footer id='contact' class='bg-slate-950 text-slate-400 py-16 border-t border-slate-900 relative z-10'>
+    <div class='max-w-6xl mx-auto px-6'>
+      <div class='grid grid-cols-1 md:grid-cols-3 gap-12 mb-12'>
+        <div class='space-y-4'>
+          <a href='#' class='flex items-center gap-2.5 font-display text-lg font-bold tracking-tight text-white'>
+            <div class='w-8 h-8 rounded-xl flex items-center justify-center text-white font-black' style='background: #6b705c;'>
+              Ψ
+            </div>
+            <span>Psy<span class='font-normal text-slate-500'>Calcu</span></span>
+          </a>
+          <p class='text-xs text-slate-500 max-w-sm font-normal leading-relaxed'>
+            Psikologlar, klinikler ve mülk sahipleri için geliştirilmiş modern seans planlama ve bütçe analizi platformu.
+          </p>
+        </div>
+
+        <div>
+          <h4 class='text-xs font-bold text-white tracking-wider mb-4'>HIZLI MENÜ</h4>
+          <ul class='space-y-2 text-xs font-medium'>
+            <li><a href='#problems' class='hover:text-white transition-colors'>Problemler</a></li>
+            <li><a href='#features' class='hover:text-white transition-colors'>Çözümümüz</a></li>
+            <li><a href='#calculator' class='hover:text-white transition-colors'>Kazanç Hesaplayıcı</a></li>
+            <li><a href='#sync' class='hover:text-white transition-colors'>Entegrasyon</a></li>
+            <li><a href='#pricing' class='hover:text-white transition-colors'>Kullanım Paketleri</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class='text-xs font-bold text-white tracking-wider mb-4'>İLETİŞİM &amp; DESTEK</h4>
+          <p class='text-xs text-slate-500 mb-4 font-normal leading-relaxed'>Her türlü soru ve destek talebiniz için bize ulaşabilirsiniz.</p>
+          <div class='text-xs text-slate-300 space-y-2 font-medium'>
+            <div class='flex items-center gap-2'><i data-lucide='phone' class='w-4 h-4 text-accent'></i> +90 (555) 000 00 00</div>
+            <div class='flex items-center gap-2'><i data-lucide='mail' class='w-4 h-4 text-accent'></i> info@psycalcu.com</div>
+          </div>
+        </div>
+      </div>
+
+      <div class='pt-8 border-t border-slate-900 flex flex-col md:flex-row items-center justify-between text-xs text-slate-600 font-semibold'>
+        <span>© 2026 PsyCalcu. Tüm Hakları Saklıdır.</span>
+        <span>Made with ❤ for Psychologists &amp; Clinics</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Lucide Icons Initialization -->
+  <script type='text/javascript'>
+    //<![CDATA[
+    lucide.createIcons();
+    //]]>
+  </script>
+
+  <!-- Interactive Parallax & Calculator Scripting -->
+  <script type='text/javascript'>
+    //<![CDATA[
+    // Range Slider bindings
+    const rangeSessions = document.getElementById('range-sessions');
+    const rangePrice = document.getElementById('range-price');
+    const rangeRent = document.getElementById('range-rent');
+    const chkBaby = document.getElementById('chk-baby');
+
+    // Values display elements
+    const valSessions = document.getElementById('val-sessions');
+    const valPrice = document.getElementById('val-price');
+    const valRent = document.getElementById('val-rent');
+
+    // Result displays
+    const resGross = document.getElementById('res-gross');
+    const resRent = document.getElementById('res-rent');
+    const resBaby = document.getElementById('res-baby');
+    const resNet = document.getElementById('res-net');
+
+    function updateCalculations() {
+      if (!rangeSessions) return;
+      const sessions = parseInt(rangeSessions.value);
+      const price = parseInt(rangePrice.value);
+      const rent = parseInt(rangeRent.value);
+      const hasBaby = chkBaby ? chkBaby.checked : false;
+      const babyFee = 150; // standard hourly babysitter fee
+
+      // Update text displays
+      if (valSessions) valSessions.textContent = sessions + " Seans";
+      if (valPrice) valPrice.textContent = "₺" + price.toLocaleString('tr-TR');
+      if (valRent) valRent.textContent = "₺" + rent.toLocaleString('tr-TR');
+
+      // Math calculations
+      const gross = sessions * price;
+      const totalRent = sessions * rent;
+      const totalBaby = hasBaby ? (sessions * babyFee) : 0;
+      const net = gross - totalRent - totalBaby;
+
+      // Update result displays
+      if (resGross) resGross.textContent = "₺" + gross.toLocaleString('tr-TR');
+      if (resRent) resRent.textContent = "₺" + totalRent.toLocaleString('tr-TR');
+      
+      if (resBaby) {
+        resBaby.textContent = "₺" + totalBaby.toLocaleString('tr-TR');
+        if (!hasBaby) {
+          resBaby.style.textDecoration = 'line-through';
+          resBaby.style.opacity = '0.5';
+        } else {
+          resBaby.style.textDecoration = 'none';
+          resBaby.style.opacity = '1';
+        }
+      }
+      
+      if (resNet) resNet.textContent = "₺" + net.toLocaleString('tr-TR');
+    }
+
+    if (rangeSessions) {
+      rangeSessions.addEventListener('input', updateCalculations);
+      rangePrice.addEventListener('input', updateCalculations);
+      rangeRent.addEventListener('input', updateCalculations);
+      if (chkBaby) chkBaby.addEventListener('change', updateCalculations);
+      updateCalculations();
+    }
+
+    // Smooth Scroll Reveal - Apple Presentation Technique
+    const revealElements = document.querySelectorAll('.scroll-reveal');
+    function handleScrollReveal() {
+      revealElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const elementVisibleHeight = 100;
+        if (rect.top < window.innerHeight - elementVisibleHeight) {
+          el.classList.add('active');
+        }
+      });
+    }
+
+    // Apple-style Parallax Scrolling & Lerp Effect
+    const parallaxWrappers = document.querySelectorAll('.parallax-wrapper');
+    const heroBg = document.getElementById('hero-parallax-bg');
+    
+    // Lerp state
+    let targetScrollY = 0;
+    let currentScrollY = 0;
+    const lerpStrength = 0.08; // Buttery smooth momentum coefficient
+    let isRequestingFrame = false;
+
+    function updateParallax() {
+      // Lerp logic for buttery smooth inertial scroll
+      currentScrollY += (targetScrollY - currentScrollY) * lerpStrength;
+      
+      if (heroBg) {
+        // Shift hero background circle gradient
+        heroBg.style.transform = `translateY(${currentScrollY * 0.3}px)`;
+      }
+
+      parallaxWrappers.forEach(el => {
+        const speed = parseFloat(el.getAttribute('data-speed')) || 0;
+        // Translate elements based on speed and current lerped scroll
+        el.style.transform = `translateY(${currentScrollY * speed}px)`;
+      });
+
+      // Continue the frame loop if the difference is noticeable
+      if (Math.abs(targetScrollY - currentScrollY) > 0.1) {
+        requestAnimationFrame(updateParallax);
+      } else {
+        currentScrollY = targetScrollY;
+        isRequestingFrame = false;
+      }
+    }
+
+    window.addEventListener('scroll', () => {
+      targetScrollY = window.scrollY;
+      handleScrollReveal();
+      if (!isRequestingFrame) {
+        isRequestingFrame = true;
+        requestAnimationFrame(updateParallax);
+      }
+    }, { passive: true });
+
+    // Initial trigger to show elements already in viewport
+    document.addEventListener('DOMContentLoaded', () => {
+      targetScrollY = window.scrollY;
+      currentScrollY = window.scrollY;
+      handleScrollReveal();
+      updateParallax();
+    });
+
+    // Live mockup list animator (Component Loop Animation)
+    const mockupSessions = [
+      { initials: 'MY', name: 'Melis Yılmaz (Face to Face)', details: 'Seans Süresi: 50 Dk | Oda 3', fee: 1800, status: 'Ödendi', statusClass: 'text-emerald-700 bg-emerald-50', color: 'bg-[#6b705c]/10 text-[#6b705c]' },
+      { initials: 'OD', name: 'Ömer Demir (Online Seans)', details: 'Seans Süresi: 50 Dk | Google Meet', fee: 1500, status: 'Beklemede', statusClass: 'text-amber-700 bg-amber-50', color: 'bg-[#cb997e]/10 text-[#cb997e]' },
+      { initials: 'CK', name: 'Canan Kaya (Çocuk Terapisi)', details: 'Seans Süresi: 50 Dk | Oda 1', fee: 2000, status: 'Ödendi', statusClass: 'text-emerald-700 bg-emerald-50', color: 'bg-slate-900/10 text-slate-900' },
+      { initials: 'BC', name: 'Berk Can (Çift Terapisi)', details: 'Seans Süresi: 80 Dk | Oda 4', fee: 2500, status: 'Ödendi', statusClass: 'text-emerald-700 bg-emerald-50', color: 'bg-[#6b705c]/10 text-[#6b705c]' },
+      { initials: 'SB', name: 'Selin Başar (EMDR Seansı)', details: 'Seans Süresi: 50 Dk | Google Meet', fee: 1900, status: 'Beklemede', statusClass: 'text-amber-700 bg-amber-50', color: 'bg-[#cb997e]/10 text-[#cb997e]' }
+    ];
+
+    let currentSessionIndex = 2; // start by replacing/adding
+    const mockupListContainer = document.querySelector('#hero-section .space-y-3');
+
+    // Stats variables in mockup (not simulator!)
+    const mockStatGross = document.querySelector('#hero-section .grid > div:nth-child(1) span:nth-child(2)');
+    const mockStatRent = document.querySelector('#hero-section .grid > div:nth-child(2) span:nth-child(2)');
+    const mockStatNet = document.querySelector('#hero-section .grid > div:nth-child(3) span:nth-child(2)');
+
+    let activeGrossVal = 32400;
+    let activeRentVal = 5400;
+    let activeNetVal = 27000;
+
+    function animateMockupComponent() {
+      if (!mockupListContainer) return;
+      
+      const itemToInsert = mockupSessions[currentSessionIndex];
+      
+      // Create new element with fade class
+      const newCard = document.createElement('div');
+      newCard.className = 'flex items-center justify-between p-3.5 bg-white border border-slate-200/60 rounded-xl hover:border-slate-300 transition-all opacity-0 -translate-y-4 duration-500';
+      newCard.innerHTML = `
+        <div class='flex items-center gap-3'>
+          <div class='w-9 h-9 rounded-full ${itemToInsert.color} flex items-center justify-center text-xs font-bold'>${itemToInsert.initials}</div>
+          <div>
+            <span class='text-xs font-bold text-slate-800 block'>${itemToInsert.name}</span>
+            <span class='text-[10px] text-slate-500 font-mono'>${itemToInsert.details}</span>
+          </div>
+        </div>
+        <div class='text-right'>
+          <span class='text-xs font-bold text-slate-800 block'>₺${itemToInsert.fee.toLocaleString('tr-TR')}</span>
+          <span class='text-[9px] font-semibold ${itemToInsert.statusClass} px-2.5 py-0.5 rounded-full'>${itemToInsert.status}</span>
+        </div>
+      `;
+
+      // Remove the last child of list container and insert the new one at the top
+      if (mockupListContainer.children.length >= 2) {
+        const lastChild = mockupListContainer.lastElementChild;
+        if (lastChild) {
+          lastChild.classList.add('opacity-0', 'translate-y-4');
+          setTimeout(() => {
+            if (lastChild.parentNode === mockupListContainer) {
+              mockupListContainer.removeChild(lastChild);
+            }
+            mockupListContainer.insertBefore(newCard, mockupListContainer.firstChild);
+            // Trigger transition
+            setTimeout(() => {
+              newCard.classList.remove('opacity-0', '-translate-y-4');
+            }, 50);
+          }, 300);
+        }
+      } else {
+        mockupListContainer.insertBefore(newCard, mockupListContainer.firstChild);
+        setTimeout(() => {
+          newCard.classList.remove('opacity-0', '-translate-y-4');
+        }, 50);
+      }
+
+      // Update the mock stats nicely
+      activeGrossVal += itemToInsert.fee;
+      // Assume a rent fee of 350 for face to face (or Google Meet is 0!)
+      const rentFeeForSession = itemToInsert.details.includes('Google Meet') ? 0 : 350;
+      activeRentVal += rentFeeForSession;
+      activeNetVal = activeGrossVal - activeRentVal;
+
+      // Smooth value transitions in UI
+      if (mockStatGross) mockStatGross.textContent = "₺" + activeGrossVal.toLocaleString('tr-TR');
+      if (mockStatRent) mockStatRent.textContent = "₺" + activeRentVal.toLocaleString('tr-TR');
+      if (mockStatNet) mockStatNet.textContent = "₺" + activeNetVal.toLocaleString('tr-TR');
+
+      // Loop to next item
+      currentSessionIndex = (currentSessionIndex + 1) % mockupSessions.length;
+    }
+
+    // Run component loop every 4 seconds
+    setInterval(animateMockupComponent, 4000);
+
+    // Isometric Dashboard Showcase Animator
+    let isoTotalRent = 23450;
+    const isoTotalRentEl = document.getElementById('iso-total-rent');
+    const isoActivityContainer = document.getElementById('iso-activity-container');
+    const isoRoomsContainer = document.getElementById('iso-rooms-container');
+    const isoTherapistsContainer = document.getElementById('iso-therapists-container');
+
+    const isoActivities = [
+      {
+        title: 'Takvim Senkronize Edildi',
+        desc: 'Dr. Elif Nazlı takvimi üzerinden 1 yeni seans algılandı.',
+        time: 'Şimdi',
+        icon: 'calendar',
+        iconColor: 'bg-emerald-50 text-emerald-600',
+        action: 'room-3-occupied',
+        rentAdded: 350
+      },
+      {
+        title: 'Ödeme Alındı',
+        desc: 'Psk. Melis Demir seans kira ödemesi (₺350) onaylandı.',
+        time: 'Şimdi',
+        icon: 'check-circle',
+        iconColor: 'bg-[#6b705c]/10 text-[#6b705c]',
+        action: 'rent-increment',
+        rentAdded: 350
+      },
+      {
+        title: 'iCal Güncellendi',
+        desc: 'Dr. Özgür Can takvimi ile iCal takvimi senkronize edildi.',
+        time: 'Şimdi',
+        icon: 'refresh-cw',
+        iconColor: 'bg-[#cb997e]/10 text-accent',
+        action: 'room-1-occupied',
+        rentAdded: 350
+      }
+    ];
+
+    let currentIsoActivityIndex = 0;
+
+    function animateIsometricDashboard() {
+      if (!isoActivityContainer || !isoTotalRentEl) return;
+
+      const act = isoActivities[currentIsoActivityIndex];
+
+      // Update total rent with animate-pulse look
+      isoTotalRent += act.rentAdded;
+      isoTotalRentEl.textContent = "₺" + isoTotalRent.toLocaleString('tr-TR');
+      isoTotalRentEl.classList.add('text-accent');
+      setTimeout(() => {
+        isoTotalRentEl.classList.remove('text-accent');
+      }, 800);
+
+      // Create new activity log element
+      const logDiv = document.createElement('div');
+      logDiv.className = 'flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl opacity-0 -translate-x-4 transition-all duration-500';
+      logDiv.innerHTML = `
+        <div class='p-1.5 rounded-lg ${act.iconColor} mt-0.5 shrink-0'>
+          <i data-lucide='${act.icon}'></i>
+        </div>
+        <div class='text-left'>
+          <span class='text-[11px] font-bold text-slate-800 block'>${act.title}</span>
+          <p class='text-[9px] text-slate-500 leading-normal'>${act.desc}</p>
+          <span class='text-[8px] font-mono text-slate-400 mt-1 block'>${act.time}</span>
+        </div>
+      `;
+
+      // Insert and trigger transition
+      isoActivityContainer.insertBefore(logDiv, isoActivityContainer.firstChild);
+      setTimeout(() => {
+        logDiv.classList.remove('opacity-0', '-translate-x-4');
+        // Initialize lucide on the newly injected icon
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, 50);
+
+      // Prune old activities if more than 2
+      if (isoActivityContainer.children.length > 2) {
+        const last = isoActivityContainer.lastElementChild;
+        if (last) {
+          last.classList.add('opacity-0', 'translate-x-4');
+          setTimeout(() => {
+            if (last.parentNode === isoActivityContainer) {
+              isoActivityContainer.removeChild(last);
+            }
+          }, 500);
+        }
+      }
+
+      // Live changes to the rooms or therapists to make it look active
+      if (currentIsoActivityIndex === 0 && isoRoomsContainer) {
+        // Toggle Room 2 to occupied for a moment!
+        const r2 = isoRoomsContainer.children[1];
+        if (r2) {
+          r2.innerHTML = `
+            <div class='flex items-center gap-3'>
+              <div class='w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-[10px] font-bold text-emerald-700'>O2</div>
+              <div>
+                <span class='text-xs font-bold text-slate-800 block'>Oda 2 (Oyun Terapisi)</span>
+                <span class='text-[9px] text-slate-400 font-medium'>Psk. Damla Su (Özel Seans)</span>
+              </div>
+            </div>
+            <span class='text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full'>Dolu</span>
+          `;
+          r2.classList.add('border-emerald-200', 'bg-emerald-50/10');
+          setTimeout(() => {
+            r2.innerHTML = `
+              <div class='flex items-center gap-3'>
+                <div class='w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-400'>O2</div>
+                <div>
+                  <span class='text-xs font-bold text-slate-800 block'>Oda 2 (Oyun Terapisi)</span>
+                  <span class='text-[9px] text-slate-400 font-medium'>Boş - Rezervasyon Yok</span>
+                </div>
+              </div>
+              <span class='text-[9px] font-bold text-slate-400 bg-slate-100 px-2.5 py-0.5 rounded-full'>Boş</span>
+            `;
+            r2.classList.remove('border-emerald-200', 'bg-emerald-50/10');
+          }, 3500);
+        }
+      }
+
+      currentIsoActivityIndex = (currentIsoActivityIndex + 1) % isoActivities.length;
+    }
+
+    // Run isometric animator every 4.5 seconds
+    setInterval(animateIsometricDashboard, 4500);
+
+    // ==========================================
+    // Interactive Room Permission & Booking Simulator
+    // ==========================================
+    const permissions = {
+      melis: { std: true, play: true },
+      ozgur: { std: true, play: false }
+    };
+
+    let bookingTimeout = null;
+
+    window.togglePermission = function(therapist, type) {
+      const active = !permissions[therapist][type];
+      permissions[therapist][type] = active;
+
+      const btnId = `btn-perm-${therapist}-${type}`;
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        if (active) {
+          btn.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 cursor-pointer';
+          btn.innerHTML = `<span>✓ ${type === 'std' ? 'Standart' : 'Oyun Ter.'}</span>`;
+        } else {
+          btn.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all bg-red-50 text-red-700 border-red-200 flex items-center gap-1 cursor-pointer';
+          btn.innerHTML = `<span>✗ ${type === 'std' ? 'Standart' : 'Oyun Ter.'}</span>`;
+        }
+      }
+
+      const therapistName = therapist === 'melis' ? 'Psk. Melis Demir' : 'Dr. Özgür Can';
+      const typeName = type === 'std' ? 'Standart Terapi Odası' : 'Çocuk Oyun Terapi Odası';
+      updateSimConsole(`GÜNCELLEME: ${therapistName} için ${typeName} yetkisi ${active ? 'AÇILDI' : 'KAPATILDI'}.`, 'text-[#cb997e]');
+    }
+
+    window.simulateBooking = function(therapist, type) {
+      if (bookingTimeout) clearTimeout(bookingTimeout);
+      resetSimRooms();
+
+      const therapistName = therapist === 'melis' ? 'Psk. Melis Demir' : 'Dr. Özgür Can';
+      const roomNum = type === 'std' ? 1 : 2;
+      const roomEl = document.getElementById(`sim-room-${roomNum}`);
+      const badgeEl = document.getElementById(`sim-room-${roomNum}-badge`);
+      const descEl = document.getElementById(`sim-room-${roomNum}-desc`);
+
+      updateSimConsole(`iCal BAĞLANTISI: ${therapistName} takviminden seans rezervasyon isteği geldi... (#Oda${roomNum})`, 'text-slate-200');
+
+      const isAuthorized = permissions[therapist][type];
+
+      setTimeout(() => {
+        if (isAuthorized) {
+          updateSimConsole(`ONAYLANDI: ${therapistName} yetki kontrolü başarılı. Seans Oda ${roomNum}'ye işlendi.`, 'text-emerald-400');
+          
+          if (roomEl && badgeEl && descEl) {
+            roomEl.className = 'p-3.5 bg-emerald-50/20 border border-emerald-200 rounded-2xl flex flex-col justify-between h-[85px] transition-all scale-102';
+            badgeEl.className = 'text-[9px] px-1.5 py-0.5 bg-emerald-500 text-white font-bold rounded';
+            badgeEl.textContent = 'Dolu';
+            descEl.className = 'text-[10px] text-emerald-800 font-semibold';
+            descEl.textContent = `${therapistName} (Seans Aktif)`;
+          }
+
+          bookingTimeout = setTimeout(() => {
+            resetSimRooms();
+          }, 4500);
+
+        } else {
+          updateSimConsole(`BLOKE EDİLDİ: ${therapistName} bu oda tipi için yetkilendirilmemiş! Talep reddedildi.`, 'text-red-400');
+          
+          if (roomEl && badgeEl && descEl) {
+            roomEl.className = 'p-3.5 bg-red-50/20 border border-red-200 rounded-2xl flex flex-col justify-between h-[85px] transition-all shake-element';
+            badgeEl.className = 'text-[9px] px-1.5 py-0.5 bg-red-500 text-white font-bold rounded';
+            badgeEl.textContent = 'ENGELLENDİ';
+            descEl.className = 'text-[10px] text-red-800 font-semibold';
+            descEl.textContent = 'Yetkisiz Erişim Teşebbüsü';
+          }
+
+          bookingTimeout = setTimeout(() => {
+            resetSimRooms();
+          }, 4500);
+        }
+      }, 800);
+    }
+
+    function resetSimRooms() {
+      const r1 = document.getElementById('sim-room-1');
+      const r1b = document.getElementById('sim-room-1-badge');
+      const r1d = document.getElementById('sim-room-1-desc');
+
+      const r2 = document.getElementById('sim-room-2');
+      const r2b = document.getElementById('sim-room-2-badge');
+      const r2d = document.getElementById('sim-room-2-desc');
+
+      if (r1 && r1b && r1d) {
+        r1.className = 'p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col justify-between h-[85px] transition-all';
+        r1b.className = 'text-[9px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 font-bold rounded';
+        r1b.textContent = 'Boş';
+        r1d.className = 'text-[10px] text-slate-400 font-normal leading-normal';
+        r1d.textContent = 'Müsait';
+      }
+
+      if (r2 && r2b && r2d) {
+        r2.className = 'p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col justify-between h-[85px] transition-all';
+        r2b.className = 'text-[9px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 font-bold rounded';
+        r2b.textContent = 'Boş';
+        r2d.className = 'text-[10px] text-slate-400 font-normal leading-normal';
+        r2d.textContent = 'Müsait - Sadece Yetkili Terapistler';
+      }
+    }
+
+    function updateSimConsole(message, colorClass) {
+      const consoleEl = document.getElementById('sim-console');
+      if (consoleEl) {
+        consoleEl.innerHTML = `
+          <span class='${colorClass} font-bold mb-1'>&gt; ${message}</span>
+          <span class='text-slate-500'>Terapistlerin yetki durumlarını değiştirip simülasyonu çalıştırabilirsiniz.</span>
+        `;
+      }
+    }
+    //]]>
+  </script>
+</body>
+</html>

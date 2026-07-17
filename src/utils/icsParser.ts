@@ -24,7 +24,7 @@ export function parseICS(
   const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
   const lines = unfoldedText.split('\n');
   
-  let currentEvent: Partial<Session> & { dtStartRaw?: string; descriptionRaw?: string } | null = null;
+  let currentEvent: Partial<Session> & { dtStartRaw?: string; descriptionRaw?: string; locationRaw?: string; noteRaw?: string } | null = null;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -73,12 +73,17 @@ export function parseICS(
         }
       }
       
-      // Determine type (online or face-to-face) from summary or description
+      // Determine type (online or face-to-face) from summary, description or location
       let finalType: SessionType = 'online';
       if (forcedType) {
         finalType = forcedType;
       } else {
-        const searchSource = ((currentEvent.clientName || '') + ' ' + (currentEvent.descriptionRaw || '')).toLowerCase();
+        const searchSource = (
+          (currentEvent.clientName || '') + ' ' + 
+          (currentEvent.descriptionRaw || '') + ' ' + 
+          (currentEvent.locationRaw || '') + ' ' + 
+          (currentEvent.noteRaw || '')
+        ).toLowerCase();
         if (searchSource.includes('yüzyüze') || searchSource.includes('yüz yüze') || searchSource.includes('ofis') || searchSource.includes('klinik') || searchSource.includes('face')) {
           finalType = 'face-to-face';
         } else if (searchSource.includes('iptal') || searchSource.includes('cancel')) {
@@ -87,6 +92,15 @@ export function parseICS(
       }
 
       currentEvent.type = finalType;
+      
+      // Construct notes from descriptionRaw, noteRaw, locationRaw
+      const notesParts: string[] = [];
+      if (currentEvent.descriptionRaw) notesParts.push(currentEvent.descriptionRaw);
+      if (currentEvent.noteRaw) notesParts.push(currentEvent.noteRaw);
+      if (currentEvent.locationRaw) notesParts.push(`Konum: ${currentEvent.locationRaw}`);
+      if (notesParts.length > 0) {
+        currentEvent.notes = notesParts.join('\n');
+      }
       
       // Cutoff check: Only import events from the last 60 days to save on DB writes & performance
       const sixtyDaysAgo = new Date();
@@ -160,9 +174,10 @@ export function parseICS(
           currentEvent.dtStartRaw = line;
         } else if (key === 'DESCRIPTION') {
           currentEvent.descriptionRaw = cleanVal;
-          currentEvent.notes = cleanVal;
         } else if (key === 'NOTE' || key === 'COMMENT') {
-          currentEvent.notes = cleanVal;
+          currentEvent.noteRaw = cleanVal;
+        } else if (key === 'LOCATION') {
+          currentEvent.locationRaw = cleanVal;
         }
       }
     }
