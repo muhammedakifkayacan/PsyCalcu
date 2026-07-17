@@ -2697,6 +2697,29 @@ export default function App() {
     );
   }
 
+  if (user && registrationStatus === 'approved' && (!isInitialSyncDone || isAuthSyncing) && !settings.userRole) {
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="cloud-sync-loading-screen">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 text-center space-y-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-[#6b705c]/5 rounded-full pointer-events-none" />
+          
+          <div className="w-16 h-16 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
+            <RefreshCw className="w-8 h-8 animate-spin" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-serif text-[#6b705c]">Verileriniz Eşitleniyor</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+          </div>
+
+          <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            PsyCalcu bulut hesabınızdaki ayarlar ve seans verileri güvenli bir şekilde yükleniyor. Lütfen bekleyiniz...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (user && registrationStatus === 'approved' && !settings.userRole) {
     const handleSaveRoleSelection = async () => {
       if (!tempSelectedRole) return;
