@@ -9,6 +9,7 @@ import {
   Laptop, 
   MapPin, 
   Ban, 
+  Building,
   TrendingUp, 
   Clock, 
   Sliders, 
@@ -28,6 +29,7 @@ import {
   Search,
   Wallet,
   Users,
+  User,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -41,7 +43,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts } from './types';
+import { Session, SessionType, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -55,7 +57,8 @@ import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
-import { auth, onAuthStateChanged, User, db, getRedirectResult, signOut } from './lib/firebase';
+import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
+import type { User as FirebaseUser } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -118,6 +121,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   googleSheetsLinked: false,
   enableSmartClientPriceMatching: false,
   defaultLandingPage: 'agenda',
+  userRole: undefined,
+  ownerCalendars: [],
 };
 
 export default function App() {
@@ -139,6 +144,8 @@ export default function App() {
           googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
           enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
           defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
+          userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
+          ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
         };
       } catch (e) {}
     }
@@ -157,7 +164,7 @@ export default function App() {
   });
 
   // Authentication & Cloud Sync states
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
   const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
@@ -509,6 +516,8 @@ export default function App() {
               googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
               enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
               defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
+              userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
+              ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
             });
           } catch (e) {}
         } else {
@@ -929,7 +938,7 @@ export default function App() {
     }
   }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, isInitialSyncDone, settings]);
 
-  const handleAuthSuccess = async (currentUser: User) => {
+  const handleAuthSuccess = async (currentUser: FirebaseUser) => {
     // onAuthStateChanged is the master of data loading; just reset ref to force fetch
     hasSyncedRef.current = null;
     setUser(currentUser);
@@ -1140,6 +1149,8 @@ export default function App() {
   const [showAiDetails, setShowAiDetails] = useState<boolean>(false);
   const [isFaqOpen, setIsFaqOpen] = useState<boolean>(false);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const [tempSelectedRole, setTempSelectedRole] = useState<'tenant' | 'owner' | null>(null);
+  const [isSavingRole, setIsSavingRole] = useState(false);
   const [syncDetailsToShow, setSyncDetailsToShow] = useState<{
     added: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
     updated: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
@@ -1453,6 +1464,7 @@ export default function App() {
     let officeRentExpenses = 0;
     let faceToFaceCount = 0;
     let onlineCount = 0;
+    let rentIncomeCount = 0;
     let cancelledCount = 0;
 
     sessions.forEach(s => {
@@ -1467,8 +1479,10 @@ export default function App() {
           officeRentExpenses += s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
           if (s.type === 'online') {
             onlineCount++;
-          } else {
+          } else if (s.type === 'face-to-face') {
             faceToFaceCount++;
+          } else if (s.type === 'rent-income') {
+            rentIncomeCount++;
           }
         }
       }
@@ -1485,6 +1499,7 @@ export default function App() {
       netIncome,
       onlineCount,
       faceToFaceCount,
+      rentIncomeCount,
       cancelledCount,
       monthName: new Date(selectedDate).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
     };
@@ -1868,7 +1883,7 @@ export default function App() {
 
   const handleImportSessions = (
     newSessions: Session[],
-    syncedTypesFetched?: 'online' | 'face-to-face' | ('online' | 'face-to-face')[]
+    syncedTypesFetched?: 'online' | 'face-to-face' | 'rent-income' | ('online' | 'face-to-face' | 'rent-income')[]
   ) => {
     // 60 days cutoff logic (aligns with icsParser.ts)
     const sixtyDaysAgo = new Date();
@@ -1891,6 +1906,7 @@ export default function App() {
     const sessionsToKeep: Session[] = [];
     sessions.forEach(s => {
       if (s.isSyncedFromCalendar && 
+          !s.isFromMultiCalendar &&
           activeSyncedTypes && 
           s.syncedCalendarType && 
           activeSyncedTypes.includes(s.syncedCalendarType as any) &&
@@ -2031,14 +2047,15 @@ export default function App() {
       }
       return;
     }
-    const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled } = settings;
+    const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = settings;
     if (!calendarSyncEnabled) {
       if (showNotificationOnNoChanges) {
         showToast('Takvim senkronizasyonu ayarlardan devre dışı bırakılmış!', 'error');
       }
       return;
     }
-    if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl) {
+    const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
+    if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
       if (showNotificationOnNoChanges) {
         showToast('Henüz bir takvim linki bağlamamışsınız. Lütfen "Takvim Entegrasyonu" sayfasından link ekleyin.', 'info');
       }
@@ -2049,6 +2066,7 @@ export default function App() {
     let totalNewSessions: Session[] = [];
     let hasFetchedOnline = false;
     let hasFetchedFaceToFace = false;
+    let hasFetchedOwnerCalendars = false;
 
     // Sync Online Calendar
     if (onlineCalendarWebcalUrl) {
@@ -2086,13 +2104,44 @@ export default function App() {
       }
     }
 
+    // Sync Owner (Tenant) Multi-Calendars
+    if (hasOwnerCalendars && ownerCalendars) {
+      for (let i = 0; i < ownerCalendars.length; i++) {
+        const item = ownerCalendars[i];
+        if (!item || !item.url) continue;
+        const url = item.url;
+        const tenantName = item.tenantName || `Terapist ${i + 1}`;
+        try {
+          const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
+          if (response.ok) {
+            const icsText = await response.text();
+            const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'rent-income', registrationCreatedAt);
+            const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
+            if (isValidIcs) {
+              const adjustedParsed = parsed.map(session => ({
+                ...session,
+                clientName: tenantName,
+                isSyncedFromCalendar: true,
+                isFromMultiCalendar: true,
+                notes: "" // Do not import calendar event name/description for privacy
+              }));
+              totalNewSessions = [...totalNewSessions, ...adjustedParsed];
+              hasFetchedOwnerCalendars = true;
+            }
+          }
+        } catch (err) {
+          console.error(`Multi-calendar ${i+1} sync failed:`, err);
+        }
+      }
+    }
+
     setIsManualSyncing(false);
 
     const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
     if (hasFetchedOnline) syncedTypesFetched.push('online');
-    if (hasFetchedFaceToFace) syncedTypesFetched.push('face-to-face');
+    if (hasFetchedFaceToFace || hasFetchedOwnerCalendars) syncedTypesFetched.push('face-to-face');
 
-    if (syncedTypesFetched.length > 0) {
+    if (syncedTypesFetched.length > 0 || hasFetchedOwnerCalendars) {
       const stats = handleImportSessions(totalNewSessions, syncedTypesFetched);
       if (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0) {
         let msg = 'Takvim senkronizasyonu tamamlandı: ';
@@ -2605,6 +2654,152 @@ export default function App() {
               onClick={handleLogout}
               className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer"
             >
+              Farklı Hesapla Giriş Yap / Çıkış Yap
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && registrationStatus === 'approved' && !settings.userRole) {
+    const handleSaveRoleSelection = async () => {
+      if (!tempSelectedRole) return;
+      try {
+        setIsSavingRole(true);
+        const updatedSettings: AppSettings = {
+          ...settings,
+          userRole: tempSelectedRole,
+          ownerCalendars: tempSelectedRole === 'owner' ? [] : undefined,
+        };
+        
+        // Save in state
+        setSettings(updatedSettings);
+
+        // Save in localStorage (authenticated key and default key)
+        const userSettingsKey = `psycalcu_settings_${user.uid}`;
+        localStorage.setItem(userSettingsKey, JSON.stringify(updatedSettings));
+        localStorage.setItem('psycalcu_settings', JSON.stringify(updatedSettings));
+
+        // Save in Firestore users doc
+        await saveUserData(user.uid, updatedSettings, sessions);
+
+        // Update in Firestore registrations doc
+        try {
+          const regRef = doc(db, 'registrations', user.uid);
+          await setDoc(regRef, { userRole: tempSelectedRole }, { merge: true });
+        } catch (err) {
+          console.error("Error setting role in registrations:", err);
+        }
+
+        showToast(`Rolünüz başarıyla '${tempSelectedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan'}' olarak kaydedildi!`, 'success');
+      } catch (err: any) {
+        showToast(`Rol kaydedilirken hata oluştu: ${err.message || String(err)}`, 'error');
+      } finally {
+        setIsSavingRole(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="role-selection-screen">
+        <div className="max-w-2xl w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 sm:p-10 space-y-8 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-[#6b705c]/5 rounded-full pointer-events-none" />
+          <div className="absolute left-0 bottom-0 -translate-x-4 translate-y-4 w-24 h-24 bg-[#cb997e]/5 rounded-full pointer-events-none" />
+          
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
+              <span className="text-3xl">🎯</span>
+            </div>
+            <h2 className="text-3xl font-serif text-[#6b705c] pt-2">PsyCalcu'ya Hoş Geldiniz</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+            <p className="text-sm text-slate-500 max-w-md mx-auto pt-1">
+              Seans ve finansal ajandanızı en doğru şekilde organize edebilmemiz için lütfen uygulamadaki rolünüzü seçin:
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Ofis Sahibi (Owner) Card */}
+            <button
+              onClick={() => setTempSelectedRole('owner')}
+              className={`p-6 rounded-[2rem] border-2 text-left transition-all relative flex flex-col justify-between h-56 cursor-pointer group ${
+                tempSelectedRole === 'owner'
+                  ? 'border-[#6b705c] bg-[#6b705c]/5 shadow-xs'
+                  : 'border-[#e5e1d8] hover:border-[#6b705c]/50 hover:bg-slate-50'
+              }`}
+            >
+              <div className="space-y-3">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                  tempSelectedRole === 'owner' ? 'bg-[#6b705c] text-white' : 'bg-[#6b705c]/10 text-[#6b705c]'
+                }`}>
+                  <Building className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-serif font-bold text-lg text-slate-800">Ofis Sahibi (Mülk Sahibi)</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Kendi terapi odalarını veya ofisini kiraya veren mülk sahipleri için. Terapistlerden gelen kira ödemelerini takip eder, oda takvimlerini eşleştirir.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#6b705c] mt-2">
+                <span>{tempSelectedRole === 'owner' ? '✓ Seçildi' : 'Seçmek İçin Tıkla'}</span>
+              </div>
+            </button>
+
+            {/* Ofis Kiralayan (Tenant) Card */}
+            <button
+              onClick={() => setTempSelectedRole('tenant')}
+              className={`p-6 rounded-[2rem] border-2 text-left transition-all relative flex flex-col justify-between h-56 cursor-pointer group ${
+                tempSelectedRole === 'tenant'
+                  ? 'border-[#6b705c] bg-[#6b705c]/5 shadow-xs'
+                  : 'border-[#e5e1d8] hover:border-[#6b705c]/50 hover:bg-slate-50'
+              }`}
+            >
+              <div className="space-y-3">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                  tempSelectedRole === 'tenant' ? 'bg-[#cb997e] text-white' : 'bg-[#cb997e]/10 text-[#cb997e]'
+                }`}>
+                  <User className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-serif font-bold text-lg text-slate-800">Ofis Kiralayan (Terapist)</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Saatlik veya aylık oda kiralayarak seans yapan psikologlar/terapistler için. Seans bazlı veya aylık seans giderlerini, danışan bakıcı ve kira ödemelerini takip eder.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#cb997e] mt-2">
+                <span>{tempSelectedRole === 'tenant' ? '✓ Seçildi' : 'Seçmek İçin Tıkla'}</span>
+              </div>
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 pt-2">
+            <button
+              onClick={handleSaveRoleSelection}
+              disabled={!tempSelectedRole || isSavingRole}
+              className={`w-full py-3.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
+                tempSelectedRole
+                  ? 'bg-[#6b705c] hover:bg-[#585c4c] text-white'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {isSavingRole ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Rolünüz Kaydediliyor...
+                </>
+              ) : (
+                <>
+                  <span>🚀</span>
+                  Rolümü Onayla ve Uygulamaya Başla
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>🚪</span>
               Farklı Hesapla Giriş Yap / Çıkış Yap
             </button>
           </div>
@@ -3389,6 +3584,8 @@ export default function App() {
                                 ? 'bg-red-50/20 border-red-100 opacity-60' 
                                 : session.type === 'non-session'
                                 ? 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/60'
+                                : session.type === 'rent-income'
+                                ? 'bg-indigo-50/20 border-indigo-200/50 hover:bg-indigo-50/40 hover:border-indigo-400'
                                 : session.isSyncedFromCalendar
                                 ? isFaceToFace 
                                   ? 'bg-amber-50/10 border-dashed border-[#cb997e]/60 hover:border-[#cb997e] hover:shadow-xs' 
@@ -3415,6 +3612,8 @@ export default function App() {
                                 ? 'bg-red-300' 
                                 : session.type === 'non-session'
                                 ? 'bg-slate-400'
+                                : session.type === 'rent-income'
+                                ? 'bg-indigo-500'
                                 : isFaceToFace 
                                 ? 'bg-amber-400' 
                                 : 'bg-emerald-400'
@@ -3433,6 +3632,10 @@ export default function App() {
                                 ) : session.type === 'non-session' ? (
                                   <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <FileText className="w-2.5 h-2.5" /> SEANS DIŞI NOT
+                                  </span>
+                                ) : session.type === 'rent-income' ? (
+                                  <span className="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
+                                    <Building className="w-2.5 h-2.5" /> KİRA GELİRİ
                                   </span>
                                 ) : isFaceToFace ? (
                                   <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
@@ -4346,7 +4549,17 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onSave={(updated) => setSettings(updated)}
+        onSave={async (updated) => {
+          setSettings(updated);
+          if (user && updated.userRole !== settings.userRole) {
+            try {
+              const regRef = doc(db, 'registrations', user.uid);
+              await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
+            } catch (err) {
+              console.error("Error setting role in registrations:", err);
+            }
+          }
+        }}
         showExplanations={showExplanations}
         onToggleExplanations={toggleShowExplanations}
         featuresSmartPriceMatchingAllowed={featuresSmartPriceMatchingAllowed}
@@ -4364,6 +4577,7 @@ export default function App() {
         selectedDate={selectedDate}
         sessions={sessions}
         enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
+        userRole={settings.userRole}
       />
 
       {/* FAQ Modal Component */}

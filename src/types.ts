@@ -1,4 +1,4 @@
-export type SessionType = 'online' | 'face-to-face' | 'cancelled' | 'non-session';
+export type SessionType = 'online' | 'face-to-face' | 'cancelled' | 'non-session' | 'rent-income';
 
 export interface Session {
   id: string;
@@ -14,10 +14,29 @@ export interface Session {
   officeRentFeeAmount: number; // ₺
   notes?: string;
   isSyncedFromCalendar?: boolean;
-  syncedCalendarType?: 'online' | 'face-to-face'; // which calendar it came from
+  isFromMultiCalendar?: boolean;
+  syncedCalendarType?: 'online' | 'face-to-face' | 'rent-income'; // which calendar it came from
   paymentStatus?: 'paid' | 'unpaid';
   updatedAt?: number; // timestamp in ms for conflict-free sync
   isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
+}
+
+export interface OwnerCalendar {
+  url: string;
+  tenantName: string;
+}
+
+export function normalizeOwnerCalendars(ownerCalendars: any): OwnerCalendar[] {
+  if (!Array.isArray(ownerCalendars)) return [];
+  return ownerCalendars.map((item, i) => {
+    if (typeof item === 'string') {
+      return { url: item, tenantName: `Terapist ${i + 1}` };
+    }
+    return {
+      url: item?.url || '',
+      tenantName: item?.tenantName || `Terapist ${i + 1}`
+    };
+  });
 }
 
 export interface AppSettings {
@@ -32,6 +51,8 @@ export interface AppSettings {
   googleSheetsLinked: boolean;
   enableSmartClientPriceMatching?: boolean;
   defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search';
+  userRole?: 'tenant' | 'owner';
+  ownerCalendars?: OwnerCalendar[];
 }
 
 export interface DaySummary {
@@ -51,9 +72,9 @@ export interface AppNotification {
   read: boolean;
   author?: string;
   syncDetails?: {
-    added: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
-    updated: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
-    deleted?: { id: string; clientName: string; date: string; time: string; type: 'online' | 'face-to-face' | 'cancelled' }[];
+    added: { id: string; clientName: string; date: string; time: string; type: SessionType }[];
+    updated: { id: string; clientName: string; date: string; time: string; type: SessionType }[];
+    deleted?: { id: string; clientName: string; date: string; time: string; type: SessionType }[];
   };
 }
 

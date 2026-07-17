@@ -9,7 +9,7 @@ export function parseICS(
   defaultPrice: number,
   defaultBabysitterFee: number,
   defaultOfficeRentFee: number,
-  forcedType?: 'online' | 'face-to-face',
+  forcedType?: 'online' | 'face-to-face' | 'rent-income',
   membershipDate?: string | null
 ): Session[] {
   const sessions: Session[] = [];
@@ -118,6 +118,13 @@ export function parseICS(
         currentEvent.hasOfficeRentFee = false;
         currentEvent.officeRentFeeAmount = 0;
         currentEvent.paymentStatus = 'paid';
+      } else if (finalType === 'rent-income') {
+        currentEvent.price = defaultOfficeRentFee;
+        currentEvent.hasBabysitterFee = false;
+        currentEvent.babysitterFeeAmount = 0;
+        currentEvent.hasOfficeRentFee = false;
+        currentEvent.officeRentFeeAmount = 0;
+        currentEvent.paymentStatus = 'unpaid';
       } else if (finalType === 'face-to-face') {
         currentEvent.hasOfficeRentFee = true;
         currentEvent.officeRentFeeAmount = defaultOfficeRentFee;

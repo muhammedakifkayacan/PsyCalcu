@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown, Building } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -27,6 +27,7 @@ export default function SettingsModal({
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
+  const [userRole, setUserRole] = useState<'tenant' | 'owner' | undefined>(settings.userRole);
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(5);
@@ -51,6 +52,7 @@ export default function SettingsModal({
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
+      setUserRole(settings.userRole);
       setPendingSmartPriceToggle(null);
     }
   }, [isOpen, settings]);
@@ -67,6 +69,7 @@ export default function SettingsModal({
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
       enableSmartClientPriceMatching,
       defaultLandingPage,
+      userRole,
     });
     onClose();
   };
@@ -107,6 +110,44 @@ export default function SettingsModal({
                 placeholder="Örn. Dr. Melis Kaya"
               />
             </div>
+          </div>
+
+          {/* User Role Selection */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Uygulama Rolünüz</label>
+            <div className="grid grid-cols-2 gap-2 bg-[#fdfbf7] p-1 border border-[#e5e1d8] rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setUserRole('tenant')}
+                className={`py-2 px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  userRole === 'tenant'
+                    ? 'bg-[#cb997e] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                Ofis Kiralayan
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserRole('owner')}
+                className={`py-2 px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  userRole === 'owner'
+                    ? 'bg-[#6b705c] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Building className="w-3.5 h-3.5" />
+                Ofis Sahibi
+              </button>
+            </div>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium leading-relaxed animate-fade-in">
+                {userRole === 'owner' 
+                  ? 'Mülk sahibi rolündesiniz. Çoklu takvim entegrasyonu yapabilir ve kira gelirlerinizi listeleyebilirsiniz.'
+                  : 'Terapist/Kiracı rolündesiniz. Kendi seanslarınızı, seans başı bakıcı/kira giderlerinizi takip edebilirsiniz.'}
+              </p>
+            )}
           </div>
 
           {/* Session Price */}

@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2 } from 'lucide-react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
-import { Session, AppSettings } from '../types';
+import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '../types';
 
 interface CalendarSyncGuideProps {
-  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face') => { 
+  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face' | 'rent-income') => { 
     addedCount: number; 
     updatedCount: number; 
     deletedCount?: number;
@@ -63,6 +63,8 @@ export default function CalendarSyncGuide({
   const [showAllSynced, setShowAllSynced] = useState(false);
   const [syncedFilter, setSyncedFilter] = useState<'all' | 'online' | 'face-to-face'>('all');
   const [showRecoveryPanel, setShowRecoveryPanel] = useState(false);
+  const [multiCalendars, setMultiCalendars] = useState<OwnerCalendar[]>(normalizeOwnerCalendars(settings.ownerCalendars));
+  const [isMultiCalendarSyncing, setIsMultiCalendarSyncing] = useState<boolean[]>(new Array(10).fill(false));
 
   React.useEffect(() => {
     let timer: any;
@@ -104,7 +106,8 @@ export default function CalendarSyncGuide({
     setFaceToFaceUrl(settings.faceToFaceCalendarWebcalUrl || '');
     setIsOnlineLocked(!!settings.onlineCalendarWebcalUrl);
     setIsFaceToFaceLocked(!!settings.faceToFaceCalendarWebcalUrl);
-  }, [settings.onlineCalendarWebcalUrl, settings.faceToFaceCalendarWebcalUrl]);
+    setMultiCalendars(normalizeOwnerCalendars(settings.ownerCalendars));
+  }, [settings.onlineCalendarWebcalUrl, settings.faceToFaceCalendarWebcalUrl, settings.ownerCalendars]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -251,6 +254,95 @@ export default function CalendarSyncGuide({
       showToast(`Senkronizasyon Hatası: ${err.message || 'Lütfen linkin doğruluğunu ve internet bağlantınızı kontrol edin.'}`, 'error');
     } finally {
       setIsFaceToFaceSyncing(false);
+    }
+  };
+
+  const handleAddMultiCalendar = () => {
+    const inputEl = document.getElementById('new-multi-calendar-url') as HTMLInputElement;
+    const nameEl = document.getElementById('new-multi-calendar-name') as HTMLInputElement;
+    if (!inputEl) return;
+    const url = inputEl.value.trim();
+    if (!url) {
+      showToast('Lütfen geçerli bir takvim linki girin.', 'error');
+      return;
+    }
+    if (multiCalendars.some(cal => cal.url === url)) {
+      showToast('Bu takvim linki zaten listeye eklenmiş!', 'error');
+      return;
+    }
+    const tenantName = nameEl?.value.trim() || `Terapist ${multiCalendars.length + 1}`;
+    const updatedList: OwnerCalendar[] = [...multiCalendars, { url, tenantName }];
+    setMultiCalendars(updatedList);
+    inputEl.value = '';
+    if (nameEl) nameEl.value = '';
+    
+    // Save settings immediately for best UX
+    onSaveSettings({
+      ...settings,
+      ownerCalendars: updatedList
+    });
+    showToast('Yeni kiracı takvimi başarıyla eklendi.', 'success');
+  };
+
+  const handleRemoveMultiCalendar = (index: number) => {
+    const updatedList = multiCalendars.filter((_, i) => i !== index);
+    setMultiCalendars(updatedList);
+    onSaveSettings({
+      ...settings,
+      ownerCalendars: updatedList
+    });
+    showToast('Kiracı takvimi başarıyla kaldırıldı.', 'success');
+  };
+
+  const handleSyncSingleMultiCalendar = async (index: number) => {
+    const item = multiCalendars[index];
+    if (!item || !item.url) return;
+    const url = item.url;
+    const tenantName = item.tenantName || `Terapist ${index + 1}`;
+    
+    // Update individual syncing state
+    setIsMultiCalendarSyncing(prev => {
+      const next = [...prev];
+      next[index] = true;
+      return next;
+    });
+
+    try {
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        throw new Error(`HTTP Hata: ${response.status}`);
+      }
+      const icsText = await response.text();
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'rent-income');
+      const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
+      
+      if (isValidIcs) {
+        // Mark as synced and from multi-calendar
+        const adjustedParsed = parsed.map(session => ({
+          ...session,
+          clientName: tenantName,
+          isSyncedFromCalendar: true,
+          isFromMultiCalendar: true,
+          notes: "" // Do not import calendar event name/description for privacy
+        }));
+        
+        const stats = onImportSessions(adjustedParsed, 'rent-income');
+        if (stats.addedCount > 0 || stats.updatedCount > 0) {
+          showToast(`Kiracı Takvimi ${index+1} (${tenantName}) başarıyla eşitlendi: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi.`, 'success');
+        } else {
+          showToast(`Kiracı Takvimi ${index+1} (${tenantName}) zaten güncel, yeni seans bulunamadı.`, 'info');
+        }
+      } else {
+        showToast('Takvimden geçerli veri alınamadı. Linkin doğru olduğundan emin olun.', 'error');
+      }
+    } catch (err: any) {
+      showToast(`Senkronizasyon Hatası: ${err.message || 'Hata oluştu'}`, 'error');
+    } finally {
+      setIsMultiCalendarSyncing(prev => {
+        const next = [...prev];
+        next[index] = false;
+        return next;
+      });
     }
   };
 
@@ -598,6 +690,112 @@ export default function CalendarSyncGuide({
           </div>
         </form>
       </div>
+
+      {settings.userRole === 'owner' && (
+        <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[#e5e1d8] shadow-xs space-y-6" id="owner-multi-calendars-card">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-[#6b705c]/10 rounded-xl flex items-center justify-center text-[#6b705c] shrink-0">
+              <Building className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-base font-serif font-bold text-slate-800">
+                Kiralanan Oda/Ofis Takvimleri (Çoklu Entegrasyon - Maks. 10)
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Ofisinizi kiralayan terapistlerin / kiracıların oda doluluklarını veya kendi takvim seanslarını sisteme entegre edin. Bu takvimlerdeki etkinlikler ajandanıza otomatik olarak işlenecektir.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {multiCalendars.map((item, index) => (
+              <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] relative animate-fade-in">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="w-2 h-2 rounded-full bg-[#cb997e]" />
+                    <span className="text-[10px] font-bold text-[#6b705c] uppercase tracking-wider block">KİRALIK TAKVİM {index + 1}</span>
+                    <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full block">
+                      Terapist: {item.tenantName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1 pl-3.5">
+                    <span className="text-xs text-slate-500 font-mono truncate max-w-md sm:max-w-lg md:max-w-xl">{item.url}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleSyncSingleMultiCalendar(index)}
+                    disabled={isMultiCalendarSyncing[index]}
+                    className="px-3.5 py-1.5 bg-[#6b705c]/10 hover:bg-[#6b705c]/20 text-[#6b705c] text-[10px] font-bold rounded-full transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    {isMultiCalendarSyncing[index] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Şimdi Eşitle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMultiCalendar(index)}
+                    className="w-8 h-8 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center cursor-pointer transition-colors"
+                    title="Takvimi kaldır"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {multiCalendars.length === 0 && (
+              <div className="text-center py-6 border border-dashed border-[#e5e1d8] rounded-2xl bg-slate-50/50">
+                <p className="text-xs text-slate-400">Henüz çoklu kiracı takvimi eklenmemiş. Aşağıdaki alandan ekleyebilirsiniz.</p>
+              </div>
+            )}
+
+            {multiCalendars.length < 10 ? (
+              <div className="bg-[#fdfbf7]/50 p-4 rounded-2xl border border-dashed border-[#e5e1d8] space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI / PSİKOLOG ADI</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                      <input
+                        type="text"
+                        id="new-multi-calendar-name"
+                        placeholder="Örn. Psk. Ahmet Yılmaz"
+                        className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c]"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI TAKVİMİ LİNKİ (webcal:// veya https://)</label>
+                    <div className="relative">
+                      <Link2 className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                      <input
+                        type="text"
+                        id="new-multi-calendar-url"
+                        placeholder="webcal://calendar.google.com/... veya icloud.com/..."
+                        className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c]"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAddMultiCalendar}
+                    className="w-full md:w-auto px-5 py-2.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-full shrink-0 cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+                  >
+                    <span>+</span> Takvim Ekle
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-amber-600 font-semibold bg-amber-50 p-3 rounded-xl border border-amber-100">
+                ⚠️ Maksimum çoklu takvim sınırına (10 adet) ulaştınız. Yeni bir takvim eklemek için lütfen mevcutlardan birini kaldırın.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {successMessage && (
         <motion.div
