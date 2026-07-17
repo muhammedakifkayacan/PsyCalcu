@@ -70,7 +70,10 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
   }
   try {
     const docRef = doc(db, 'users', userId);
-    await setDoc(docRef, { settings, sessions }, { merge: true });
+    // Remove undefined properties before saving to Firestore to avoid setDoc invalid data error
+    const cleanedSettings = JSON.parse(JSON.stringify(settings));
+    const cleanedSessions = JSON.parse(JSON.stringify(sessions));
+    await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions }, { merge: true });
   } catch (error: any) {
     if (checkIsQuotaError(error)) {
       await handleQuotaExceeded();
