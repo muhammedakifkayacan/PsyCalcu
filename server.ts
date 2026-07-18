@@ -292,61 +292,80 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         return res.status(500).json({ error: "Firebase konfigürasyon dosyası bulunamadı." });
       }
 
-      let rawData: any = null;
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      const projectId = config.projectId;
+      const apiKey = config.apiKey;
+      const databaseId = config.firestoreDatabaseId || "(default)";
 
-      // Initialize adminDb if not already initialized
-      let dbInstance = adminDb;
-      if (!dbInstance && fs.existsSync(configPath)) {
-        try {
-          const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-          const projectId = config.projectId;
-          const databaseId = config.firestoreDatabaseId;
-          
-          if (getAdminApps().length === 0) {
-            const adminApp = initializeAdminApp({
-              projectId: projectId
-            });
-            dbInstance = getAdminFirestore(adminApp, databaseId || "(default)");
-            adminDb = dbInstance;
-          } else {
-            dbInstance = getAdminFirestore();
+      let rawData: any = null;
+      let fromPublicCollection = false;
+
+      // 1. Try to fetch from the public_availability collection via REST API first (fast, secure, bypasses 403)
+      try {
+        const publicFirestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/public_availability/${userId}?key=${apiKey}`;
+        const response = await fetch(publicFirestoreUrl);
+        if (response.ok) {
+          const docData = await response.json();
+          rawData = parseFirestoreDocument(docData);
+          fromPublicCollection = true;
+          console.log(`Successfully fetched public-safe availability for user: ${userId}`);
+        } else if (response.status === 404) {
+          console.log(`Public-safe availability document not found for user: ${userId}. Trying fallback options.`);
+        } else {
+          console.warn(`Public Firestore REST API returned status ${response.status} when fetching public_availability.`);
+        }
+      } catch (restErr) {
+        console.error("Failed to fetch public-safe availability via REST API:", restErr);
+      }
+
+      // 2. Fallback: If not found in public_availability, try Admin SDK if initialized, or the main users collection
+      if (!rawData) {
+        let dbInstance = adminDb;
+        if (!dbInstance) {
+          try {
+            if (getAdminApps().length === 0) {
+              const adminApp = initializeAdminApp({ projectId });
+              dbInstance = getAdminFirestore(adminApp, databaseId);
+              adminDb = dbInstance;
+            } else {
+              dbInstance = getAdminFirestore();
+            }
+          } catch (err) {
+            console.error("Failed to initialize Admin SDK in public route:", err);
           }
-        } catch (err) {
-          console.error("Failed to initialize Firebase Admin SDK dynamically:", err);
+        }
+
+        if (dbInstance) {
+          try {
+            console.log(`Fallback: Using Admin SDK to fetch user data for: ${userId}`);
+            const docRef = dbInstance.collection("users").doc(userId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+              rawData = docSnap.data();
+            }
+          } catch (adminErr) {
+            console.error("Admin SDK fallback query failed:", adminErr);
+          }
         }
       }
 
-      if (dbInstance) {
-        console.log(`Using Firebase Admin SDK to fetch user data for: ${userId}`);
-        const docRef = dbInstance.collection("users").doc(userId);
-        const docSnap = await docRef.get();
-        if (!docSnap.exists) {
-          return res.status(404).json({ error: "Klinik veya terapist bulunamadı." });
-        }
-        rawData = docSnap.data();
-      } else {
-        console.log(`Firebase Admin not available. Falling back to Firestore REST API for: ${userId}`);
-        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-        const projectId = config.projectId;
-        const apiKey = config.apiKey;
-        const databaseId = config.firestoreDatabaseId || "(default)";
-
-        // Call Firestore REST API to fetch settings and sessions securely
+      // 3. Fallback: If still not found, try the users collection via REST API
+      if (!rawData) {
+        console.log(`Last fallback: Trying users collection via REST API for: ${userId}`);
         const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/users/${userId}?key=${apiKey}`;
         const response = await fetch(firestoreUrl);
-        
-        if (!response.ok) {
+        if (response.ok) {
+          const docData = await response.json();
+          rawData = parseFirestoreDocument(docData);
+        } else {
           if (response.status === 404) {
             return res.status(404).json({ error: "Klinik veya terapist bulunamadı." });
           }
           throw new Error(`Firestore REST API returned ${response.status}: ${response.statusText}`);
         }
-
-        const docData = await response.json();
-        rawData = parseFirestoreDocument(docData);
       }
-      
-      const settings = rawData.settings || {};
+
+      const settings = rawData.settings || rawData;
       const sessions = rawData.sessions || [];
 
       // Filter sessions to protect confidentiality (never return clientName, notes, or prices)
@@ -358,6 +377,27 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         roomId: s.roomId,
         type: s.type === 'cancelled' ? 'cancelled' : 'busy'
       }));
+
+      // If we fetched the full user document (not the pre-filtered one), let's background-write it to public_availability
+      // to make future loads faster and unauthenticated-safe!
+      if (!fromPublicCollection) {
+        try {
+          let dbInstance = adminDb;
+          if (dbInstance) {
+            const publicData = {
+              therapistName: settings.therapistName || "Terapist",
+              rooms: settings.rooms || [],
+              blockedSlots: settings.blockedSlots || [],
+              sessions: publicSessions,
+              updatedAt: new Date().toISOString()
+            };
+            await dbInstance.collection("public_availability").doc(userId).set(publicData, { merge: true });
+            console.log(`Cached public availability data for user ${userId} to public_availability collection.`);
+          }
+        } catch (cacheErr) {
+          console.warn("Could not cache public availability data:", cacheErr);
+        }
+      }
 
       res.json({
         therapistName: settings.therapistName || "Terapist",

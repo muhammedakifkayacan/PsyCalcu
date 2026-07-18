@@ -27,6 +27,14 @@ service cloud.firestore {
       // Users can only read & write their own data. Admin can inspect all users' records.
       allow read, write: if isOwner(userId) || isAdmin();
     }
+
+    // Public availability data (filtered, safe info without private data or client names)
+    match /public_availability/{userId} {
+      // Allow anyone (unauthenticated) to read the availability slots
+      allow read: if true;
+      // Only the therapist/owner can write or update their availability
+      allow write: if isOwner(userId) || isAdmin();
+    }
     
     // Registration documents containing approval status & active feature permissions
     match /registrations/{userId} {

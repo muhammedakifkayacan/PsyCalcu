@@ -87,6 +87,7 @@ export default function RoomManagement({
   const [newRoomType, setNewRoomType] = useState<Room['type']>('standard');
   const [newRoomColor, setNewRoomColor] = useState('#6b705c');
   const [occupancyView, setOccupancyView] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [showBlockingPanel, setShowBlockingPanel] = useState(false);
 
   // Generate weekly days starting from selectedDate
   const getWeeklyDays = () => {
@@ -185,6 +186,7 @@ export default function RoomManagement({
     setBlockHours([]);
     setBlockDaysOfWeek([]);
     setBlockReason('');
+    setShowBlockingPanel(false);
     showToast(`${newSlots.length} adet saat dilimi başarıyla rezervasyona kapatıldı.`, 'success');
   };
 
@@ -268,6 +270,39 @@ export default function RoomManagement({
     }
   };
 
+  const handleQuickBlockSlot = (roomId: string, hour: string) => {
+    if (!onUpdateBlockedSlots) return;
+    const reason = window.prompt('Lütfen kapatma nedeni giriniz (İsteğe bağlı):');
+    if (reason === null) return; // Cancelled
+    
+    const newSlot: BlockedSlot = {
+      id: 'block_' + Math.random().toString(36).substr(2, 9),
+      roomId: roomId,
+      date: selectedDate,
+      time: hour,
+      reason: reason.trim() || 'Rezervasyona Kapalı'
+    };
+    onUpdateBlockedSlots([...blockedSlots, newSlot]);
+    showToast(`Oda ${hour} saatinde başarıyla rezervasyona kapatıldı.`, 'success');
+  };
+
+  const handleQuickBlockWholeDay = (roomId: string, roomName: string) => {
+    if (!onUpdateBlockedSlots) return;
+    const reason = window.prompt(`Lütfen ${roomName} odasını tüm gün kapatma nedenini giriniz (İsteğe bağlı):`);
+    if (reason === null) return; // Cancelled
+    
+    const newSlots: BlockedSlot[] = hoursList.map(hour => ({
+      id: 'block_' + Math.random().toString(36).substr(2, 9),
+      roomId: roomId,
+      date: selectedDate,
+      time: hour,
+      reason: reason.trim() || 'Rezervasyona Kapalı'
+    }));
+
+    onUpdateBlockedSlots([...blockedSlots, ...newSlots]);
+    showToast(`${roomName} odası bugünün tamamı için rezervasyona kapatıldı.`, 'success');
+  };
+
   // Preset room creator helper
   const addPresetRoom = (name: string, type: Room['type'], color: string) => {
     const room: Room = {
@@ -307,116 +342,343 @@ export default function RoomManagement({
 
       {/* Main Room Occupancy Screen (Oda Doluluk Ekranı) */}
       <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs space-y-4">
-        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 pb-4 border-b border-slate-100">
-          <div className="space-y-1.5">
-            <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
-              ODA DOLULUK MATRİSİ & PLANLAYICI
-              {!showExplanations && (
-                <div className="relative group inline-block">
-                  <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
-                    <p className="font-semibold text-[#ffe8d6] mb-1">💡 Oda Doluluk Rehberi:</p>
-                    <p>• Tarih değiştiricileri kullanarak yarın, gelecek hafta veya gelecek ayın doluluk durumuna bakabilirsiniz.</p>
-                    <p>• Doluluk matrisinde boş saatlere tıklayarak o saat ve odaya hızlı seans/rezervasyon ekleyebilirsiniz.</p>
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-100">
+          <div className="space-y-1 w-full md:w-auto">
+            <div className="flex items-center justify-between md:justify-start gap-2">
+              <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
+                ODA DOLULUK PLANLAYICI
+                {!showExplanations && (
+                  <div className="relative group inline-block">
+                    <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                      <p className="font-semibold text-[#ffe8d6] mb-1">💡 Oda Doluluk Rehberi:</p>
+                      <p>• Tarih değiştiricileri kullanarak yarın, gelecek hafta veya gelecek ayın doluluk durumuna bakabilirsiniz.</p>
+                      <p>• Doluluk matrisinde boş saatlere tıklayarak o saat ve odaya hızlı seans/rezervasyon ekleyebilirsiniz.</p>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                    </div>
                   </div>
-                </div>
-              )}
-            </h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-slate-500 font-medium">Seçili Tarih:</span>
+                )}
+              </h3>
+              
+              {/* On mobile, place the lock button right next to the title or in a very prominent place to save row height */}
+              <button
+                type="button"
+                onClick={() => setShowBlockingPanel(!showBlockingPanel)}
+                className="md:hidden px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 border shadow-2xs bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+              >
+                {showBlockingPanel ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3 text-amber-600" />}
+                <span>{showBlockingPanel ? 'Kapat' : 'Kapat 🔒'}</span>
+              </button>
+            </div>
+
+            {/* Selected Date Indicator (Clean & compact) */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">Seçili Tarih:</span>
               <span className="text-xs font-semibold text-[#6b705c] bg-[#6b705c]/10 px-2.5 py-0.5 rounded-lg">
                 {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}
               </span>
             </div>
-            
-            {/* View Mode Segment Controller */}
-            <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] shrink-0 w-max mt-1">
-              <button
-                type="button"
-                onClick={() => setOccupancyView('daily')}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                  occupancyView === 'daily'
-                    ? 'bg-[#6b705c] text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Günlük Matris
-              </button>
-              <button
-                type="button"
-                onClick={() => setOccupancyView('weekly')}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                  occupancyView === 'weekly'
-                    ? 'bg-[#6b705c] text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Haftalık Özet
-              </button>
-              <button
-                type="button"
-                onClick={() => setOccupancyView('monthly')}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                  occupancyView === 'monthly'
-                    ? 'bg-[#6b705c] text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Aylık Görünüm
-              </button>
-            </div>
           </div>
 
-          {/* Date Picker and Day Navigators */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center bg-slate-50 border border-[#e5e1d8] rounded-xl p-0.5 shadow-2xs">
+          {/* Right Block: Navigation and View Modes */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+            {/* View Selectors & Desktop Lock Button */}
+            <div className="flex items-center gap-2 justify-between sm:justify-start">
+              <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] flex-1 sm:flex-initial">
+                <button
+                  type="button"
+                  onClick={() => setOccupancyView('daily')}
+                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                    occupancyView === 'daily'
+                      ? 'bg-[#6b705c] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Günlük
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOccupancyView('weekly')}
+                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                    occupancyView === 'weekly'
+                      ? 'bg-[#6b705c] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Haftalık
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOccupancyView('monthly')}
+                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                    occupancyView === 'monthly'
+                      ? 'bg-[#6b705c] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Aylık
+                </button>
+              </div>
+
+              {/* Desktop/Tablet-only Lock Button */}
               <button
                 type="button"
-                onClick={handlePrevDay}
-                disabled={!onDateChange}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
-                title="Önceki Gün"
+                onClick={() => setShowBlockingPanel(!showBlockingPanel)}
+                className={`hidden md:flex px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer items-center gap-1.5 border shadow-2xs ${
+                  showBlockingPanel
+                    ? 'bg-amber-600 border-amber-600 text-white hover:bg-amber-700'
+                    : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/80'
+                }`}
+                id="toggle-blocking-panel-btn-desktop"
               >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handleToday}
-                disabled={!onDateChange}
-                className="px-3 py-1 text-xs font-bold rounded-lg hover:bg-white text-[#6b705c] disabled:opacity-40 transition-all cursor-pointer"
-              >
-                Bugün
-              </button>
-              <button
-                type="button"
-                onClick={handleNextDay}
-                disabled={!onDateChange}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
-                title="Sonraki Gün"
-              >
-                <ChevronRight className="w-4 h-4" />
+                {showBlockingPanel ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5 animate-pulse" />}
+                <span>{showBlockingPanel ? 'Kapatma Panelini Gizle' : '🔒 Saat/Gün Kapat'}</span>
               </button>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-50 border border-[#e5e1d8] rounded-xl px-3 py-1.5 shadow-2xs">
-              <Calendar className="w-3.5 h-3.5 text-[#cb997e] shrink-0" />
-              <input 
-                type="date" 
-                value={selectedDate} 
-                onChange={(e) => onDateChange?.(e.target.value)}
-                className="text-xs bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-slate-700 font-bold cursor-pointer"
-              />
-            </div>
+            {/* Date Navigators and Picker */}
+            <div className="flex items-center gap-2 justify-between sm:justify-start">
+              <div className="flex items-center bg-slate-50 border border-[#e5e1d8] rounded-xl p-0.5 shadow-2xs flex-1 sm:flex-initial justify-between sm:justify-start">
+                <button
+                  type="button"
+                  onClick={handlePrevDay}
+                  disabled={!onDateChange}
+                  className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
+                  title="Önceki Gün"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToday}
+                  disabled={!onDateChange}
+                  className="px-3 py-1 text-xs font-bold rounded-lg hover:bg-white text-[#6b705c] disabled:opacity-40 transition-all cursor-pointer"
+                >
+                  Bugün
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  disabled={!onDateChange}
+                  className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
+                  title="Sonraki Gün"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] bg-[#fdfbf7] border border-[#e5e1d8]/60 px-3 py-1.5 rounded-xl text-slate-600">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500 animate-pulse"></span>
-              </span>
-              <span className="font-semibold">Hızlı Rezervasyon</span>
+              <div className="flex items-center gap-2 bg-slate-50 border border-[#e5e1d8] rounded-xl px-3 py-1.5 shadow-2xs">
+                <Calendar className="w-3.5 h-3.5 text-[#cb997e] shrink-0" />
+                <input 
+                  type="date" 
+                  value={selectedDate} 
+                  onChange={(e) => onDateChange?.(e.target.value)}
+                  className="text-xs bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-slate-700 font-bold cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         </div>
+
+        {showBlockingPanel && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-4"
+          >
+            <div className="bg-amber-50/50 p-5 rounded-[1.5rem] border border-amber-200/70 space-y-4" id="integrated-blocking-panel">
+              <form onSubmit={handleAddBlockedSlots} className="space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-amber-200/40">
+                  <div>
+                    <h3 className="text-xs font-bold tracking-widest text-[#cb997e] uppercase flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      REZERVASYONA KAPATMA (ENGELLEME) PANELİ
+                    </h3>
+                    <p className="text-[10px] text-amber-800/70">Oda veya tüm günleri toplu olarak rezerve edilemez olarak işaretleyin</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockingPanel(false)}
+                    className="p-1.5 hover:bg-amber-100 rounded-full text-amber-800 transition-colors cursor-pointer border-none bg-transparent"
+                    title="Paneli Kapat"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Room Selection */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Oda</label>
+                    <select
+                      value={blockRoomId}
+                      onChange={(e) => setBlockRoomId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-amber-200/80 rounded-xl focus:outline-none focus:border-[#6b705c] cursor-pointer text-slate-700 font-medium"
+                      id="block-room-select"
+                    >
+                      <option value="all">🏢 Tüm Odalar Birden</option>
+                      {rooms.map(r => (
+                        <option key={r.id} value={r.id}>🛋️ {r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Block Type */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatma Periyodu</label>
+                    <div className="grid grid-cols-2 gap-2 bg-white p-1 border border-amber-200/80 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => { setBlockType('date'); setBlockDaysOfWeek([]); }}
+                        className={`py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                          blockType === 'date' 
+                            ? 'bg-[#6b705c] text-white shadow-xs' 
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                        id="block-type-date-btn"
+                      >
+                        Tekil Tarih
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlockType('weekly')}
+                        className={`py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                          blockType === 'weekly' 
+                            ? 'bg-[#6b705c] text-white shadow-xs' 
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                        id="block-type-weekly-btn"
+                      >
+                        Haftalık Tekrar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {blockType === 'date' ? (
+                  /* Date picker for single date block */
+                  <div className="space-y-1" id="block-date-group">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Tarih</label>
+                    <input
+                      type="date"
+                      required
+                      value={blockDate}
+                      onChange={(e) => setBlockDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-amber-200/80 rounded-xl focus:outline-none focus:border-[#6b705c] cursor-pointer text-slate-700 font-medium"
+                      id="block-date-input"
+                    />
+                  </div>
+                ) : (
+                  /* Multi-select checkboxes for days of the week */
+                  <div className="space-y-1.5" id="block-weekly-group">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Haftalık Günler (Çoklu Seçin)</label>
+                    <div className="flex flex-wrap gap-2 bg-white p-2 border border-amber-200/80 rounded-xl">
+                      {daysOfWeekList.map(day => {
+                        const isChecked = blockDaysOfWeek.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => {
+                              setBlockDaysOfWeek(prev => 
+                                isChecked 
+                                  ? prev.filter(v => v !== day.value) 
+                                  : [...prev, day.value]
+                              );
+                            }}
+                            className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg transition-all border cursor-pointer ${
+                              isChecked
+                                ? 'bg-[#cb997e]/15 border-[#cb997e] text-[#cb997e] font-bold'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                            id={`block-day-btn-${day.value}`}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Multi-select working hours checkboxes */}
+                <div className="space-y-1.5" id="block-hours-group">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Saat Dilimleri (Çoklu Seçin)</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBlockHours(hoursList)}
+                        className="text-[9px] font-bold text-[#6b705c] hover:underline bg-none border-none cursor-pointer bg-transparent"
+                        id="block-select-all-hours-btn"
+                      >
+                        Tümünü Seç
+                      </button>
+                      <span className="text-[9px] text-amber-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setBlockHours([])}
+                        className="text-[9px] font-bold text-rose-600 hover:underline bg-none border-none cursor-pointer bg-transparent"
+                        id="block-clear-all-hours-btn"
+                      >
+                        Temizle
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 bg-white p-2.5 border border-amber-200/80 rounded-xl">
+                    {hoursList.map(hour => {
+                      const isChecked = blockHours.includes(hour);
+                      return (
+                        <button
+                          key={hour}
+                          type="button"
+                          onClick={() => {
+                            setBlockHours(prev => 
+                              isChecked 
+                                ? prev.filter(v => v !== hour) 
+                                : [...prev, hour]
+                            );
+                          }}
+                          className={`py-1 text-[10px] font-semibold rounded-lg transition-all border text-center cursor-pointer ${
+                            isChecked
+                              ? 'bg-[#6b705c]/10 border-[#6b705c] text-[#6b705c] font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          id={`block-hour-btn-${hour.replace(':', '-')}`}
+                        >
+                          {hour}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Block reason */}
+                <div className="space-y-1" id="block-reason-group">
+                  <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatma Nedeni / Açıklama (Opsiyonel)</label>
+                  <input
+                    type="text"
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-white border border-amber-200/80 rounded-xl focus:outline-none focus:border-[#6b705c]"
+                    placeholder="Örn. Öğle Arası, Temizlik, Kişisel Kullanım"
+                    id="block-reason-input"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  id="submit-block-btn"
+                >
+                  <Lock className="w-4 h-4" />
+                  Seçilen Zamanları Rezervasyona Kapat ({blockHours.length} Saat)
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        )}
 
         {rooms.length === 0 ? (
           <div className="py-12 text-center space-y-4 border-2 border-dashed border-slate-200 rounded-3xl p-6 bg-[#fdfbf7]/50">
@@ -611,19 +873,29 @@ export default function RoomManagement({
                 return (
                   <div key={room.id} className="grid grid-cols-12 gap-2 items-center hover:bg-slate-50/50 p-1.5 rounded-2xl transition-all">
                     {/* Room Metadata Card */}
-                    <div className="col-span-3 flex items-center gap-2.5 min-w-0 pl-1">
-                      <div 
-                        className="w-3.5 h-10 rounded-full shrink-0" 
-                        style={{ backgroundColor: room.color || '#6b705c' }}
-                      />
-                      <div className="min-w-0">
-                        <span className="font-bold text-xs text-slate-800 block truncate" title={room.name}>
-                          {room.name}
-                        </span>
-                        <span className="inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-[#f5f5f0] border border-slate-200 text-slate-500 mt-0.5 uppercase tracking-wider">
-                          {getRoomTypeLabel(room.type)}
-                        </span>
+                    <div className="col-span-3 flex items-center justify-between gap-2 min-w-0 pl-1">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div 
+                          className="w-3.5 h-10 rounded-full shrink-0" 
+                          style={{ backgroundColor: room.color || '#6b705c' }}
+                        />
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-slate-800 block truncate" title={room.name}>
+                            {room.name}
+                          </span>
+                          <span className="inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-[#f5f5f0] border border-slate-200 text-slate-500 mt-0.5 uppercase tracking-wider">
+                            {getRoomTypeLabel(room.type)}
+                          </span>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickBlockWholeDay(room.id, room.name)}
+                        className="p-1.5 rounded-lg hover:bg-amber-50 hover:text-amber-700 text-slate-300 transition-colors cursor-pointer mr-2 shrink-0"
+                        title={`${room.name} odasını bugünün tamamı için kapat`}
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                      </button>
                     </div>
 
                     {/* Timeline Cell Boxes */}
@@ -707,16 +979,30 @@ export default function RoomManagement({
                           );
                         }
 
-                        // Empty cell: Book Room button trigger
+                        // Empty cell: Book Room / Close Room options
                         return (
-                          <button
-                            key={hour}
-                            onClick={() => onAddSessionForRoomAndHour(room.id, hour)}
-                            className="h-11 rounded-xl border-2 border-dashed border-slate-200 bg-white hover:bg-slate-50 text-slate-300 hover:text-slate-600 transition-colors flex items-center justify-center cursor-pointer group"
-                            title={`${hour} saatine bu oda için seans rezervasyonu yap`}
+                          <div 
+                            key={hour} 
+                            className="h-11 rounded-xl border-2 border-dashed border-slate-200 bg-white hover:bg-slate-50/50 hover:border-[#6b705c]/40 transition-all flex items-center justify-around p-1 group relative overflow-hidden"
                           >
-                            <Plus className="w-4 h-4 opacity-50 group-hover:scale-110 transition-transform" />
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => onAddSessionForRoomAndHour(room.id, hour)}
+                              className="flex-1 h-full flex items-center justify-center text-slate-300 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all cursor-pointer"
+                              title={`${hour} saatine seans ekle`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="w-[1px] h-4 bg-slate-200 shrink-0" />
+                            <button
+                              type="button"
+                              onClick={() => handleQuickBlockSlot(room.id, hour)}
+                              className="flex-1 h-full flex items-center justify-center text-slate-300 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                              title={`${hour} saatini rezervasyona kapat`}
+                            >
+                              <Lock className="w-3 h-3" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -920,261 +1206,74 @@ export default function RoomManagement({
         </div>
       </div>
 
-      {/* SECTION: Batch Blocking Panel & Public Link Sharing */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-         {/* Link Sharing (Col 5) */}
-         <div className="lg:col-span-5 bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs flex flex-col justify-between" id="share-link-card">
-           <div className="space-y-4">
-             <div className="space-y-1 pb-2 border-b border-slate-100">
-               <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
-                 <Share2 className="w-3.5 h-3.5" />
-                 MÜSAİTLİK DURUMU PAYLAŞIM LİNKİ
-               </h3>
-               <p className="text-[10px] text-slate-500">Kliniğinizin doluluk takvimini güvenle dışarıya açın</p>
-             </div>
+      {/* SECTION: Public Link Sharing */}
+      <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs" id="share-link-card">
+        <div className="space-y-4">
+          <div className="space-y-1 pb-2 border-b border-slate-100">
+            <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
+              <Share2 className="w-3.5 h-3.5" />
+              MÜSAİTLİK DURUMU PAYLAŞIM LİNKİ
+            </h3>
+            <p className="text-[10px] text-slate-500">Kliniğinizin doluluk takvimini güvenle dışarıya açın</p>
+          </div>
 
-             <p className="text-xs text-slate-600 leading-relaxed">
-               Bu güvenli bağlantı sayesinde danışanlarınız veya kiracı terapistleriniz, oda doluluk durumlarını <strong>anlık ve gizli (KVKK uyumlu)</strong> olarak izleyebilir. Danışanların isimleri, seans notları veya ücretler kesinlikle paylaşılmaz.
-             </p>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Bu güvenli bağlantı sayesinde danışanlarınız veya kiracı terapistleriniz, oda doluluk durumlarını <strong>anlık ve gizli (KVKK uyumlu)</strong> olarak izleyebilir. Danışanların isimleri, seans notları veya ücretler kesinlikle paylaşılmaz.
+          </p>
 
-             <div className="space-y-2.5 pt-2">
-               <div className="relative">
-                 <input
-                   type="text"
-                   readOnly
-                   value={
-                     userId 
-                       ? `${window.location.origin}${window.location.pathname}?share=${userId}`
-                       : `${window.location.origin}${window.location.pathname}?share=demo_klinik`
-                   }
-                   className="w-full pl-3 pr-20 py-2.5 text-[11px] bg-slate-50 border border-[#e5e1d8] rounded-xl text-slate-600 font-mono focus:outline-none select-all"
-                   id="share-link-input"
-                 />
-                 <button
-                   type="button"
-                   onClick={() => {
-                     const url = userId 
-                       ? `${window.location.origin}${window.location.pathname}?share=${userId}`
-                       : `${window.location.origin}${window.location.pathname}?share=demo_klinik`;
-                     navigator.clipboard.writeText(url);
-                     showToast('Paylaşım linki panoya kopyalandı!', 'success');
-                   }}
-                   className="absolute right-1.5 top-1.5 px-2.5 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                   id="share-link-copy-btn"
-                 >
-                   <Copy className="w-3 h-3" />
-                   Kopyala
-                 </button>
-               </div>
+          <div className="space-y-2.5 pt-2">
+            <div className="relative">
+              <input
+                type="text"
+                readOnly
+                value={
+                  userId 
+                    ? `${window.location.origin}${window.location.pathname}?share=${userId}`
+                    : `${window.location.origin}${window.location.pathname}?share=demo_klinik`
+                }
+                className="w-full pl-3 pr-20 py-2.5 text-[11px] bg-slate-50 border border-[#e5e1d8] rounded-xl text-slate-600 font-mono focus:outline-none select-all"
+                id="share-link-input"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const url = userId 
+                    ? `${window.location.origin}${window.location.pathname}?share=${userId}`
+                    : `${window.location.origin}${window.location.pathname}?share=demo_klinik`;
+                  navigator.clipboard.writeText(url);
+                  showToast('Paylaşım linki panoya kopyalandı!', 'success');
+                }}
+                className="absolute right-1.5 top-1.5 px-2.5 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                id="share-link-copy-btn"
+              >
+                <Copy className="w-3 h-3" />
+                Kopyala
+              </button>
+            </div>
 
-               {userId && (
-                 <button
-                   type="button"
-                   onClick={() => {
-                     const url = `${window.location.origin}${window.location.pathname}?share=${userId}`;
-                     window.open(url, '_blank');
-                   }}
-                   className="w-full py-2 bg-[#fdfbf7] hover:bg-slate-50 border border-slate-200 text-[#6b705c] text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                   id="open-share-link-btn"
-                 >
-                   <ExternalLink className="w-3.5 h-3.5" />
-                   Paylaşım Sayfasını Yeni Sekmede Aç
-                 </button>
-               )}
-             </div>
-           </div>
+            {userId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}?share=${userId}`;
+                  window.open(url, '_blank');
+                }}
+                className="w-full py-2 bg-[#fdfbf7] hover:bg-slate-50 border border-slate-200 text-[#6b705c] text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                id="open-share-link-btn"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Paylaşım Sayfasını Yeni Sekmede Aç
+              </button>
+            )}
+          </div>
+        </div>
 
-           <div className="mt-5 pt-4 border-t border-slate-100 flex items-start gap-2.5 text-[10px] text-slate-500 bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8]/50">
-             <Info className="w-4 h-4 text-[#cb997e] shrink-0 mt-0.5" />
-             <span>
-               Giriş yapmamış misafir kullanıcılar sadece <strong>Müsait</strong>, <strong>Dolu</strong> ve <strong>Kapalı</strong> statülerini görebilir.
-             </span>
-           </div>
-         </div>
-
-         {/* Multi-block Settings (Col 7) */}
-         <div className="lg:col-span-7 bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs" id="multi-block-card">
-           <form onSubmit={handleAddBlockedSlots} className="space-y-4">
-             <div className="space-y-1 pb-2 border-b border-slate-100">
-               <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
-                 <Lock className="w-3.5 h-3.5" />
-                 ÇOKLU REZERVASYONA KAPATMA (ENGELLEME) PANELİ
-               </h3>
-               <p className="text-[10px] text-slate-500">Oda veya tüm günleri toplu olarak rezerve edilemez olarak işaretleyin</p>
-             </div>
-
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-               {/* Room Selection */}
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Oda</label>
-                 <select
-                   value={blockRoomId}
-                   onChange={(e) => setBlockRoomId(e.target.value)}
-                   className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] cursor-pointer"
-                   id="block-room-select"
-                 >
-                   <option value="all">🏢 Tüm Odalar Birden</option>
-                   {rooms.map(r => (
-                     <option key={r.id} value={r.id}>🛋️ {r.name}</option>
-                   ))}
-                 </select>
-               </div>
-
-               {/* Block Type */}
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatma Periyodu</label>
-                 <div className="grid grid-cols-2 gap-2 bg-[#fdfbf7] p-1 border border-[#e5e1d8] rounded-xl">
-                   <button
-                     type="button"
-                     onClick={() => { setBlockType('date'); setBlockDaysOfWeek([]); }}
-                     className={`py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                       blockType === 'date' 
-                         ? 'bg-[#6b705c] text-white shadow-xs' 
-                         : 'text-slate-600 hover:bg-slate-100'
-                     }`}
-                     id="block-type-date-btn"
-                   >
-                     Tekil Tarih
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => setBlockType('weekly')}
-                     className={`py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                       blockType === 'weekly' 
-                         ? 'bg-[#6b705c] text-white shadow-xs' 
-                         : 'text-slate-600 hover:bg-slate-100'
-                     }`}
-                     id="block-type-weekly-btn"
-                   >
-                     Haftalık Tekrar
-                   </button>
-                 </div>
-               </div>
-             </div>
-
-             {blockType === 'date' ? (
-               /* Date picker for single date block */
-               <div className="space-y-1" id="block-date-group">
-                 <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Tarih</label>
-                 <div className="relative">
-                   <input
-                     type="date"
-                     required
-                     value={blockDate}
-                     onChange={(e) => setBlockDate(e.target.value)}
-                     className="w-full px-3 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] cursor-pointer"
-                     id="block-date-input"
-                   />
-                 </div>
-               </div>
-             ) : (
-               /* Multi-select checkboxes for days of the week */
-               <div className="space-y-1.5" id="block-weekly-group">
-                 <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Haftalık Günler (Çoklu Seçin)</label>
-                 <div className="flex flex-wrap gap-2 bg-[#fdfbf7] p-2 border border-[#e5e1d8] rounded-xl">
-                   {daysOfWeekList.map(day => {
-                     const isChecked = blockDaysOfWeek.includes(day.value);
-                     return (
-                       <button
-                         key={day.value}
-                         type="button"
-                         onClick={() => {
-                           setBlockDaysOfWeek(prev => 
-                             isChecked 
-                               ? prev.filter(v => v !== day.value) 
-                               : [...prev, day.value]
-                           );
-                         }}
-                         className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg transition-all border cursor-pointer ${
-                           isChecked
-                             ? 'bg-[#cb997e]/15 border-[#cb997e] text-[#cb997e] font-bold'
-                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                         }`}
-                         id={`block-day-btn-${day.value}`}
-                       >
-                         {day.label}
-                       </button>
-                     );
-                   })}
-                 </div>
-               </div>
-             )}
-
-             {/* Multi-select working hours checkboxes */}
-             <div className="space-y-1.5" id="block-hours-group">
-               <div className="flex justify-between items-center">
-                 <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatılacak Saat Dilimleri (Çoklu Seçin)</label>
-                 <div className="flex gap-2">
-                   <button
-                     type="button"
-                     onClick={() => setBlockHours(hoursList)}
-                     className="text-[9px] font-bold text-[#6b705c] hover:underline bg-none border-none cursor-pointer"
-                     id="block-select-all-hours-btn"
-                   >
-                     Tümünü Seç
-                   </button>
-                   <span className="text-[9px] text-slate-300">|</span>
-                   <button
-                     type="button"
-                     onClick={() => setBlockHours([])}
-                     className="text-[9px] font-bold text-rose-600 hover:underline bg-none border-none cursor-pointer"
-                     id="block-clear-all-hours-btn"
-                   >
-                     Temizle
-                   </button>
-                 </div>
-               </div>
-               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 bg-[#fdfbf7] p-2.5 border border-[#e5e1d8] rounded-xl">
-                 {hoursList.map(hour => {
-                   const isChecked = blockHours.includes(hour);
-                   return (
-                     <button
-                       key={hour}
-                       type="button"
-                       onClick={() => {
-                         setBlockHours(prev => 
-                           isChecked 
-                             ? prev.filter(v => v !== hour) 
-                             : [...prev, hour]
-                         );
-                       }}
-                       className={`py-1 text-[10px] font-semibold rounded-lg transition-all border text-center cursor-pointer ${
-                         isChecked
-                           ? 'bg-[#6b705c]/10 border-[#6b705c] text-[#6b705c] font-bold'
-                           : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                       }`}
-                       id={`block-hour-btn-${hour.replace(':', '-')}`}
-                     >
-                       {hour}
-                     </button>
-                   );
-                 })}
-               </div>
-             </div>
-
-             {/* Block reason */}
-             <div className="space-y-1" id="block-reason-group">
-               <label className="text-[10px] font-bold text-[#555a4a] tracking-wider uppercase block">Kapatma Nedeni / Açıklama (Opsiyonel)</label>
-               <input
-                 type="text"
-                 value={blockReason}
-                 onChange={(e) => setBlockReason(e.target.value)}
-                 className="w-full px-3.5 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-                 placeholder="Örn. Öğle Arası, Temizlik, Kişisel Kullanım"
-                 id="block-reason-input"
-               />
-             </div>
-
-             <button
-               type="submit"
-               className="w-full py-2.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-               id="submit-block-btn"
-             >
-               <Lock className="w-4 h-4" />
-               Seçilen Zamanları Rezervasyona Kapat ({blockHours.length} Saat)
-             </button>
-           </form>
-         </div>
+        <div className="mt-5 pt-4 border-t border-slate-100 flex items-start gap-2.5 text-[10px] text-slate-500 bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8]/50">
+          <Info className="w-4 h-4 text-[#cb997e] shrink-0 mt-0.5" />
+          <span>
+            Giriş yapmamış misafir kullanıcılar sadece <strong>Müsait</strong>, <strong>Dolu</strong> ve <strong>Kapalı</strong> statülerini görebilir.
+          </span>
+        </div>
       </div>
     </div>
   );
