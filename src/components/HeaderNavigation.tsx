@@ -94,7 +94,11 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
           {/* Top Row: Brand, Search, and Action Status/Buttons */}
           <div className="flex items-center justify-between w-full gap-4">
             {/* Brand Logo & Name */}
-            <div className="flex items-center gap-3 shrink-0">
+            <div 
+              onClick={() => setActiveTab('agenda')}
+              className="flex items-center gap-3 shrink-0 cursor-pointer hover:opacity-85 select-none transition-all"
+              title="Ana Sayfaya Git (Ajanda)"
+            >
               <div className="w-10 h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">P</div>
               <div>
                 <h1 className="text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
@@ -482,7 +486,11 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             /* Standard Mode Row */
             <div className="flex items-center justify-between w-full h-10">
               {/* Logo & Brand */}
-              <div className="flex items-center gap-2">
+              <div 
+                onClick={() => setActiveTab('agenda')}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-85 select-none transition-all"
+                title="Ana Sayfaya Git (Ajanda)"
+              >
                 <div className="w-8 h-8 bg-[#6b705c] rounded-lg flex items-center justify-center text-white font-serif text-lg italic shadow-xs">P</div>
                 <div>
                   <h1 className="text-sm font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>

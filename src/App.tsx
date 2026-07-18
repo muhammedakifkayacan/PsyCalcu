@@ -1113,6 +1113,94 @@ export default function App() {
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [prefilledRoomId, setPrefilledRoomId] = useState('');
   const [prefilledTime, setPrefilledTime] = useState('');
+  const [tempNotesCache, setTempNotesCache] = useState<Record<string, string>>(() => {
+    try {
+      const cached = sessionStorage.getItem('psycalcu_temp_notes_cache');
+      return cached ? JSON.parse(cached) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [isFetchingNotes, setIsFetchingNotes] = useState(false);
+  const [exportIncludeNotes, setExportIncludeNotes] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_export_include_notes');
+      return saved !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+  const [exportIncludeSyncedNotes, setExportIncludeSyncedNotes] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_export_include_synced_notes');
+      return saved === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const fetchInstantCalendarNotes = async (silent = false) => {
+    const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = settings;
+    if (!calendarSyncEnabled) {
+      if (!silent) showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
+      return;
+    }
+    const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
+    if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
+      if (!silent) {
+        showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
+      }
+      return;
+    }
+
+    if (!silent) {
+      setIsFetchingNotes(true);
+    }
+    const newCache: Record<string, string> = { ...tempNotesCache };
+    let fetchedAny = false;
+
+    const urls: { url: string; type: 'online' | 'face-to-face' | 'rent-income' }[] = [];
+    if (onlineCalendarWebcalUrl) urls.push({ url: onlineCalendarWebcalUrl, type: 'online' });
+    if (faceToFaceCalendarWebcalUrl) urls.push({ url: faceToFaceCalendarWebcalUrl, type: 'face-to-face' });
+    if (hasOwnerCalendars && ownerCalendars) {
+      ownerCalendars.forEach(c => {
+        if (c && c.url) urls.push({ url: c.url, type: 'rent-income' });
+      });
+    }
+
+    for (const item of urls) {
+      try {
+        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(item.url)}`);
+        if (response.ok) {
+          const icsText = await response.text();
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, item.type, registrationCreatedAt);
+          parsed.forEach(ev => {
+            if (ev.id && ev.notes) {
+              newCache[ev.id] = ev.notes;
+              fetchedAny = true;
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch notes for dynamic view:", err);
+      }
+    }
+
+    setTempNotesCache(newCache);
+    try {
+      sessionStorage.setItem('psycalcu_temp_notes_cache', JSON.stringify(newCache));
+    } catch (e) {}
+
+    if (!silent) {
+      setIsFetchingNotes(false);
+      if (fetchedAny) {
+        showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
+      } else {
+        showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
+      }
+    }
+  };
+
   const [showNotes, setShowNotes] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_show_notes');
@@ -2251,6 +2339,17 @@ export default function App() {
       const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
       
+      let noteVal = '';
+      if (exportIncludeNotes) {
+        if (s.isSyncedFromCalendar) {
+          if (exportIncludeSyncedNotes) {
+            noteVal = tempNotesCache[s.id] || s.notes || '';
+          }
+        } else {
+          noteVal = s.notes || '';
+        }
+      }
+
       const row = [
         s.date,
         s.time,
@@ -2261,7 +2360,7 @@ export default function App() {
         baby,
         office,
         net,
-        `"${(s.notes || '').replace(/"/g, '""')}"`,
+        `"${noteVal.replace(/"/g, '""')}"`,
         syncStatus
       ].join(",");
       csvContent += row + "\n";
@@ -2292,6 +2391,17 @@ export default function App() {
       const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
       
+      let noteVal = '';
+      if (exportIncludeNotes) {
+        if (s.isSyncedFromCalendar) {
+          if (exportIncludeSyncedNotes) {
+            noteVal = tempNotesCache[s.id] || s.notes || '';
+          }
+        } else {
+          noteVal = s.notes || '';
+        }
+      }
+
       const row = [
         s.date,
         s.time,
@@ -2302,7 +2412,7 @@ export default function App() {
         baby,
         office,
         net,
-        s.notes || '',
+        noteVal,
         syncStatus
       ].join("\t");
       tsvContent += row + "\n";
@@ -3321,6 +3431,24 @@ export default function App() {
                         </div>
                       </button>
 
+                      {/* Fetch Dynamic Calendar Notes (KVKK Uyumlu) */}
+                      {showNotes && settings.calendarSyncEnabled && (
+                        <button
+                          type="button"
+                          onClick={() => fetchInstantCalendarNotes()}
+                          disabled={isFetchingNotes}
+                          className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer border ${
+                            isFetchingNotes
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 hover:border-amber-300'
+                          }`}
+                          title="Takvimdeki açıklamaları/notları anlık ve geçici olarak tarayıcıya yükler. Veritabanına asla kaydedilmez (KVKK Uyumlu)."
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          {isFetchingNotes ? 'Notlar Çekiliyor...' : 'Takvim Notlarını Çek'}
+                        </button>
+                      )}
+
                       {/* Sync Button */}
                       <button
                         onClick={() => handleManualCalendarSync(true)}
@@ -3450,7 +3578,24 @@ export default function App() {
                               
                               {showNotes && (
                                 <p className="text-xs text-slate-700 mt-1 font-semibold italic animate-fade-in">
-                                  {session.notes || 'Açıklama girilmemiş.'}
+                                  {session.isSyncedFromCalendar ? (
+                                    tempNotesCache[session.id] ? (
+                                      <span>{tempNotesCache[session.id]}</span>
+                                    ) : (
+                                      <span className="text-slate-400 font-normal">
+                                        Takvim açıklamaları gizlendi.{' '}
+                                        <button 
+                                          onClick={() => fetchInstantCalendarNotes()} 
+                                          disabled={isFetchingNotes}
+                                          className="text-[#6b705c] hover:underline font-bold focus:outline-none cursor-pointer"
+                                        >
+                                          {isFetchingNotes ? 'Çekiliyor...' : 'Takvimden Çek (KVKK)'}
+                                        </button>
+                                      </span>
+                                    )
+                                  ) : (
+                                    session.notes || 'Açıklama girilmemiş.'
+                                  )}
                                 </p>
                               )}
                             </div>
@@ -3909,6 +4054,52 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-2 pt-2">
+                      {/* Export Settings Options */}
+                      <div className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] space-y-3 mb-2">
+                        <span className="text-[10px] font-bold text-[#6b705c] uppercase tracking-widest block">Dışa Aktarım Ayarları</span>
+                        
+                        {/* Option 1: Include Notes */}
+                        <label className="flex items-start gap-3 cursor-pointer group select-none">
+                          <input 
+                            type="checkbox"
+                            checked={exportIncludeNotes}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setExportIncludeNotes(checked);
+                              try { localStorage.setItem('psycalcu_export_include_notes', String(checked)); } catch (err) {}
+                            }}
+                            className="mt-0.5 rounded border-[#e5e1d8] text-[#6b705c] focus:ring-[#6b705c] cursor-pointer"
+                          />
+                          <div>
+                            <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">Seans Notlarını Dahil Et</span>
+                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">Seans kayıtlarındaki açıklamalar/notlar sütun olarak eklenir.</p>
+                          </div>
+                        </label>
+
+                        {/* Option 2: Include Synced Notes */}
+                        {exportIncludeNotes && settings.calendarSyncEnabled && (
+                          <label className="flex items-start gap-3 cursor-pointer group select-none pl-6 border-l border-slate-200 mt-2 block animate-fade-in">
+                            <input 
+                              type="checkbox"
+                              checked={exportIncludeSyncedNotes}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setExportIncludeSyncedNotes(checked);
+                                try { localStorage.setItem('psycalcu_export_include_synced_notes', String(checked)); } catch (err) {}
+                                if (checked && Object.keys(tempNotesCache).length === 0) {
+                                  fetchInstantCalendarNotes(true);
+                                }
+                              }}
+                              className="mt-0.5 rounded border-[#e5e1d8] text-[#6b705c] focus:ring-[#6b705c] cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">Takvim Açıklamalarını Ekle (KVKK)</span>
+                              <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">Takvim seanslarının açıklamaları anlık çekilir ve eklenir (asla veritabanına kaydedilmez).</p>
+                            </div>
+                          </label>
+                        )}
+                      </div>
+
                       {/* Clipboard Copy Button */}
                       <button
                         type="button"
@@ -4328,9 +4519,9 @@ export default function App() {
                                   <span className="text-[#cb997e] font-bold">₺{session.price}</span>
                                 </div>
 
-                                {session.notes && (
+                                {(session.notes || (session.isSyncedFromCalendar && tempNotesCache[session.id])) && (
                                   <p className="text-xs text-slate-500 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
-                                    <strong>Not:</strong> {session.notes}
+                                    <strong>Not:</strong> {session.notes || tempNotesCache[session.id]}
                                   </p>
                                 )}
                               </div>

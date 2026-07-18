@@ -72,7 +72,12 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
     const docRef = doc(db, 'users', userId);
     // Remove undefined properties before saving to Firestore to avoid setDoc invalid data error
     const cleanedSettings = JSON.parse(JSON.stringify(settings));
-    const cleanedSessions = JSON.parse(JSON.stringify(sessions));
+    const cleanedSessions = JSON.parse(JSON.stringify(sessions)).map((s: any) => {
+      if (s.isSyncedFromCalendar && !s.isManuallyEdited) {
+        delete s.notes;
+      }
+      return s;
+    });
     await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions }, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
