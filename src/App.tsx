@@ -977,6 +977,12 @@ export default function App() {
     setFeaturesCalendarAllowed(true);
     setFeaturesAccountingAllowed(true);
     setFeaturesDebtTrackerAllowed(true);
+    setTempNotesCache({});
+    setHasFetchedInstantNotes(false);
+    try {
+      sessionStorage.removeItem('psycalcu_temp_notes_cache');
+      sessionStorage.removeItem('psycalcu_has_fetched_instant_notes');
+    } catch (e) {}
   };
 
   // UI state
@@ -1121,6 +1127,13 @@ export default function App() {
       return {};
     }
   });
+  const [hasFetchedInstantNotes, setHasFetchedInstantNotes] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('psycalcu_has_fetched_instant_notes') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
   const [isFetchingNotes, setIsFetchingNotes] = useState(false);
   const [exportIncludeNotes, setExportIncludeNotes] = useState<boolean>(() => {
     try {
@@ -1187,8 +1200,10 @@ export default function App() {
     }
 
     setTempNotesCache(newCache);
+    setHasFetchedInstantNotes(true);
     try {
       sessionStorage.setItem('psycalcu_temp_notes_cache', JSON.stringify(newCache));
+      sessionStorage.setItem('psycalcu_has_fetched_instant_notes', 'true');
     } catch (e) {}
 
     if (!silent) {
@@ -3581,6 +3596,8 @@ export default function App() {
                                   {session.isSyncedFromCalendar ? (
                                     tempNotesCache[session.id] ? (
                                       <span>{tempNotesCache[session.id]}</span>
+                                    ) : hasFetchedInstantNotes ? (
+                                      <span className="text-slate-400 font-normal">Açıklama girilmemiş.</span>
                                     ) : (
                                       <span className="text-slate-400 font-normal">
                                         Takvim açıklamaları gizlendi.{' '}
@@ -4519,9 +4536,9 @@ export default function App() {
                                   <span className="text-[#cb997e] font-bold">₺{session.price}</span>
                                 </div>
 
-                                {(session.notes || (session.isSyncedFromCalendar && tempNotesCache[session.id])) && (
+                                {(session.notes || (session.isSyncedFromCalendar && (tempNotesCache[session.id] || hasFetchedInstantNotes))) && (
                                   <p className="text-xs text-slate-500 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
-                                    <strong>Not:</strong> {session.notes || tempNotesCache[session.id]}
+                                    <strong>Not:</strong> {session.isSyncedFromCalendar ? (tempNotesCache[session.id] || 'Açıklama girilmemiş.') : (session.notes || 'Açıklama girilmemiş.')}
                                   </p>
                                 )}
                               </div>

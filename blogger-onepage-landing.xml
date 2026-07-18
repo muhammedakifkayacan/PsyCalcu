@@ -1392,6 +1392,12 @@
           </p>
         </div>
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>KVKK uyumluluğu ve danışan notları güvenliği nasıl sağlanıyor?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Platformumuz KVKK (Kişisel Verilerin Korunması Kanunu) hassasiyetini en üst düzeyde tutar. Takvimlerinizdeki seans açıklamaları ve özel notlar bulut veritabanımıza <strong>asla kaydedilmez</strong>. Bu hassas veriler yalnızca siz panelde "Notları Göster" seçeneğini aktif edip anlık olarak çekmek istediğinizde doğrudan tarayıcı belleğinize (sessionStorage) geçici olarak yüklenir. Oturumu kapattığınızda veya tarayıcı sekmesini kapattığınızda bellekten tamamen silinir. Excel/CSV dışa aktarımında da bu notların dahil edilip edilmeyeceği tamamen sizin kontrolünüzdedir.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
           <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Çoklu kiracı takvim desteği nasıl çalışır?</h4>
           <p class='text-slate-500 leading-relaxed font-normal'>
             Klinik veya ofis sahibiyseniz, ofisinizi kiralayan tüm terapistlerin takvim adreslerini sisteme ekleyebilirsiniz. Sistem her terapistten gelen seans adetlerini hesaplar, seans başı kira ücretlerini belirleyip toplam hakediş raporunu hazırlar.
