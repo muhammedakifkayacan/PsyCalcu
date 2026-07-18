@@ -279,7 +279,7 @@
   <!-- Conditional CSS for supporting all Blogger pages (post, search, page, error) -->
   <b:if cond='!data:view.isHomepage'>
     <style>
-      #hero-section, #problems, #features, #calculator, #sync, #pricing, #home-blog-section, #faq {
+      #hero-section, #problems, #features, #calculator, #isometric-showcase, #sync, #pricing, #home-blog-section, #faq {
         display: none !important;
       }
       #main-blog-container {
@@ -331,6 +331,7 @@
     </div>
   </header>
 
+  <b:if cond='data:view.isHomepage'>
   <!-- Hero Section with Apple Parallax Feel -->
   <section id='hero-section' class='relative pt-32 pb-24 md:pt-40 md:pb-36 overflow-hidden bg-gradient-to-b from-[#f5f5f0] via-[#fafae6]/20 to-[#fbfbf9]'>
     <div class='absolute inset-0 z-0 opacity-40 pointer-events-none hero-gradient' id='hero-parallax-bg'></div>
@@ -1044,6 +1045,7 @@
       </div>
     </div>
   </section>
+  </b:if>
 
   <!-- Dynamic Blogger Section containing both Homepage Insights & Listing Views -->
   <b:section id='main' showaddelement='true'>
@@ -1367,6 +1369,7 @@
   </b:section>
 
   <!-- FAQ Section -->
+  <b:if cond='data:view.isHomepage'>
   <section id='faq' class='py-20 bg-[#fbfbf9] border-t border-slate-100'>
     <div class='max-w-3xl mx-auto px-6'>
       <div class='text-center mb-12 scroll-reveal'>
@@ -1389,6 +1392,7 @@
       </div>
     </div>
   </section>
+  </b:if>
 
   <!-- Contact & Footer -->
   <footer id='contact' class='bg-slate-950 text-slate-400 py-16 border-t border-slate-900 relative z-10'>

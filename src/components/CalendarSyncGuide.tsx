@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User, X } from 'lucide-react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User, X, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '../types';
@@ -67,6 +67,8 @@ export default function CalendarSyncGuide({
   const [showRecoveryPanel, setShowRecoveryPanel] = useState(false);
   const [multiCalendars, setMultiCalendars] = useState<OwnerCalendar[]>(normalizeOwnerCalendars(settings.ownerCalendars));
   const [isMultiCalendarSyncing, setIsMultiCalendarSyncing] = useState<boolean[]>(new Array(10).fill(false));
+  const [activeGuideTab, setActiveGuideTab] = useState<'google' | 'apple' | 'outlook'>('google');
+  const [showHowToGuide, setShowHowToGuide] = useState(false);
 
   React.useEffect(() => {
     let timer: any;
@@ -747,6 +749,114 @@ export default function CalendarSyncGuide({
             </button>
           </div>
         </form>
+
+        {/* Collapsible How-To Guide Panel */}
+        <div className="mt-4 pt-4 border-t border-[#f5f5f0]/60">
+          <button
+            type="button"
+            onClick={() => setShowHowToGuide(!showHowToGuide)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-xs font-bold rounded-xl transition-all cursor-pointer border border-[#e5e1d8]"
+          >
+            <HelpCircle className="w-4 h-4 text-[#cb997e]" />
+            {showHowToGuide ? '💡 Takvim Adresi Alma Rehberini Gizle' : '💡 Takvim Adresimi (iCal / WebCal URL) Nasıl Alırım?'}
+          </button>
+
+          <AnimatePresence>
+            {showHowToGuide && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mt-3"
+              >
+                <div className="bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl p-5 space-y-4">
+                  {/* Platform Tabs */}
+                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-max">
+                    <button
+                      type="button"
+                      onClick={() => setActiveGuideTab('google')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        activeGuideTab === 'google'
+                          ? 'bg-white text-[#6b705c] shadow-2xs border border-slate-200'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Google Calendar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveGuideTab('apple')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        activeGuideTab === 'apple'
+                          ? 'bg-white text-[#6b705c] shadow-2xs border border-slate-200'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Apple iCloud
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveGuideTab('outlook')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        activeGuideTab === 'outlook'
+                          ? 'bg-white text-[#6b705c] shadow-2xs border border-slate-200'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Outlook / O365
+                    </button>
+                  </div>
+
+                  {/* Tab Contents */}
+                  <div className="text-xs leading-relaxed text-slate-600 space-y-3">
+                    {activeGuideTab === 'google' && (
+                      <div className="space-y-2.5">
+                        <p className="font-semibold text-slate-800">Google Takvim'den Gizli iCal Bağlantısı Alma:</p>
+                        <ol className="list-decimal pl-4 space-y-1.5 text-[11px]">
+                          <li>Bilgisayarınızda <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="text-[#cb997e] hover:underline font-semibold inline-flex items-center gap-0.5">Google Takvim'i <ExternalLink className="w-3 h-3 inline" /></a> açın.</li>
+                          <li>Sol menüdeki <strong>"Takvimlerim"</strong> altında bağlamak istediğiniz takvimin üzerine gelin, <strong>üç noktaya (seçenekler)</strong> tıklayıp <strong>"Ayarlar ve Paylaşım"</strong>ı seçin.</li>
+                          <li>Açılan sayfanın sol menüsünden <strong>"Takvimi Entegre Et"</strong> seçeneğine tıklayın.</li>
+                          <li>Sayfayı en alta kaydırın ve <strong>"iCal biçimindeki gizli adres"</strong> alanını bulun.</li>
+                          <li>Orada bulunan <span className="text-rose-600 font-mono bg-rose-50 px-1 py-0.5 rounded font-bold break-all">https://calendar.google.com/calendar/ical/...</span> bağlantısını kopyalayıp buraya yapıştırın.</li>
+                        </ol>
+                        <p className="text-[10px] text-amber-600 font-medium bg-amber-50/50 p-2 rounded-lg border border-amber-100">
+                          ⚠️ Uyarı: "iCal biçimindeki genel adres" linkini değil, mutlaka <strong>"gizli adres"</strong> bağlantısını kopyalamalısınız. Aksi takdirde erişim yetkisi hatası alırsınız.
+                        </p>
+                      </div>
+                    )}
+
+                    {activeGuideTab === 'apple' && (
+                      <div className="space-y-2.5">
+                        <p className="font-semibold text-slate-800">Apple iCloud Takvimi'nden WebCal Bağlantısı Alma:</p>
+                        <ol className="list-decimal pl-4 space-y-1.5 text-[11px]">
+                          <li>iPhone, iPad veya Mac cihazınızda <strong>Takvim</strong> uygulamasını açın ya da <a href="https://www.icloud.com" target="_blank" rel="noopener noreferrer" className="text-[#cb997e] hover:underline font-semibold inline-flex items-center gap-0.5">iCloud.com'a <ExternalLink className="w-3 h-3 inline" /></a> giriş yapın.</li>
+                          <li>Sol listede bağlamak istediğiniz takvimin yanındaki <strong>"Kablosuz paylaşım" (dalga)</strong> ikonuna tıklayın.</li>
+                          <li><strong>"Genel Takvim" (Public Calendar)</strong> seçeneğini aktifleştirin.</li>
+                          <li>Altında beliren ve <span className="text-rose-600 font-mono bg-rose-50 px-1 py-0.5 rounded font-bold break-all">webcal://p...-calendar.icloud.com/...</span> şeklinde başlayan adresi kopyalayıp buraya yapıştırın.</li>
+                        </ol>
+                        <p className="text-[10px] text-emerald-600 font-medium bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
+                          💡 İpucu: Apple Takvim adresleri doğrudan <code>webcal://</code> protokolüyle başlar ve sistemimiz bunu mükemmel şekilde destekler.
+                        </p>
+                      </div>
+                    )}
+
+                    {activeGuideTab === 'outlook' && (
+                      <div className="space-y-2.5">
+                        <p className="font-semibold text-slate-800">Outlook veya Office 365'ten Yayınlama Linki Alma:</p>
+                        <ol className="list-decimal pl-4 space-y-1.5 text-[11px]">
+                          <li><a href="https://outlook.live.com" target="_blank" rel="noopener noreferrer" className="text-[#cb997e] hover:underline font-semibold inline-flex items-center gap-0.5">Outlook Web <ExternalLink className="w-3 h-3 inline" /></a> uygulamasına girin.</li>
+                          <li>Sağ üstteki <strong>Ayarlar (dişli simgesi)</strong> &gt; <strong>Takvim</strong> &gt; <strong>Paylaşılan Takvimler</strong> sekmesini takip edin.</li>
+                          <li>"Takvim Yayınla" başlığı altından bağlayacağınız takvimi seçin ve izin seviyesini <strong>"Tüm detayları görebilir"</strong> yapıp <strong>"Yayınla"</strong> butonuna tıklayın.</li>
+                          <li>Yayınlandıktan sonra sayfanın altında iki adet link belirecektir. Bunlardan <strong>"ICS"</strong> yazan bağlantıyı kopyalayıp buraya yapıştırın.</li>
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {settings.userRole === 'owner' && (

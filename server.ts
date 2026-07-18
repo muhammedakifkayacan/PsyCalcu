@@ -5,6 +5,10 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import nodemailer from "nodemailer";
 import "dotenv/config";
+import { initializeApp as initializeAdminApp, getApps as getAdminApps } from "firebase-admin/app";
+import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
+
+let adminDb: any = null;
 
 function generateSmartFallbackSummary(date: string, sessions: any[], dailyMetrics: any, isKeyMissing: boolean): string {
   const activeSessions = sessions ? sessions.filter((s: any) => s.type !== 'cancelled') : [];
@@ -240,6 +244,130 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
     } catch (error: any) {
       console.error("Nodemailer Email Send Error:", error);
       res.status(500).json({ error: `E-posta gönderimi başarısız oldu: ${error.message}` });
+    }
+  });
+
+  // Helper functions to unwrap Firestore REST API nested values
+  function unwrapFirestoreValue(value: any): any {
+    if (!value || typeof value !== 'object') return value;
+    if ('stringValue' in value) return value.stringValue;
+    if ('doubleValue' in value) return Number(value.doubleValue);
+    if ('integerValue' in value) return Number(value.integerValue);
+    if ('booleanValue' in value) return value.booleanValue;
+    if ('nullValue' in value) return null;
+    if ('mapValue' in value) {
+      const obj: any = {};
+      const fields = value.mapValue.fields || {};
+      for (const key of Object.keys(fields)) {
+        obj[key] = unwrapFirestoreValue(fields[key]);
+      }
+      return obj;
+    }
+    if ('arrayValue' in value) {
+      const arr = value.arrayValue.values || [];
+      return arr.map((item: any) => unwrapFirestoreValue(item));
+    }
+    return value;
+  }
+
+  function parseFirestoreDocument(doc: any): any {
+    const result: any = {};
+    const fields = doc.fields || {};
+    for (const key of Object.keys(fields)) {
+      result[key] = unwrapFirestoreValue(fields[key]);
+    }
+    return result;
+  }
+
+  // API Route for secure, public room availability data
+  app.get("/api/public-availability/:userId", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ error: "Kullanıcı ID gereklidir." });
+      }
+
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      if (!fs.existsSync(configPath)) {
+        return res.status(500).json({ error: "Firebase konfigürasyon dosyası bulunamadı." });
+      }
+
+      let rawData: any = null;
+
+      // Initialize adminDb if not already initialized
+      let dbInstance = adminDb;
+      if (!dbInstance && fs.existsSync(configPath)) {
+        try {
+          const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+          const projectId = config.projectId;
+          const databaseId = config.firestoreDatabaseId;
+          
+          if (getAdminApps().length === 0) {
+            const adminApp = initializeAdminApp({
+              projectId: projectId
+            });
+            dbInstance = getAdminFirestore(adminApp, databaseId || "(default)");
+            adminDb = dbInstance;
+          } else {
+            dbInstance = getAdminFirestore();
+          }
+        } catch (err) {
+          console.error("Failed to initialize Firebase Admin SDK dynamically:", err);
+        }
+      }
+
+      if (dbInstance) {
+        console.log(`Using Firebase Admin SDK to fetch user data for: ${userId}`);
+        const docRef = dbInstance.collection("users").doc(userId);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) {
+          return res.status(404).json({ error: "Klinik veya terapist bulunamadı." });
+        }
+        rawData = docSnap.data();
+      } else {
+        console.log(`Firebase Admin not available. Falling back to Firestore REST API for: ${userId}`);
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const projectId = config.projectId;
+        const apiKey = config.apiKey;
+        const databaseId = config.firestoreDatabaseId || "(default)";
+
+        // Call Firestore REST API to fetch settings and sessions securely
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/users/${userId}?key=${apiKey}`;
+        const response = await fetch(firestoreUrl);
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            return res.status(404).json({ error: "Klinik veya terapist bulunamadı." });
+          }
+          throw new Error(`Firestore REST API returned ${response.status}: ${response.statusText}`);
+        }
+
+        const docData = await response.json();
+        rawData = parseFirestoreDocument(docData);
+      }
+      
+      const settings = rawData.settings || {};
+      const sessions = rawData.sessions || [];
+
+      // Filter sessions to protect confidentiality (never return clientName, notes, or prices)
+      const publicSessions = sessions.map((s: any) => ({
+        id: s.id,
+        date: s.date,
+        time: s.time,
+        duration: s.duration || 60,
+        roomId: s.roomId,
+        type: s.type === 'cancelled' ? 'cancelled' : 'busy'
+      }));
+
+      res.json({
+        therapistName: settings.therapistName || "Terapist",
+        rooms: settings.rooms || [],
+        blockedSlots: settings.blockedSlots || [],
+        sessions: publicSessions
+      });
+    } catch (err: any) {
+      console.error("Public availability fetch error:", err);
+      res.status(500).json({ error: `Müsaitlik bilgisi yüklenemedi: ${err?.message || err}` });
     }
   });
 

@@ -48,6 +48,7 @@ import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
 import RoomManagement from './components/RoomManagement';
+import PublicAvailability from './components/PublicAvailability';
 import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
@@ -2364,6 +2365,13 @@ export default function App() {
     };
   };
 
+  // Check for public share link in URL (guest bypass)
+  const queryParams = new URLSearchParams(window.location.search);
+  const shareUserId = queryParams.get('share');
+  if (shareUserId) {
+    return <PublicAvailability userId={shareUserId} />;
+  }
+
   if (!isInitialAuthCheckDone) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-[#fdfbf7]" id="auth-loading-screen">
@@ -4318,6 +4326,15 @@ export default function App() {
                   setPrefilledTime(session.time);
                   setIsSessionModalOpen(true);
                 }}
+                onDeleteSession={handleDeleteSession}
+                blockedSlots={settings.blockedSlots || []}
+                onUpdateBlockedSlots={(newBlocked) => {
+                  setSettings(prev => ({
+                    ...prev,
+                    blockedSlots: newBlocked
+                  }));
+                }}
+                userId={user?.uid}
                 showToast={showToast}
                 showExplanations={showExplanations}
                 onHideExplanations={handleHideExplanations}

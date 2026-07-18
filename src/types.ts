@@ -47,6 +47,15 @@ export function normalizeOwnerCalendars(ownerCalendars: any): OwnerCalendar[] {
   });
 }
 
+export interface BlockedSlot {
+  id: string;
+  roomId: string; // "all" or specific roomId
+  date?: string; // "YYYY-MM-DD"
+  dayOfWeek?: number; // 0-6 for recurring days (Monday is 1, Sunday is 0)
+  time?: string; // "HH:MM" (e.g. "09:00"). If undefined, means the whole day is blocked
+  reason?: string; // reason for blockage
+}
+
 export interface AppSettings {
   defaultSessionPrice: number;
   defaultBabysitterFee: number;
@@ -62,6 +71,7 @@ export interface AppSettings {
   userRole?: 'tenant' | 'owner';
   ownerCalendars?: OwnerCalendar[];
   rooms?: Room[];
+  blockedSlots?: BlockedSlot[];
 }
 
 export interface DaySummary {
