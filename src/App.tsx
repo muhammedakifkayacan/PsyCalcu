@@ -3507,6 +3507,11 @@ export default function App() {
                       filteredSessions.map((session) => {
                         const isCancelled = session.type === 'cancelled';
                         const isFaceToFace = session.type === 'face-to-face';
+                        const hasPriceIncrease = session.type !== 'cancelled' && session.type !== 'non-session' && session.type !== 'rent-income' && (
+                          session.price > settings.defaultSessionPrice || 
+                          (session.hasBabysitterFee && session.babysitterFeeAmount > settings.defaultBabysitterFee) || 
+                          (session.hasOfficeRentFee && session.officeRentFeeAmount > settings.defaultOfficeRentFee)
+                        );
                         
                         return (
                           <div
@@ -3518,6 +3523,10 @@ export default function App() {
                                 ? 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/60'
                                 : session.type === 'rent-income'
                                 ? 'bg-indigo-50/20 border-indigo-200/50 hover:bg-indigo-50/40 hover:border-indigo-400'
+                                : hasPriceIncrease
+                                ? session.isSyncedFromCalendar
+                                  ? 'bg-amber-50/25 border-dashed border-amber-300 hover:border-amber-400 shadow-3xs'
+                                  : 'bg-amber-50/35 border-solid border-amber-300 hover:border-amber-400 shadow-3xs'
                                 : session.isSyncedFromCalendar
                                 ? isFaceToFace 
                                   ? 'bg-amber-50/10 border-dashed border-[#cb997e]/60 hover:border-[#cb997e] hover:shadow-xs' 
@@ -3589,6 +3598,23 @@ export default function App() {
                                     ✍️ Panelden
                                   </span>
                                 )}
+
+                                {/* Price Hike Badge */}
+                                {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && session.price > settings.defaultSessionPrice && (
+                                  <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-3xs animate-pulse" title={`Varsayılan seans fiyatından (₺${settings.defaultSessionPrice}) daha yüksek bir fiyata sahiptir.`}>
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-600" /> ZAMLI SEANS
+                                  </span>
+                                )}
+
+                                {/* Expense Hike Badge */}
+                                {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && (
+                                  (session.hasBabysitterFee && session.babysitterFeeAmount > settings.defaultBabysitterFee) || 
+                                  (session.hasOfficeRentFee && session.officeRentFeeAmount > settings.defaultOfficeRentFee)
+                                ) && (
+                                  <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200/60 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-3xs" title="Varsayılan gider limitlerinden daha yüksek bir gidere sahiptir.">
+                                    📈 ZAMLI GİDER
+                                  </span>
+                                )}
                               </div>
                               
                               {showNotes && (
@@ -3619,14 +3645,34 @@ export default function App() {
 
                             {/* Financial item state */}
                             {session.type !== 'non-session' ? (
-                              <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-2">
+                              <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-1.5">
                                 <div>
-                                  <p className={`text-sm font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
+                                  <p className={`text-sm font-bold flex items-center gap-1 sm:justify-end ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
                                     +₺{session.price}
+                                    {!isCancelled && session.price > settings.defaultSessionPrice && (
+                                      <span title={`Zamlı Fiyat (Varsayılan: ₺${settings.defaultSessionPrice})`}>
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+                                      </span>
+                                    )}
                                   </p>
                                   {session.hasBabysitterFee && (
-                                    <p className="text-[10px] text-rose-500 font-semibold mt-0.5">
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-0.5 flex items-center gap-0.5 sm:justify-end">
                                       -₺{session.babysitterFeeAmount} (Bakıcı)
+                                      {!isCancelled && session.babysitterFeeAmount > settings.defaultBabysitterFee && (
+                                        <span title={`Yüksek Gider (Varsayılan: ₺${settings.defaultBabysitterFee})`}>
+                                          <Sparkles className="w-2.5 h-2.5 text-rose-400 animate-pulse shrink-0" />
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                  {session.hasOfficeRentFee && (
+                                    <p className="text-[10px] text-amber-600 font-semibold mt-0.5 flex items-center gap-0.5 sm:justify-end">
+                                      -₺{session.officeRentFeeAmount} (Ofis)
+                                      {!isCancelled && session.officeRentFeeAmount > settings.defaultOfficeRentFee && (
+                                        <span title={`Yüksek Ofis Kirası (Varsayılan: ₺${settings.defaultOfficeRentFee})`}>
+                                          <Sparkles className="w-2.5 h-2.5 text-amber-500 animate-pulse shrink-0" />
+                                        </span>
+                                      )}
                                     </p>
                                   )}
                                 </div>
