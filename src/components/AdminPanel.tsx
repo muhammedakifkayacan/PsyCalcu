@@ -52,6 +52,7 @@ interface Registration {
   featuresSmartPriceMatchingAllowed?: boolean;
   adminNote?: string;
   userRole?: 'tenant' | 'owner';
+  requestedRole?: 'tenant' | 'owner' | null;
 }
 
 interface AdminPanelProps {
@@ -128,7 +129,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           featuresDebtTrackerAllowed: data.featuresDebtTrackerAllowed !== false,
           featuresSmartPriceMatchingAllowed: data.featuresSmartPriceMatchingAllowed !== false,
           adminNote: data.adminNote || '',
-          userRole: data.userRole || undefined
+          userRole: data.userRole || undefined,
+          requestedRole: data.requestedRole || null
         });
       });
       setRegistrations(list);
@@ -237,6 +239,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       featuresSmartPriceMatchingAllowed?: boolean; 
       adminNote?: string;
       userRole?: 'tenant' | 'owner' | '';
+      requestedRole?: 'tenant' | 'owner' | null | '';
     }
   ) => {
     try {
@@ -508,6 +511,46 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                     )}
                   </div>
                   <p className="text-xs text-slate-400 font-mono">{reg.email}</p>
+                  
+                  {reg.requestedRole && reg.requestedRole !== reg.userRole && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2 bg-amber-50/80 border border-amber-200 rounded-2xl px-3 py-2 text-amber-900 text-xs font-semibold animate-pulse max-w-md">
+                      <span className="flex items-center gap-1">
+                        🔔 <strong>Rol Talebi:</strong> {reg.requestedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan (Terapist)'} olmak istiyor
+                      </span>
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const ref = doc(db, 'registrations', reg.userId);
+                              await setDoc(ref, { userRole: reg.requestedRole, requestedRole: null }, { merge: true });
+                              showToast('Rol değişikliği talebi başarıyla onaylandı!', 'success');
+                            } catch (error) {
+                              console.error("Error approving role request:", error);
+                              showToast('Talep onaylanırken hata oluştu.', 'error');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                        >
+                          Onayla
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const ref = doc(db, 'registrations', reg.userId);
+                              await setDoc(ref, { requestedRole: null }, { merge: true });
+                              showToast('Rol değişikliği talebi reddedildi.', 'info');
+                            } catch (error) {
+                              console.error("Error rejecting role request:", error);
+                              showToast('Talep reddedilirken hata oluştu.', 'error');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
+                        >
+                          Reddet
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   
                   {reg.isLegacy && (
                     <p className="text-[11px] text-[#cb997e] font-semibold leading-relaxed mt-1">

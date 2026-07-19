@@ -181,6 +181,7 @@ export default function App() {
   const [featuresAccountingAllowed, setFeaturesAccountingAllowed] = useState<boolean>(true);
   const [featuresDebtTrackerAllowed, setFeaturesDebtTrackerAllowed] = useState<boolean>(true);
   const [featuresSmartPriceMatchingAllowed, setFeaturesSmartPriceMatchingAllowed] = useState<boolean>(true);
+  const [requestedRole, setRequestedRole] = useState<'tenant' | 'owner' | null>(null);
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
@@ -578,6 +579,7 @@ export default function App() {
           setFeaturesAccountingAllowed(data.featuresAccountingAllowed !== false);
           setFeaturesDebtTrackerAllowed(data.featuresDebtTrackerAllowed !== false);
           setFeaturesSmartPriceMatchingAllowed(data.featuresSmartPriceMatchingAllowed !== false);
+          setRequestedRole(data.requestedRole || null);
           
           // Sync userRole from registration doc to settings
           if (data.userRole) {
@@ -4660,6 +4662,18 @@ export default function App() {
         showExplanations={showExplanations}
         onToggleExplanations={toggleShowExplanations}
         featuresSmartPriceMatchingAllowed={featuresSmartPriceMatchingAllowed}
+        requestedRole={requestedRole}
+        onRequestRoleChange={async (targetRole) => {
+          if (!user) return;
+          try {
+            const regRef = doc(db, 'registrations', user.uid);
+            await setDoc(regRef, { requestedRole: targetRole }, { merge: true });
+            showToast(targetRole ? 'Rol değişikliği talebi yöneticiye başarıyla iletildi!' : 'Rol değişikliği talebiniz iptal edildi.', 'success');
+          } catch (err: any) {
+            console.error("Error submitting role change request:", err);
+            showToast(`Talep gönderilirken hata oluştu: ${err.message || String(err)}`, 'error');
+          }
+        }}
       />
 
       {/* Session Add/Edit Modal Component */}

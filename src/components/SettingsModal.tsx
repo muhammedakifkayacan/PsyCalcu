@@ -10,6 +10,8 @@ interface SettingsModalProps {
   showExplanations: boolean;
   onToggleExplanations: () => void;
   featuresSmartPriceMatchingAllowed?: boolean;
+  requestedRole?: 'tenant' | 'owner' | null;
+  onRequestRoleChange?: (targetRole: 'tenant' | 'owner' | null) => Promise<void>;
 }
 
 export default function SettingsModal({ 
@@ -19,7 +21,9 @@ export default function SettingsModal({
   onSave, 
   showExplanations,
   onToggleExplanations,
-  featuresSmartPriceMatchingAllowed = true
+  featuresSmartPriceMatchingAllowed = true,
+  requestedRole = null,
+  onRequestRoleChange
 }: SettingsModalProps) {
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
@@ -144,8 +148,43 @@ export default function SettingsModal({
                 </>
               )}
             </div>
+            
+            {/* Role Change Requests UI */}
+            {requestedRole ? (
+              <div className="mt-2.5 bg-amber-50/55 border border-amber-200/65 rounded-2xl p-3 space-y-2 animate-fade-in">
+                <div className="flex items-start gap-2 text-[11px] font-semibold text-amber-800">
+                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p>Rol Değişikliği Talebi Gönderildi</p>
+                    <p className="text-[10px] text-amber-700 font-medium leading-normal">
+                      <strong>{requestedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan (Terapist)'}</strong> rolüne geçiş isteğiniz kurucu yönetici onayında beklemektedir.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onRequestRoleChange?.(null)}
+                    className="px-2.5 py-1 bg-white hover:bg-amber-100/50 border border-amber-200 hover:border-amber-300 text-amber-800 text-[9px] font-extrabold rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Talebi Geri Çek / İptal Et
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-1.5 text-right">
+                <button
+                  type="button"
+                  onClick={() => onRequestRoleChange?.(userRole === 'owner' ? 'tenant' : 'owner')}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#cb997e] hover:text-[#6b705c] transition-colors cursor-pointer bg-[#cb997e]/5 hover:bg-[#6b705c]/5 px-3 py-1.5 rounded-xl border border-dashed border-[#cb997e]/30 hover:border-[#6b705c]/30"
+                >
+                  ✨ {userRole === 'owner' ? 'Terapist' : 'Ofis Sahibi'} Rolüne Geçmek İstiyorum (Talep Gönder)
+                </button>
+              </div>
+            )}
+
             {showExplanations && (
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1">
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 mt-1.5">
                 {userRole === 'owner' 
                   ? 'Mülk sahibi yetkilerinizle çoklu takvim entegrasyonu yapabilir ve kira gelirlerinizi listeleyebilirsiniz.'
                   : 'Terapist yetkilerinizle seanslarınızı, seans başı bakıcı/kira giderlerinizi ve borçlarınızı takip edebilirsiniz.'}
