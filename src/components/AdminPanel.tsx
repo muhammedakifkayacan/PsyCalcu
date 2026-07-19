@@ -51,6 +51,7 @@ interface Registration {
   featuresDebtTrackerAllowed?: boolean;
   featuresSmartPriceMatchingAllowed?: boolean;
   adminNote?: string;
+  userRole?: 'tenant' | 'owner';
 }
 
 interface AdminPanelProps {
@@ -126,7 +127,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           featuresAccountingAllowed: data.featuresAccountingAllowed !== false,
           featuresDebtTrackerAllowed: data.featuresDebtTrackerAllowed !== false,
           featuresSmartPriceMatchingAllowed: data.featuresSmartPriceMatchingAllowed !== false,
-          adminNote: data.adminNote || ''
+          adminNote: data.adminNote || '',
+          userRole: data.userRole || undefined
         });
       });
       setRegistrations(list);
@@ -234,6 +236,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
       featuresDebtTrackerAllowed?: boolean; 
       featuresSmartPriceMatchingAllowed?: boolean; 
       adminNote?: string;
+      userRole?: 'tenant' | 'owner' | '';
     }
   ) => {
     try {
@@ -454,6 +457,19 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                       {!reg.isLegacy && reg.status === 'pending' && 'Onay Bekliyor'}
                     </span>
 
+                    {/* User Role Badge */}
+                    {reg.userRole ? (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                        reg.userRole === 'owner' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}>
+                        👤 {reg.userRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan'}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-wider animate-pulse">
+                        👤 Rol Atanmadı
+                      </span>
+                    )}
+
                     {/* Advanced Setting Badges */}
                     {reg.maxSessionsLimit && reg.maxSessionsLimit !== 'unlimited' && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider">
@@ -577,6 +593,23 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
+                      </div>
+
+                      {/* Section 0: User Role Assignment (Admin Defined) */}
+                      <div className="space-y-1.5 pb-2 border-b border-slate-100">
+                        <label className="font-semibold text-slate-600 flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-slate-400" />
+                          Kullanıcı Rolü (Yetkilendirme)
+                        </label>
+                        <select
+                          value={reg.userRole || ''}
+                          onChange={(e) => handleUpdateAdvancedSettings(reg.userId, { userRole: e.target.value as 'tenant' | 'owner' | '' })}
+                          className="w-full px-2.5 py-2 text-xs font-bold rounded-xl border border-[#e5e1d8] bg-amber-50/25 text-amber-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#6b705c]/30 cursor-pointer"
+                        >
+                          <option value="">Tanımsız (Rol Bekleniyor)</option>
+                          <option value="tenant">Ofis Kiralayan (Terapist)</option>
+                          <option value="owner">Ofis Sahibi (Mülk Sahibi)</option>
+                        </select>
                       </div>
 
                       {/* Section 1: Session Limit */}

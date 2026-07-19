@@ -32,6 +32,7 @@ export interface Room {
 export interface OwnerCalendar {
   url: string;
   tenantName: string;
+  roomId?: string;
 }
 
 export function normalizeOwnerCalendars(ownerCalendars: any): OwnerCalendar[] {
@@ -42,7 +43,8 @@ export function normalizeOwnerCalendars(ownerCalendars: any): OwnerCalendar[] {
     }
     return {
       url: item?.url || '',
-      tenantName: item?.tenantName || `Terapist ${i + 1}`
+      tenantName: item?.tenantName || `Terapist ${i + 1}`,
+      roomId: item?.roomId
     };
   });
 }

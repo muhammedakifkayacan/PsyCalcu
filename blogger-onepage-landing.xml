@@ -1394,7 +1394,7 @@
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
           <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>KVKK uyumluluğu ve danışan notları güvenliği nasıl sağlanıyor?</h4>
           <p class='text-slate-500 leading-relaxed font-normal'>
-            Platformumuz KVKK (Kişisel Verilerin Korunması Kanunu) hassasiyetini en üst düzeyde tutar. Takvimlerinizdeki seans açıklamaları ve özel notlar bulut veritabanımıza <strong>asla kaydedilmez</strong>. Bu hassas veriler yalnızca siz panelde "Notları Göster" seçeneğini aktif edip anlık olarak çekmek istediğinizde doğrudan tarayıcı belleğinize (sessionStorage) geçici olarak yüklenir. Oturumu kapattığınızda veya tarayıcı sekmesini kapattığınızda bellekten tamamen silinir. Excel/CSV dışa aktarımında da bu notların dahil edilip edilmeyeceği tamamen sizin kontrolünüzdedir.
+            Platformumuz KVKK (Kişisel Verilerin Korunması Kanunu) hassasiyetini en üst düzeyde ve ödünsüz tutar. Seans açıklamaları, özel terapötik notlar ve danışan detayları bulut sunucularımıza veya veritabanımıza <strong>asla kaydedilmez ve saklanmaz</strong>. Bu hassas bilgiler, siz "Notları Göster" seçeneğini aktif ettiğinizde doğrudan kilitli tarayıcı belleğinizde (sessionStorage) geçici olarak işlenir. Not kısmı girilmemiş seanslarda ise güvenliğiniz ve veri mahremiyetiniz için ekranda sadece standart "not girilmemiş" ibaresi gösterilerek gereksiz bilgi akışı engellenir. Oturumu kapattığınızda veya tarayıcı sekmesini kapattığınızda bu geçici veriler bellekten tamamen ve geri döndürülemez şekilde silinir.
           </p>
         </div>
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>

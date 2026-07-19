@@ -24,6 +24,7 @@ import {
   Download,
   Upload,
   ShieldCheck,
+  ShieldAlert,
   Sparkles,
   Check,
   Search,
@@ -186,6 +187,7 @@ export default function App() {
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
+  const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>((() => {
@@ -576,6 +578,28 @@ export default function App() {
           setFeaturesAccountingAllowed(data.featuresAccountingAllowed !== false);
           setFeaturesDebtTrackerAllowed(data.featuresDebtTrackerAllowed !== false);
           setFeaturesSmartPriceMatchingAllowed(data.featuresSmartPriceMatchingAllowed !== false);
+          
+          // Sync userRole from registration doc to settings
+          if (data.userRole) {
+            setSettings(prev => {
+              if (data.userRole === prev.userRole) return prev;
+              const updated = {
+                ...prev,
+                userRole: data.userRole as 'tenant' | 'owner',
+                ownerCalendars: data.userRole === 'owner' ? (prev.ownerCalendars ?? []) : undefined
+              };
+              // Save to localStorage
+              const userSettingsKey = `psycalcu_settings_${user.uid}`;
+              localStorage.setItem(userSettingsKey, JSON.stringify(updated));
+              localStorage.setItem('psycalcu_settings', JSON.stringify(updated));
+              
+              // Save to Firestore
+              saveUserData(user.uid, updated, sessionsRef.current || []).catch(err => {
+                console.error("Error auto-saving updated settings from registration role sync:", err);
+              });
+              return updated;
+            });
+          }
           
           let regCreated = data.createdAt;
           // Protect and correct uzmpsikologbusra@gmail.com's registration date
@@ -1496,6 +1520,20 @@ export default function App() {
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [sessions, selectedDate]);
 
+  // Apply owner session filter for the selected day's agenda
+  const displayedSessions = useMemo(() => {
+    if (settings.userRole !== 'owner') {
+      return filteredSessions;
+    }
+    if (ownerSessionFilter === 'mine') {
+      return filteredSessions.filter(s => s.type !== 'rent-income');
+    }
+    if (ownerSessionFilter === 'tenant') {
+      return filteredSessions.filter(s => s.type === 'rent-income');
+    }
+    return filteredSessions;
+  }, [filteredSessions, settings.userRole, ownerSessionFilter]);
+
   // Search results for header search box
   const searchedSessions = useMemo(() => {
     if (!headerSearchQuery.trim()) return [];
@@ -2274,6 +2312,7 @@ export default function App() {
                 clientName: tenantName,
                 isSyncedFromCalendar: true,
                 isFromMultiCalendar: true,
+                roomId: item.roomId,
                 notes: "" // Do not import calendar event name/description for privacy
               }));
               totalNewSessions = [...totalNewSessions, ...adjustedParsed];
@@ -2866,144 +2905,37 @@ export default function App() {
   }
 
   if (user && registrationStatus === 'approved' && !settings.userRole) {
-    const handleSaveRoleSelection = async () => {
-      if (!tempSelectedRole) return;
-      try {
-        setIsSavingRole(true);
-        const updatedSettings: AppSettings = {
-          ...settings,
-          userRole: tempSelectedRole,
-          ownerCalendars: tempSelectedRole === 'owner' ? [] : undefined,
-        };
-        
-        // Save in state
-        setSettings(updatedSettings);
-
-        // Save in localStorage (authenticated key and default key)
-        const userSettingsKey = `psycalcu_settings_${user.uid}`;
-        localStorage.setItem(userSettingsKey, JSON.stringify(updatedSettings));
-        localStorage.setItem('psycalcu_settings', JSON.stringify(updatedSettings));
-
-        // Save in Firestore users doc
-        await saveUserData(user.uid, updatedSettings, sessions);
-
-        // Update in Firestore registrations doc
-        try {
-          const regRef = doc(db, 'registrations', user.uid);
-          await setDoc(regRef, { userRole: tempSelectedRole }, { merge: true });
-        } catch (err) {
-          console.error("Error setting role in registrations:", err);
-        }
-
-        showToast(`Rolünüz başarıyla '${tempSelectedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan'}' olarak kaydedildi!`, 'success');
-      } catch (err: any) {
-        showToast(`Rol kaydedilirken hata oluştu: ${err.message || String(err)}`, 'error');
-      } finally {
-        setIsSavingRole(false);
-      }
-    };
-
     return (
-      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="role-selection-screen">
-        <div className="max-w-2xl w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 sm:p-10 space-y-8 relative overflow-hidden">
-          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-[#6b705c]/5 rounded-full pointer-events-none" />
-          <div className="absolute left-0 bottom-0 -translate-x-4 translate-y-4 w-24 h-24 bg-[#cb997e]/5 rounded-full pointer-events-none" />
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="waiting-role-assignment-screen">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 text-center space-y-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-[#6b705c]/5 rounded-full pointer-events-none" />
           
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
-              <span className="text-3xl">🎯</span>
-            </div>
-            <h2 className="text-3xl font-serif text-[#6b705c] pt-2">PsyCalcu'ya Hoş Geldiniz</h2>
+          <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto border border-amber-200">
+            <ShieldAlert className="w-8 h-8 animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-serif text-[#6b705c]">Rol Tanımlaması Bekleniyor</h2>
             <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
-            <p className="text-sm text-slate-500 max-w-md mx-auto pt-1">
-              Seans ve finansal ajandanızı en doğru şekilde organize edebilmemiz için lütfen uygulamadaki rolünüzü seçin:
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Ofis Sahibi (Owner) Card */}
-            <button
-              onClick={() => setTempSelectedRole('owner')}
-              className={`p-6 rounded-[2rem] border-2 text-left transition-all relative flex flex-col justify-between h-56 cursor-pointer group ${
-                tempSelectedRole === 'owner'
-                  ? 'border-[#6b705c] bg-[#6b705c]/5 shadow-xs'
-                  : 'border-[#e5e1d8] hover:border-[#6b705c]/50 hover:bg-slate-50'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                  tempSelectedRole === 'owner' ? 'bg-[#6b705c] text-white' : 'bg-[#6b705c]/10 text-[#6b705c]'
-                }`}>
-                  <Building className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-serif font-bold text-lg text-slate-800">Ofis Sahibi (Mülk Sahibi)</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Kendi terapi odalarını veya ofisini kiraya veren mülk sahipleri için. Terapistlerden gelen kira ödemelerini takip eder, oda takvimlerini eşleştirir.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#6b705c] mt-2">
-                <span>{tempSelectedRole === 'owner' ? '✓ Seçildi' : 'Seçmek İçin Tıkla'}</span>
-              </div>
-            </button>
-
-            {/* Ofis Kiralayan (Tenant) Card */}
-            <button
-              onClick={() => setTempSelectedRole('tenant')}
-              className={`p-6 rounded-[2rem] border-2 text-left transition-all relative flex flex-col justify-between h-56 cursor-pointer group ${
-                tempSelectedRole === 'tenant'
-                  ? 'border-[#6b705c] bg-[#6b705c]/5 shadow-xs'
-                  : 'border-[#e5e1d8] hover:border-[#6b705c]/50 hover:bg-slate-50'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                  tempSelectedRole === 'tenant' ? 'bg-[#cb997e] text-white' : 'bg-[#cb997e]/10 text-[#cb997e]'
-                }`}>
-                  <User className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-serif font-bold text-lg text-slate-800">Ofis Kiralayan (Terapist)</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Saatlik veya aylık oda kiralayarak seans yapan psikologlar/terapistler için. Seans bazlı veya aylık seans giderlerini, danışan bakıcı ve kira ödemelerini takip eder.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#cb997e] mt-2">
-                <span>{tempSelectedRole === 'tenant' ? '✓ Seçildi' : 'Seçmek İçin Tıkla'}</span>
-              </div>
-            </button>
-          </div>
+          <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            PsyCalcu hesabınız yönetici tarafından onaylanmıştır ancak henüz bir rol (Ofis Sahibi veya Ofis Kiralayan) tanımlanmamıştır. Kullanıma başlamak için sistem yöneticisinin rolünüzü ataması gerekmektedir. Lütfen yöneticiyle iletişime geçiniz.
+          </p>
 
           <div className="flex flex-col gap-3 pt-2">
             <button
-              onClick={handleSaveRoleSelection}
-              disabled={!tempSelectedRole || isSavingRole}
-              className={`w-full py-3.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
-                tempSelectedRole
-                  ? 'bg-[#6b705c] hover:bg-[#585c4c] text-white'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
+              onClick={() => window.location.reload()}
+              className="w-full py-3 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
-              {isSavingRole ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Rolünüz Kaydediliyor...
-                </>
-              ) : (
-                <>
-                  <span>🚀</span>
-                  Rolümü Onayla ve Uygulamaya Başla
-                </>
-              )}
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '4s' }} />
+              Kontrol Et / Yenile
             </button>
             <button
               onClick={handleLogout}
-              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer flex items-center justify-center gap-2"
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-[#e5e1d8] transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <span>🚪</span>
-              Farklı Hesapla Giriş Yap / Çıkış Yap
+              🚪 Çıkış Yap
             </button>
           </div>
         </div>
@@ -3422,18 +3354,6 @@ export default function App() {
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                      {/* Show/Hide Notes Switch */}
-                      <button
-                        onClick={toggleShowNotes}
-                        className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none"
-                        title={showNotes ? "Notları Gizle" : "Notları Göster"}
-                      >
-                        <span className="text-xs font-medium text-slate-500 group-hover:text-[#6b705c] transition-colors">Notları Göster</span>
-                        <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
-                          <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
-                        </div>
-                      </button>
-
                       {/* Show/Hide Explanations Switch */}
                       <button
                         onClick={toggleShowExplanations}
@@ -3493,18 +3413,65 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Owner Calendar Filter (Only for Property Owners) */}
+                  {settings.userRole === 'owner' && (
+                    <div className="px-4 md:px-6 pt-1 pb-3 border-b border-[#e5e1d8]/50 flex items-center justify-between gap-2 flex-wrap bg-slate-50/50" id="owner-agenda-filter">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-[#555a4a] uppercase tracking-wider">Ajanda Filtresi:</span>
+                      </div>
+                      <div className="flex items-center bg-white border border-[#e5e1d8] rounded-full p-0.5 shadow-3xs">
+                        <button
+                          onClick={() => setOwnerSessionFilter('all')}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
+                            ownerSessionFilter === 'all'
+                              ? 'bg-[#6b705c] text-white shadow-3xs'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Tümü ({filteredSessions.length})
+                        </button>
+                        <button
+                          onClick={() => setOwnerSessionFilter('mine')}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
+                            ownerSessionFilter === 'mine'
+                              ? 'bg-[#6b705c] text-white shadow-3xs'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Benim Seanslarım ({filteredSessions.filter(s => s.type !== 'rent-income').length})
+                        </button>
+                        <button
+                          onClick={() => setOwnerSessionFilter('tenant')}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
+                            ownerSessionFilter === 'tenant'
+                              ? 'bg-[#6b705c] text-white shadow-3xs'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Kiracı Seansları ({filteredSessions.filter(s => s.type === 'rent-income').length})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Session List */}
                   <div className="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto">
-                    {filteredSessions.length === 0 ? (
+                    {displayedSessions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 text-center">
                         <CalendarIcon className="w-12 h-12 text-[#a5a58d]/60 stroke-[1.5] mb-2" />
-                        <h4 className="text-sm font-semibold text-slate-600">Bu Tarihte Seansınız Yok</h4>
+                        <h4 className="text-sm font-semibold text-slate-600">
+                          {filteredSessions.length === 0 
+                            ? 'Bu Tarihte Seansınız Yok' 
+                            : 'Bu Filtrede Seans Yok'}
+                        </h4>
                         <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                          Yeni seans ekleyebilir veya Apple Takvim Entegrasyonu sekmesinden iCloud takviminizi senkronize edebilirsiniz.
+                          {filteredSessions.length === 0 
+                            ? 'Yeni seans ekleyebilir veya Apple Takvim Entegrasyonu sekmesinden iCloud takviminizi senkronize edebilirsiniz.'
+                            : 'Seçtiğiniz filtreye uygun seans bulunmamaktadır. Diğer filtrelere göz atabilirsiniz.'}
                         </p>
                       </div>
                     ) : (
-                      filteredSessions.map((session) => {
+                      displayedSessions.map((session) => {
                         const isCancelled = session.type === 'cancelled';
                         const isFaceToFace = session.type === 'face-to-face';
                         const hasPriceIncrease = session.type !== 'cancelled' && session.type !== 'non-session' && session.type !== 'rent-income' && (
@@ -3512,6 +3479,8 @@ export default function App() {
                           (session.hasBabysitterFee && session.babysitterFeeAmount > settings.defaultBabysitterFee) || 
                           (session.hasOfficeRentFee && session.officeRentFeeAmount > settings.defaultOfficeRentFee)
                         );
+                        const sessionRoom = settings.rooms?.find(r => r.id === session.roomId);
+                        const isTenantSession = session.type === 'rent-income';
                         
                         return (
                           <div
@@ -3521,12 +3490,10 @@ export default function App() {
                                 ? 'bg-red-50/20 border-red-100 opacity-60' 
                                 : session.type === 'non-session'
                                 ? 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/60'
-                                : session.type === 'rent-income'
-                                ? 'bg-indigo-50/20 border-indigo-200/50 hover:bg-indigo-50/40 hover:border-indigo-400'
+                                : isTenantSession
+                                ? 'bg-indigo-50/30 border-indigo-200 hover:bg-indigo-50/50 hover:border-indigo-400'
                                 : hasPriceIncrease
-                                ? session.isSyncedFromCalendar
-                                  ? 'bg-amber-50/25 border-dashed border-amber-300 hover:border-amber-400 shadow-3xs'
-                                  : 'bg-amber-50/35 border-solid border-amber-300 hover:border-amber-400 shadow-3xs'
+                                ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-300 ring-offset-1 ring-offset-white shadow-xs hover:bg-amber-50 hover:border-amber-400'
                                 : session.isSyncedFromCalendar
                                 ? isFaceToFace 
                                   ? 'bg-amber-50/10 border-dashed border-[#cb997e]/60 hover:border-[#cb997e] hover:shadow-xs' 
@@ -3548,22 +3515,26 @@ export default function App() {
                             </div>
 
                             {/* Divider strip */}
-                            <div className={`hidden sm:block w-[3px] h-10 rounded-full shrink-0 ${
+                            <div className={`hidden sm:block w-[4px] h-10 rounded-full shrink-0 ${
                               isCancelled 
                                 ? 'bg-red-300' 
                                 : session.type === 'non-session'
                                 ? 'bg-slate-400'
-                                : session.type === 'rent-income'
+                                : isTenantSession
                                 ? 'bg-indigo-500'
+                                : hasPriceIncrease
+                                ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse'
                                 : isFaceToFace 
-                                ? 'bg-amber-400' 
+                                ? 'bg-[#cb997e]' 
                                 : 'bg-emerald-400'
                             }`} />
 
                             {/* Client & Description */}
                             <div className="flex-1 w-full">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-sm font-bold text-slate-800">{session.clientName}</h4>
+                                <h4 className="text-sm font-bold text-slate-800">
+                                  {isTenantSession ? `Terapist: ${session.clientName}` : session.clientName}
+                                </h4>
                                 
                                 {/* Status badge */}
                                 {isCancelled ? (
@@ -3574,9 +3545,9 @@ export default function App() {
                                   <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <FileText className="w-2.5 h-2.5" /> SEANS DIŞI NOT
                                   </span>
-                                ) : session.type === 'rent-income' ? (
+                                ) : isTenantSession ? (
                                   <span className="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
-                                    <Building className="w-2.5 h-2.5" /> KİRA GELİRİ
+                                    <Building className="w-2.5 h-2.5" /> KİRALAYAN SEANSI
                                   </span>
                                 ) : isFaceToFace ? (
                                   <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
@@ -3585,6 +3556,27 @@ export default function App() {
                                 ) : (
                                   <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5">
                                     <Laptop className="w-2.5 h-2.5" /> ONLİNE
+                                  </span>
+                                )}
+
+                                {/* Owner-Tenant Role Badge */}
+                                {settings.userRole === 'owner' && !isTenantSession && session.type !== 'non-session' && (
+                                  <span className="text-[9px] bg-[#6b705c]/10 text-[#6b705c] px-2 py-0.5 rounded-full font-bold tracking-wider">
+                                    BENİM SEANSIM
+                                  </span>
+                                )}
+
+                                {/* Room Association Badge */}
+                                {sessionRoom && (
+                                  <span 
+                                    className="text-[9px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border shadow-3xs"
+                                    style={{ 
+                                      backgroundColor: `${sessionRoom.color || '#6b705c'}15`, 
+                                      color: sessionRoom.color || '#6b705c',
+                                      borderColor: `${sessionRoom.color || '#6b705c'}40`
+                                    }}
+                                  >
+                                    <Building className="w-2.5 h-2.5" /> {sessionRoom.name}
                                   </span>
                                 )}
 
@@ -3601,8 +3593,8 @@ export default function App() {
 
                                 {/* Price Hike Badge */}
                                 {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && session.price > settings.defaultSessionPrice && (
-                                  <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-3xs animate-pulse" title={`Varsayılan seans fiyatından (₺${settings.defaultSessionPrice}) daha yüksek bir fiyata sahiptir.`}>
-                                    <Sparkles className="w-2.5 h-2.5 text-amber-600" /> ZAMLI SEANS
+                                  <span className="text-[9px] bg-amber-500 text-white border border-amber-600 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-xs animate-pulse" title={`Varsayılan seans fiyatından (₺${settings.defaultSessionPrice}) daha yüksek bir fiyata sahiptir.`}>
+                                    <Sparkles className="w-2.5 h-2.5 text-white animate-spin" style={{ animationDuration: '3s' }} /> ZAMLI SEANS
                                   </span>
                                 )}
 
@@ -3623,7 +3615,7 @@ export default function App() {
                                     tempNotesCache[session.id] ? (
                                       <span>{tempNotesCache[session.id]}</span>
                                     ) : hasFetchedInstantNotes ? (
-                                      <span className="text-slate-400 font-normal">Açıklama girilmemiş.</span>
+                                      <span className="text-slate-400 font-normal">not girilmemiş</span>
                                     ) : (
                                       <span className="text-slate-400 font-normal">
                                         Takvim açıklamaları gizlendi.{' '}
@@ -3637,7 +3629,7 @@ export default function App() {
                                       </span>
                                     )
                                   ) : (
-                                    session.notes || 'Açıklama girilmemiş.'
+                                    session.notes || 'not girilmemiş'
                                   )}
                                 </p>
                               )}
@@ -4584,7 +4576,7 @@ export default function App() {
 
                                 {(session.notes || (session.isSyncedFromCalendar && (tempNotesCache[session.id] || hasFetchedInstantNotes))) && (
                                   <p className="text-xs text-slate-500 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
-                                    <strong>Not:</strong> {session.isSyncedFromCalendar ? (tempNotesCache[session.id] || 'Açıklama girilmemiş.') : (session.notes || 'Açıklama girilmemiş.')}
+                                    <strong>Not:</strong> {session.isSyncedFromCalendar ? (tempNotesCache[session.id] || 'not girilmemiş') : (session.notes || 'not girilmemiş')}
                                   </p>
                                 )}
                               </div>

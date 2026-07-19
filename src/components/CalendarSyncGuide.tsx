@@ -264,6 +264,7 @@ export default function CalendarSyncGuide({
   const handleAddMultiCalendar = () => {
     const inputEl = document.getElementById('new-multi-calendar-url') as HTMLInputElement;
     const nameEl = document.getElementById('new-multi-calendar-name') as HTMLInputElement;
+    const roomEl = document.getElementById('new-multi-calendar-room') as HTMLSelectElement;
     if (!inputEl) return;
     const url = inputEl.value.trim();
     if (!url) {
@@ -275,10 +276,12 @@ export default function CalendarSyncGuide({
       return;
     }
     const tenantName = nameEl?.value.trim() || `Terapist ${multiCalendars.length + 1}`;
-    const updatedList: OwnerCalendar[] = [...multiCalendars, { url, tenantName }];
+    const roomId = roomEl?.value || undefined;
+    const updatedList: OwnerCalendar[] = [...multiCalendars, { url, tenantName, roomId }];
     setMultiCalendars(updatedList);
     inputEl.value = '';
     if (nameEl) nameEl.value = '';
+    if (roomEl) roomEl.value = '';
     
     // Save settings immediately for best UX
     onSaveSettings({
@@ -885,6 +888,12 @@ export default function CalendarSyncGuide({
                     <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full block">
                       Terapist: {item.tenantName}
                     </span>
+                    {item.roomId && settings.rooms && (
+                      <span className="text-[11px] font-medium text-slate-600 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-full block flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Oda: {settings.rooms.find(r => r.id === item.roomId)?.name || 'Bilinmeyen Oda'}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 mt-1 pl-3.5">
                     <span className="text-xs text-slate-500 font-mono truncate max-w-md sm:max-w-lg md:max-w-xl">{item.url}</span>
@@ -920,7 +929,7 @@ export default function CalendarSyncGuide({
 
             {multiCalendars.length < 10 ? (
               <div className="bg-[#fdfbf7]/50 p-4 rounded-2xl border border-dashed border-[#e5e1d8] space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI / PSİKOLOG ADI</label>
                     <div className="relative">
@@ -933,16 +942,31 @@ export default function CalendarSyncGuide({
                       />
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI TAKVİMİ LİNKİ (webcal:// veya https://)</label>
+                  <div className="space-y-1 col-span-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI TAKVİM LİNKİ</label>
                     <div className="relative">
                       <Link2 className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
                       <input
                         type="text"
                         id="new-multi-calendar-url"
-                        placeholder="webcal://calendar.google.com/... veya icloud.com/..."
+                        placeholder="webcal://calendar.google.com/..."
                         className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c]"
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">İLİŞKİLİ ODA (İSTEĞE BAĞLI)</label>
+                    <div className="relative">
+                      <Building className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                      <select
+                        id="new-multi-calendar-room"
+                        className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] appearance-none cursor-pointer"
+                      >
+                        <option value="">Oda Atama Yok</option>
+                        {settings.rooms && settings.rooms.map(room => (
+                          <option key={room.id} value={room.id}>{room.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
