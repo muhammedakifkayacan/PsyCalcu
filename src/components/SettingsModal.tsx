@@ -112,40 +112,43 @@ export default function SettingsModal({
             </div>
           </div>
 
-          {/* User Role Selection */}
-          <div className="space-y-1.5">
+          {/* User Role Display (Read-Only) */}
+          <div className="space-y-1.5 pb-1">
             <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Uygulama Rolünüz</label>
-            <div className="grid grid-cols-2 gap-2 bg-[#fdfbf7] p-1 border border-[#e5e1d8] rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setUserRole('tenant')}
-                className={`py-2 px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  userRole === 'tenant'
-                    ? 'bg-[#cb997e] text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <User className="w-3.5 h-3.5" />
-                Ofis Kiralayan
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserRole('owner')}
-                className={`py-2 px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  userRole === 'owner'
-                    ? 'bg-[#6b705c] text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <Building className="w-3.5 h-3.5" />
-                Ofis Sahibi
-              </button>
+            <div className="flex items-center gap-3 px-4 py-3 bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl relative overflow-hidden group">
+              {userRole === 'owner' ? (
+                <>
+                  <div className="w-8 h-8 rounded-xl bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0">
+                    <Building className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-bold text-[#6b705c] leading-tight flex items-center gap-1">
+                      Ofis Sahibi (Mülk Sahibi)
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </h4>
+                    <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Rolünüz yönetici tarafından tanımlanmıştır ve değiştirilemez.</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-xl bg-[#cb997e]/10 text-[#cb997e] flex items-center justify-center shrink-0">
+                    <User className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-bold text-[#cb997e] leading-tight flex items-center gap-1">
+                      Ofis Kiralayan (Terapist)
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </h4>
+                    <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Rolünüz yönetici tarafından tanımlanmıştır ve değiştirilemez.</p>
+                  </div>
+                </>
+              )}
             </div>
             {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium leading-relaxed animate-fade-in">
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1">
                 {userRole === 'owner' 
-                  ? 'Mülk sahibi rolündesiniz. Çoklu takvim entegrasyonu yapabilir ve kira gelirlerinizi listeleyebilirsiniz.'
-                  : 'Terapist/Kiracı rolündesiniz. Kendi seanslarınızı, seans başı bakıcı/kira giderlerinizi takip edebilirsiniz.'}
+                  ? 'Mülk sahibi yetkilerinizle çoklu takvim entegrasyonu yapabilir ve kira gelirlerinizi listeleyebilirsiniz.'
+                  : 'Terapist yetkilerinizle seanslarınızı, seans başı bakıcı/kira giderlerinizi ve borçlarınızı takip edebilirsiniz.'}
               </p>
             )}
           </div>
