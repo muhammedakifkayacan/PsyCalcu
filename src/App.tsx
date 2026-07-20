@@ -730,6 +730,11 @@ export default function App() {
             setSessions(cloudSessions);
             setSettings(cloudData.settings);
             
+            // Auto-sync public availability to make sure public_availability collection is populated
+            saveUserData(user.uid, cloudData.settings, cloudSessions).catch(err => {
+              console.warn("Public availability auto-sync failed:", err);
+            });
+            
             // Update the user-specific localStorage cache immediately with the newest cloud data
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
@@ -4738,46 +4743,77 @@ export default function App() {
       <footer className="border-t border-[#e5e1d8] bg-white mt-12 pt-6 pb-24 sm:pb-28 text-center text-xs text-slate-400">
         <p>© 2026 PsyCalcu • <span className="font-bold text-[#6b705c]">v1.6.0</span> • Apple Takvim & Seans Muhasebe Entegrasyonu</p>
         <p className="mt-1 font-serif italic text-[#a5a58d]">Ruh sağlığınız kadar finansal sağlığınız da değerlidir.</p>
+        {user && (
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200/60 hover:border-transparent rounded-full transition-all cursor-pointer shadow-3xs hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0"
+              title="Çıkış Yap"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sistemden Güvenli Çıkış Yap
+            </button>
+          </div>
+        )}
       </footer>
 
       {/* Custom Confirmation Dialog Overlay */}
-      {confirmState && confirmState.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in" id="confirm-dialog-overlay">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl border border-slate-100 flex flex-col gap-4 animate-scale-up" id="confirm-dialog-container">
-            <div className="flex gap-3 items-start">
-              <div className="p-2 bg-amber-50 rounded-xl text-amber-600 shrink-0">
-                <AlertCircle className="w-5 h-5" />
+      <AnimatePresence>
+        {confirmState && confirmState.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="confirm-dialog-overlay">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmState(null)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-md"
+            />
+            
+            {/* Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+              className="relative bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl border border-slate-100 flex flex-col gap-4 z-10"
+              id="confirm-dialog-container"
+            >
+              <div className="flex gap-3 items-start">
+                <div className="p-2 bg-amber-50 rounded-xl text-amber-600 shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-800 font-sans">{confirmState.title}</h3>
+                  <p className="text-xs text-slate-500 font-sans leading-relaxed">{confirmState.message}</p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-800 font-sans">{confirmState.title}</h3>
-                <p className="text-xs text-slate-500 font-sans leading-relaxed">{confirmState.message}</p>
+              <div className="flex gap-3 justify-end mt-2">
+                <button
+                  onClick={() => setConfirmState(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  disabled={confirmState.hasCountdown && confirmCountdown > 0}
+                  onClick={() => {
+                    confirmState.onConfirm();
+                    setConfirmState(null);
+                  }}
+                  className={`px-4 py-2 text-xs font-semibold text-white rounded-xl shadow-sm transition-all ${
+                    confirmState.hasCountdown && confirmCountdown > 0
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                      : 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                  }`}
+                >
+                  {confirmState.hasCountdown && confirmCountdown > 0 ? `Onayla (${confirmCountdown}s)` : 'Onayla'}
+                </button>
               </div>
-            </div>
-            <div className="flex gap-3 justify-end mt-2">
-              <button
-                onClick={() => setConfirmState(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              >
-                Vazgeç
-              </button>
-              <button
-                disabled={confirmState.hasCountdown && confirmCountdown > 0}
-                onClick={() => {
-                  confirmState.onConfirm();
-                  setConfirmState(null);
-                }}
-                className={`px-4 py-2 text-xs font-semibold text-white rounded-xl shadow-sm transition-all ${
-                  confirmState.hasCountdown && confirmCountdown > 0
-                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                    : 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
-                }`}
-              >
-                {confirmState.hasCountdown && confirmCountdown > 0 ? `Onayla (${confirmCountdown}s)` : 'Onayla'}
-              </button>
-            </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Toast Notification Overlay */}
       {toast && (

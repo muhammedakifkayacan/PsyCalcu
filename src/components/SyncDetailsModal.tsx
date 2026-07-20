@@ -55,14 +55,15 @@ export default function SyncDetailsModal({ isOpen, onClose, syncDetails }: SyncD
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md"
           />
 
           {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            initial={{ opacity: 0, scale: 0.94, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="bg-white rounded-[2rem] w-full max-w-xl max-h-[85vh] overflow-hidden border border-[#e5e1d8] shadow-2xl flex flex-col z-10"
             id="sync-details-modal-box"
           >

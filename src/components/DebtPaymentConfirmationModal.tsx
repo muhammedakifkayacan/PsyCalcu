@@ -53,15 +53,15 @@ export default function DebtPaymentConfirmationModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md"
           />
 
           {/* Modal Content */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={{ opacity: 0, scale: 0.94, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="relative bg-white w-full max-w-md overflow-hidden rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl z-50 p-6 md:p-8 flex flex-col gap-6"
             id="debt-payment-confirm-modal"
           >

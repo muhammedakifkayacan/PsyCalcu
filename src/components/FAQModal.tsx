@@ -180,15 +180,15 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
           />
 
           {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.94, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', duration: 0.4 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="relative bg-white w-full max-w-2xl rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] z-10"
             id="faq-modal-container"
           >

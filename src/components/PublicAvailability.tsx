@@ -58,13 +58,33 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
     async function loadData() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/public-availability/${userId}`);
-        if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error('Klinik veya terapist bulunamadı.');
-          }
-          throw new Error('Müsaitlik bilgileri yüklenirken sunucu hatası oluştu.');
+        if (!userId || userId === 'undefined' || userId === 'null' || userId.trim() === '') {
+          throw new Error('Geçersiz paylaşım linki veya klinik ID\'si.');
         }
+
+        const res = await fetch(`/api/public-availability/${userId}`);
+        
+        // Safety check for Content-Type to avoid Parsing HTML as JSON (which causes the "Unexpected token '<'" error)
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+          throw new Error('Sunucu müsaitlik bilgisi yerine bir web sayfası (HTML) döndürdü. Lütfen linki doğru kopyaladığınızdan ve klinisyenin paneline en az bir kere girdiğinden emin olun.');
+        }
+
+        if (!res.ok) {
+          let errorMessage = 'Müsaitlik bilgileri yüklenirken sunucu hatası oluştu.';
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.error) {
+              errorMessage = errJson.error;
+            }
+          } catch (e) {
+            if (res.status === 404) {
+              errorMessage = 'Klinik veya terapist bulunamadı.';
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
         const json = await res.json();
         setData(json);
         setError(null);

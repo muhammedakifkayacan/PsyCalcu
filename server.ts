@@ -279,12 +279,17 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
     return result;
   }
 
+  // API Route for secure, public room availability data (without userId, to prevent HTML routing fall-through)
+  app.get("/api/public-availability", (req, res) => {
+    return res.status(400).json({ error: "Kullanıcı ID gereklidir." });
+  });
+
   // API Route for secure, public room availability data
   app.get("/api/public-availability/:userId", async (req, res) => {
     try {
       const { userId } = req.params;
-      if (!userId) {
-        return res.status(400).json({ error: "Kullanıcı ID gereklidir." });
+      if (!userId || userId === "undefined" || userId === "null" || userId.trim() === "") {
+        return res.status(400).json({ error: "Geçerli bir Kullanıcı ID gereklidir." });
       }
 
       const configPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -318,7 +323,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         console.error("Failed to fetch public-safe availability via REST API:", restErr);
       }
 
-      // 2. Fallback: If not found in public_availability, try Admin SDK if initialized, or the main users collection
+      // 2. Fallback: If not found in public_availability, try Admin SDK if initialized
       if (!rawData) {
         let dbInstance = adminDb;
         if (!dbInstance) {
@@ -349,20 +354,12 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         }
       }
 
-      // 3. Fallback: If still not found, try the users collection via REST API
+      // 3. Fallback: If still not found, do NOT try unauthenticated REST query on private 'users' collection (guaranteed 403),
+      // instead return a clean, friendly 404 message.
       if (!rawData) {
-        console.log(`Last fallback: Trying users collection via REST API for: ${userId}`);
-        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/users/${userId}?key=${apiKey}`;
-        const response = await fetch(firestoreUrl);
-        if (response.ok) {
-          const docData = await response.json();
-          rawData = parseFirestoreDocument(docData);
-        } else {
-          if (response.status === 404) {
-            return res.status(404).json({ error: "Klinik veya terapist bulunamadı." });
-          }
-          throw new Error(`Firestore REST API returned ${response.status}: ${response.statusText}`);
-        }
+        return res.status(404).json({
+          error: "Klinik müsaitlik bilgisi bulunamadı. Lütfen ilgili klinisyenin paneline giriş yaparak müsaitlik ayarlarını en az bir kere güncellediğinden emin olun."
+        });
       }
 
       const settings = rawData.settings || rawData;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
 import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
@@ -152,8 +153,6 @@ export default function SessionModal({
     }
   }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime]);
 
-  if (!isOpen) return null;
-
   const handleTypeChange = (newType: SessionType) => {
     setType(newType);
     if (newType === 'cancelled') {
@@ -222,11 +221,27 @@ export default function SessionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" id="session-modal-overlay">
-      <div 
-        className="w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh]"
-        id="session-modal-content"
-      >
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="session-modal-overlay">
+          {/* Backdrop Overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/40 backdrop-blur-md"
+          />
+
+          {/* Modal Content */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10"
+            id="session-modal-content"
+          >
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7] shrink-0">
           <div>
@@ -682,7 +697,9 @@ export default function SessionModal({
             </div>
           </div>
         </form>
-      </div>
+      </motion.div>
     </div>
+      )}
+    </AnimatePresence>
   );
 }
