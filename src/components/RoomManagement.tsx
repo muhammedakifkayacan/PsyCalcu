@@ -384,40 +384,30 @@ export default function RoomManagement({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             {/* View Selectors & Desktop Lock Button */}
             <div className="flex items-center gap-2 justify-between sm:justify-start">
-              <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] flex-1 sm:flex-initial">
-                <button
-                  type="button"
-                  onClick={() => setOccupancyView('daily')}
-                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    occupancyView === 'daily'
-                      ? 'bg-[#6b705c] text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Günlük
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOccupancyView('weekly')}
-                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    occupancyView === 'weekly'
-                      ? 'bg-[#6b705c] text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Haftalık
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOccupancyView('monthly')}
-                  className={`flex-1 sm:flex-none text-center px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    occupancyView === 'monthly'
-                      ? 'bg-[#6b705c] text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Aylık
-                </button>
+              <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] flex-1 sm:flex-initial gap-0.5 relative z-10">
+                {(['daily', 'weekly', 'monthly'] as const).map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setOccupancyView(view)}
+                    className={`relative flex-1 sm:flex-none text-center px-3.5 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                      occupancyView === view
+                        ? 'text-white'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {occupancyView === view && (
+                      <motion.div
+                        layoutId="roomOccupancyViewTabIndicator"
+                        className="absolute inset-0 bg-[#6b705c] rounded-lg -z-10 shadow-xs"
+                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    {view === 'daily' && 'Günlük'}
+                    {view === 'weekly' && 'Haftalık'}
+                    {view === 'monthly' && 'Aylık'}
+                  </button>
+                ))}
               </div>
 
               {/* Desktop/Tablet-only Lock Button */}

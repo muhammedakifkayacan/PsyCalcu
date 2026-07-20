@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon, 
   LogOut 
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
 import { AppNotification, AppSettings, Session, SessionType } from '../types';
 
@@ -365,56 +366,98 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               <button
                 id="tab-agenda"
                 onClick={() => setActiveTab('agenda')}
-                className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'agenda' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
+                {activeTab === 'agenda' && (
+                  <motion.div
+                    layoutId="desktopActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Günlük Ajanda
               </button>
               <button
                 id="tab-stats"
                 onClick={() => setActiveTab('stats')}
-                className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'stats' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
+                {activeTab === 'stats' && (
+                  <motion.div
+                    layoutId="desktopActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Muhasebe Raporu {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
               </button>
               <button
                 id="tab-debts"
                 onClick={() => setActiveTab('debts')}
-                className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                  activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
+                {activeTab === 'debts' && (
+                  <motion.div
+                    layoutId="desktopActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
               </button>
               <button
                 id="tab-sync"
                 onClick={() => setActiveTab('sync')}
-                className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'sync' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                  activeTab === 'sync' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
+                {activeTab === 'sync' && (
+                  <motion.div
+                    layoutId="desktopActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Takvim Entegrasyonu {featuresCalendarAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
               </button>
               <button
                 id="tab-backup"
                 onClick={() => setActiveTab('backup')}
-                className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'backup' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'backup' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
+                {activeTab === 'backup' && (
+                  <motion.div
+                    layoutId="desktopActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Yedek & E-Tablo
               </button>
               {settings.userRole === 'owner' && (
                 <button
                   id="tab-rooms"
                   onClick={() => setActiveTab('rooms')}
-                  className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                    activeTab === 'rooms' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                  className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                    activeTab === 'rooms' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                   }`}
                 >
+                  {activeTab === 'rooms' && (
+                    <motion.div
+                      layoutId="desktopActiveTabIndicator"
+                      className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
                   Odalar & Doluluk 🛋️
                 </button>
               )}
@@ -422,10 +465,17 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <button
                   id="tab-admin"
                   onClick={() => setActiveTab('admin')}
-                  className={`px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                    activeTab === 'admin' ? 'bg-[#cb997e] text-white shadow-xs' : 'text-slate-600 hover:bg-[#e5e5df]'
+                  className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
+                    activeTab === 'admin' ? 'text-white z-10' : 'text-slate-600 hover:text-slate-800'
                   }`}
                 >
+                  {activeTab === 'admin' && (
+                    <motion.div
+                      layoutId="desktopActiveTabIndicator"
+                      className="absolute inset-0 bg-[#cb997e] rounded-full -z-10 shadow-3xs"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
                   Yönetici Paneli
                 </button>
               )}
@@ -645,56 +695,98 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             <button
               id="tab-agenda"
               onClick={() => setActiveTab('agenda')}
-              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                activeTab === 'agenda' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+                activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c]'
               }`}
             >
+              {activeTab === 'agenda' && (
+                <motion.div
+                  layoutId="mobileActiveTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               Günlük Ajanda
             </button>
             <button
               id="tab-stats"
               onClick={() => setActiveTab('stats')}
-              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'stats' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c]'
               }`}
             >
+              {activeTab === 'stats' && (
+                <motion.div
+                  layoutId="mobileActiveTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               Muhasebe Raporu {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
             </button>
             <button
               id="tab-debts"
               onClick={() => setActiveTab('debts')}
-              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'debts' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c]'
               }`}
             >
+              {activeTab === 'debts' && (
+                <motion.div
+                  layoutId="mobileActiveTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
             </button>
             <button
               id="tab-sync"
               onClick={() => setActiveTab('sync')}
-              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'sync' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                activeTab === 'sync' ? 'text-white z-10' : 'text-[#6b705c]'
               }`}
             >
+              {activeTab === 'sync' && (
+                <motion.div
+                  layoutId="mobileActiveTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               Takvim Entegrasyonu {featuresCalendarAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
             </button>
             <button
               id="tab-backup"
               onClick={() => setActiveTab('backup')}
-              className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                activeTab === 'backup' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+                activeTab === 'backup' ? 'text-white z-10' : 'text-[#6b705c]'
               }`}
             >
+              {activeTab === 'backup' && (
+                <motion.div
+                  layoutId="mobileActiveTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               Yedek & E-Tablo
             </button>
             {settings.userRole === 'owner' && (
               <button
                 id="tab-rooms"
                 onClick={() => setActiveTab('rooms')}
-                className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'rooms' ? 'bg-[#6b705c] text-white shadow-sm' : 'text-[#6b705c] hover:bg-[#e5e5df]'
+                className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                  activeTab === 'rooms' ? 'text-white z-10' : 'text-[#6b705c]'
                 }`}
               >
+                {activeTab === 'rooms' && (
+                  <motion.div
+                    layoutId="mobileActiveTabIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Odalar & Doluluk 🛋️
               </button>
             )}
@@ -702,10 +794,17 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               <button
                 id="tab-admin"
                 onClick={() => setActiveTab('admin')}
-                className={`px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'admin' ? 'bg-[#cb997e] text-white shadow-sm' : 'text-slate-600 hover:bg-[#e5e5df]'
+                className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'admin' ? 'text-white z-10' : 'text-slate-600'
                 }`}
               >
+                {activeTab === 'admin' && (
+                  <motion.div
+                    layoutId="mobileActiveTabIndicator"
+                    className="absolute inset-0 bg-[#cb997e] rounded-full -z-10 shadow-3xs"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
                 Yönetici Paneli
               </button>
             )}

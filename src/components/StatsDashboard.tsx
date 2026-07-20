@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Session, AppSettings, getNormalizedClientName } from '../types';
 import { Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface StatsDashboardProps {
   sessions: Session[];
@@ -254,7 +255,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
         </div>
 
         {/* Preset Selector */}
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1 relative z-10">
           {[
             { id: 'all', label: 'Tüm Zamanlar' },
             { id: 'thisMonth', label: 'Bu Ay' },
@@ -266,12 +267,19 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
             <button
               key={p.id}
               onClick={() => setPreset(p.id)}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+              className={`relative px-4 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
                 preset === p.id
-                  ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
+                  ? 'text-white border-transparent'
                   : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-[#f5f5f0]'
               }`}
             >
+              {preset === p.id && (
+                <motion.div
+                  layoutId="statsPresetTabIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-xl -z-10 shadow-sm"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               {p.label}
             </button>
           ))}
