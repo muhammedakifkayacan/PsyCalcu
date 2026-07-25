@@ -83,21 +83,26 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
     // Also save public-safe availability data to a separate collection for secure public access
     try {
       const publicDocRef = doc(db, 'public_availability', userId);
-      const publicSessions = (sessions || []).map((s: Session) => ({
-        id: s.id,
-        date: s.date,
-        time: s.time,
-        duration: s.duration || 60,
-        roomId: s.roomId,
-        type: s.type === 'cancelled' ? 'cancelled' : 'busy'
-      }));
-      const publicAvailabilityData = {
-        therapistName: settings.therapistName || "Terapist",
-        rooms: settings.rooms || [],
-        blockedSlots: settings.blockedSlots || [],
+      const publicSessions = (sessions || []).map((s: Session) => {
+        const item: any = {
+          id: s.id || "",
+          date: s.date || "",
+          time: s.time || "",
+          duration: s.duration || 60,
+          type: s.type === 'cancelled' ? 'cancelled' : 'busy'
+        };
+        if (s.roomId) {
+          item.roomId = s.roomId;
+        }
+        return item;
+      });
+      const publicAvailabilityData = JSON.parse(JSON.stringify({
+        therapistName: settings?.therapistName || "Terapist",
+        rooms: settings?.rooms || [],
+        blockedSlots: settings?.blockedSlots || [],
         sessions: publicSessions,
         updatedAt: new Date().toISOString()
-      };
+      }));
       await setDoc(publicDocRef, publicAvailabilityData);
     } catch (pubErr) {
       console.error("Error saving public-safe availability data: ", pubErr);

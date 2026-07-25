@@ -619,6 +619,18 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 >
                   <SettingsIcon className="w-3.5 h-3.5" />
                 </button>
+
+                {/* Mobile Logout Button */}
+                {user && (
+                  <button
+                    id="mobile-logout-btn"
+                    onClick={handleLogout}
+                    className="w-8 h-8 rounded-full border border-rose-200 bg-rose-50 flex items-center justify-center text-rose-600 hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shadow-3xs"
+                    title="Güvenli Çıkış Yap"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           )}

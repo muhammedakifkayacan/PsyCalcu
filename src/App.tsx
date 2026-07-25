@@ -67,6 +67,7 @@ import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, set
 import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
+import { PullToRefresh } from './components/PullToRefresh';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -2369,6 +2370,30 @@ export default function App() {
     }
   };
 
+  // Pull-to-refresh handler for mobile & manual pull
+  const handlePageRefresh = async () => {
+    try {
+      if (user && registrationStatus === 'approved') {
+        const cloudData = await fetchUserData(user.uid);
+        if (cloudData) {
+          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
+          setSessions(cloudSessions);
+          setSettings(cloudData.settings);
+          
+          const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+          const userSettingsKey = `psycalcu_settings_${user.uid}`;
+          localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
+          localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
+        }
+      }
+      await handleManualCalendarSync(false);
+      showToast('Tüm verileriniz ve takviminiz güncellendi 🔄', 'success');
+    } catch (err) {
+      console.error("Page refresh error:", err);
+      showToast('Güncelleme sırasında bir sorun oluştu.', 'error');
+    }
+  };
+
   // Reset demo data
   const handleResetData = () => {
     const sessionCount = sessions.length;
@@ -2951,7 +2976,8 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
+    <PullToRefresh onRefresh={handlePageRefresh}>
+      <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
       
       {/* Header Navigation */}
       <HeaderNavigation
@@ -4861,6 +4887,7 @@ export default function App() {
           Yeni Seans Ekle
         </button>
       </div>
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }
