@@ -68,6 +68,7 @@ import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 import { PullToRefresh } from './components/PullToRefresh';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -4873,6 +4874,9 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* PWA Home Screen Installation Banner */}
+      <PWAInstallBanner />
 
       {/* Floating Bottom Action Bar for Quick Session Creation */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none" id="floating-bottom-action-bar">
