@@ -8,11 +8,14 @@ import {
   Lightbulb, 
   HelpCircle, 
   Settings as SettingsIcon, 
-  LogOut 
+  LogOut,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
 import { AppNotification, AppSettings, Session, SessionType } from '../types';
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface HeaderNavigationProps {
   isMobile: boolean;
@@ -85,6 +88,17 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   setIsSettingsOpen,
   handleLogout
 }) => {
+  const { isPrivacyMode, togglePrivacyMode, formatMoney } = usePrivacy();
+
+  const handlePrivacyToggle = () => {
+    togglePrivacyMode();
+    if (!isPrivacyMode) {
+      showToast('Gizlilik modu açıldı 👁️‍🗨️ (Tüm tutarlar gizlendi)', 'info');
+    } else {
+      showToast('Gizlilik modu kapatıldı 👁️ (Tutarlar gösteriliyor)', 'info');
+    }
+  };
+
   return (
     <nav className={`sticky top-0 z-40 flex flex-col lg:flex-row items-center justify-between px-6 md:px-8 border-b border-[#e5e1d8] bg-white transition-all duration-300 ${
       isHeaderCollapsed ? 'gap-0 py-2 shadow-xs' : 'gap-4 py-4 shadow-none'
@@ -188,7 +202,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                                   <span>•</span>
                                   <span>{session.time}</span>
                                   <span>•</span>
-                                  <span className="text-[#cb997e]">{session.price} ₺</span>
+                                  <span className="text-[#cb997e]">{formatMoney(session.price)}</span>
                                 </div>
                               </div>
                               
@@ -315,6 +329,20 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   setIsSyncDetailsModalOpen(true);
                 }}
               />
+
+              {/* Privacy Mode Toggle Button */}
+              <button
+                id="toggle-privacy-btn"
+                onClick={handlePrivacyToggle}
+                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+                  isPrivacyMode
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-md animate-pulse'
+                    : 'bg-[#fdfbf7] text-slate-600 hover:bg-[#f5f5f0] border-[#e5e1d8]'
+                }`}
+                title={isPrivacyMode ? "Gizlilik Modu Açık (Paraları Göster)" : "Gizlilik Modu Kapalı (Paraları Gizle)"}
+              >
+                {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
 
               <button
                 id="toggle-explanations-btn"
@@ -584,6 +612,20 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <Search className="w-3.5 h-3.5" />
                 </button>
 
+                {/* Privacy Mode Toggle Button */}
+                <button
+                  id="toggle-privacy-btn-mobile"
+                  onClick={handlePrivacyToggle}
+                  className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
+                    isPrivacyMode
+                      ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
+                      : 'bg-[#fdfbf7] text-slate-600 hover:bg-[#f5f5f0] border-[#e5e1d8]'
+                  }`}
+                  title={isPrivacyMode ? "Gizlilik Modu Açık (Paraları Göster)" : "Gizlilik Modu Kapalı (Paraları Gizle)"}
+                >
+                  {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+
                 {/* Notifications Bell */}
                 <NotificationCenter
                   notifications={allNotifications}
@@ -673,7 +715,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                             <span>•</span>
                             <span>{session.time}</span>
                             <span>•</span>
-                            <span className="text-[#cb997e]">{session.price} ₺</span>
+                            <span className="text-[#cb997e]">{formatMoney(session.price)}</span>
                           </div>
                         </div>
                         

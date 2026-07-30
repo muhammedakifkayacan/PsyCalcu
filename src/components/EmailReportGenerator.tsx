@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Mail, Copy, Check, Calendar, ArrowRight, Sparkles, TrendingUp, DollarSign, Clock, HelpCircle } from 'lucide-react';
 import { Session, AppSettings, toTurkishUpper } from '../types';
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface EmailReportGeneratorProps {
   sessions: Session[];
@@ -11,6 +12,7 @@ interface EmailReportGeneratorProps {
 }
 
 export default function EmailReportGenerator({ sessions, settings, showToast, userEmail, showExplanations = true }: EmailReportGeneratorProps) {
+  const { formatMoney } = usePrivacy();
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -162,12 +164,12 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
     body += `    - Ödemesi Alınan: ${reportData.paidSessionsCount} adet\n`;
     body += `    - Bekleyen/Ödenmemiş: ${reportData.unpaidSessionsCount} adet\n`;
     body += `  - İptal Edilen Seanslar: ${reportData.cancelledCount} adet\n`;
-    body += `• Ödenen Brüt Gelir: ${reportData.grossIncome.toLocaleString('tr-TR')} TL\n`;
-    body += `• Bekleyen Alacak (Ödenmemiş): ${reportData.pendingReceivables.toLocaleString('tr-TR')} TL\n`;
-    body += `• Toplam Gider (Ödenen Seansların): ${reportData.totalExpenses.toLocaleString('tr-TR')} TL\n`;
-    body += `  - Bakıcı Ödemeleri: ${reportData.babysitterFees.toLocaleString('tr-TR')} TL\n`;
-    body += `  - Ofis Kira Ödemeleri: ${reportData.officeRentExpenses.toLocaleString('tr-TR')} TL\n`;
-    body += `• NET GELİR (ÖDENEN KAZANÇ): ${reportData.netIncome.toLocaleString('tr-TR')} TL\n\n`;
+    body += `• Ödenen Brüt Gelir: ${formatMoney(reportData.grossIncome, { showSymbol: false })} TL\n`;
+    body += `• Bekleyen Alacak (Ödenmemiş): ${formatMoney(reportData.pendingReceivables, { showSymbol: false })} TL\n`;
+    body += `• Toplam Gider (Ödenen Seansların): ${formatMoney(reportData.totalExpenses, { showSymbol: false })} TL\n`;
+    body += `  - Bakıcı Ödemeleri: ${formatMoney(reportData.babysitterFees, { showSymbol: false })} TL\n`;
+    body += `  - Ofis Kira Ödemeleri: ${formatMoney(reportData.officeRentExpenses, { showSymbol: false })} TL\n`;
+    body += `• NET GELİR (ÖDENEN KAZANÇ): ${formatMoney(reportData.netIncome, { showSymbol: false })} TL\n\n`;
 
     body += `📅 HAFTALIK BÖLÜM RAPORU:\n`;
     body += `${subDivider}\n`;
@@ -180,10 +182,10 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
       
       body += `📍 ${w.name}\n`;
       body += `  - Seanslar: ${w.sessions.length} seans (${activeCount} aktif [${paidCount} ödenen, ${unpaidCount} bekleyen], ${cancelledCount} iptal)\n`;
-      body += `  - Ödenen Gelir: ${w.gross.toLocaleString('tr-TR')} TL\n`;
-      body += `  - Bekleyen Alacak: ${w.pending.toLocaleString('tr-TR')} TL\n`;
-      body += `  - Giderler (Ödenen Seansların): ${w.expenses.toLocaleString('tr-TR')} TL\n`;
-      body += `  - Net Kazanç (Ödenen): ${net.toLocaleString('tr-TR')} TL\n\n`;
+      body += `  - Ödenen Gelir: ${formatMoney(w.gross, { showSymbol: false })} TL\n`;
+      body += `  - Bekleyen Alacak: ${formatMoney(w.pending, { showSymbol: false })} TL\n`;
+      body += `  - Giderler (Ödenen Seansların): ${formatMoney(w.expenses, { showSymbol: false })} TL\n`;
+      body += `  - Net Kazanç (Ödenen): ${formatMoney(net, { showSymbol: false })} TL\n\n`;
     });
 
     body += `Bu rapor PsyCalcu akıllı asistanı tarafından otomatik oluşturulmuştur.`;
@@ -258,14 +260,14 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
             <div className="bg-[#fcfbf9] p-3.5 rounded-2xl border border-slate-100 flex flex-col justify-between">
               <span className="text-[10px] font-bold text-[#6b705c] tracking-wider">ÖDENEN BRÜT</span>
               <span className="text-base font-extrabold text-[#6b705c] mt-1">
-                ₺{reportData.grossIncome.toLocaleString('tr-TR')}
+                {formatMoney(reportData.grossIncome)}
               </span>
             </div>
             
             <div className="bg-[#fcfbf9] p-3.5 rounded-2xl border border-slate-100 flex flex-col justify-between">
               <span className="text-[10px] font-bold text-[#cb997e] tracking-wider">NET KAZANÇ</span>
               <span className="text-base font-extrabold text-[#cb997e] mt-1">
-                ₺{reportData.netIncome.toLocaleString('tr-TR')}
+                {formatMoney(reportData.netIncome)}
               </span>
             </div>
           </div>
@@ -283,15 +285,15 @@ export default function EmailReportGenerator({ sessions, settings, showToast, us
             </div>
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
               <span className="font-medium text-slate-500">Bekleyen Alacak:</span>
-              <span className="font-extrabold text-amber-600">₺{reportData.pendingReceivables.toLocaleString('tr-TR')}</span>
+              <span className="font-extrabold text-amber-600">{formatMoney(reportData.pendingReceivables)}</span>
             </div>
             <div className="flex justify-between items-center pb-1 border-b border-dashed border-slate-200">
               <span className="font-medium text-slate-500">Bakıcı Gideri (Ödenenler):</span>
-              <span className="font-semibold text-rose-500">₺{reportData.babysitterFees.toLocaleString('tr-TR')}</span>
+              <span className="font-semibold text-rose-500">{formatMoney(reportData.babysitterFees)}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="font-medium text-slate-500">Ofis Kirası (Ödenenler):</span>
-              <span className="font-semibold text-rose-500">₺{reportData.officeRentExpenses.toLocaleString('tr-TR')}</span>
+              <span className="font-semibold text-rose-500">{formatMoney(reportData.officeRentExpenses)}</span>
             </div>
           </div>
 

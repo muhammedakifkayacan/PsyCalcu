@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Session, AppSettings, getNormalizedClientName } from '../types';
 import { Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins } from 'lucide-react';
 import { motion } from 'motion/react';
+import { usePrivacy, Money } from '../context/PrivacyContext';
 
 interface StatsDashboardProps {
   sessions: Session[];
@@ -11,6 +12,7 @@ interface StatsDashboardProps {
 }
 
 export default function StatsDashboard({ sessions, settings, showExplanations = true }: StatsDashboardProps) {
+  const { formatMoney } = usePrivacy();
   const [preset, setPreset] = useState<string>('thisMonth');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -330,7 +332,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               </span>
             </div>
             <div className="mt-2">
-              <h3 className="text-2xl font-serif text-[#6b705c]">₺{analytics.grossIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <h3 className="text-2xl font-serif text-[#6b705c]">{formatMoney(analytics.grossIncome, { decimals: 2 })}</h3>
               <p className="text-[10px] text-slate-400 mt-1">Ödemesi tamamlanmış seans cirosu.</p>
             </div>
           </div>
@@ -373,7 +375,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
             </div>
             <div className="mt-2 space-y-2">
               <div>
-                <h3 className="text-2xl font-serif text-amber-600">₺{analytics.pendingReceivables.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+                <h3 className="text-2xl font-serif text-amber-600">{formatMoney(analytics.pendingReceivables, { decimals: 2 })}</h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">Tarihi bugün veya geçmişte olan, ödenmemiş seanslar.</p>
               </div>
               
@@ -382,12 +384,12 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
                   {analytics.futureUnpaidIncome > 0 && (
                     <div className="flex justify-between items-center" title="Gelecek tarihler için planlanan seansların henüz ödenmemiş ücret toplamı">
                       <span className="text-slate-400">Gelecek Planlanan:</span>
-                      <span className="font-semibold text-slate-600">+₺{analytics.futureUnpaidIncome.toLocaleString('tr-TR')}</span>
+                      <span className="font-semibold text-slate-600">{formatMoney(analytics.futureUnpaidIncome, { prefix: '+' })}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center border-t border-slate-100/80 pt-1 font-bold text-[#6b705c]" title="Ödenen brüt gelir + gerçekleşmiş alacak + gelecek planlanan seansların toplamı">
                     <span>Tahmini Toplam Ciro:</span>
-                    <span>₺{(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome).toLocaleString('tr-TR')}</span>
+                    <span>{formatMoney(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome)}</span>
                   </div>
                 </div>
               )}
@@ -431,9 +433,9 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               </span>
             </div>
             <div className="mt-2">
-              <h3 className="text-2xl font-serif text-slate-700">₺{analytics.totalExpenses.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <h3 className="text-2xl font-serif text-slate-700">{formatMoney(analytics.totalExpenses, { decimals: 2 })}</h3>
               <p className="text-[10px] text-slate-400 mt-1">
-                ₺{analytics.babysitterFees.toLocaleString('tr-TR')} bakıcı + ₺{analytics.officeRentExpenses.toLocaleString('tr-TR')} ofis gideri.
+                {formatMoney(analytics.babysitterFees)} bakıcı + {formatMoney(analytics.officeRentExpenses)} ofis gideri.
               </p>
             </div>
           </div>
@@ -475,7 +477,7 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
               </span>
             </div>
             <div className="mt-2">
-              <h3 className="text-2xl font-serif">₺{analytics.netIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h3>
+              <h3 className="text-2xl font-serif">{formatMoney(analytics.netIncome, { decimals: 2 })}</h3>
               <p className="text-[10px] text-white/70 mt-1">Ödenen seansların net kazancı.</p>
             </div>
           </div>
@@ -646,16 +648,16 @@ export default function StatsDashboard({ sessions, settings, showExplanations = 
                     <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100">
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 block font-medium">Seans Ücreti</span>
-                        <span className="text-sm font-bold text-slate-800">₺{sPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                        <span className="text-sm font-bold text-slate-800">{formatMoney(sPrice, { decimals: 2 })}</span>
                       </div>
                       
                       {(sBabyFee > 0 || sOfficeFee > 0) && (
                         <div className="text-right sm:text-right bg-orange-50/40 px-2.5 py-1 rounded-xl border border-orange-100/50">
                           <span className="text-[9px] text-orange-600 block font-bold tracking-wider uppercase">Seans Gideri</span>
                           <span className="text-[11px] font-semibold text-slate-600">
-                            ₺{totalSExp.toLocaleString('tr-TR')} 
+                            {formatMoney(totalSExp)} 
                             <span className="text-[9px] text-slate-400 font-normal ml-1">
-                              ({sBabyFee > 0 ? `₺${sBabyFee} bakıcı` : ''}{sBabyFee > 0 && sOfficeFee > 0 ? ' + ' : ''}{sOfficeFee > 0 ? `₺${sOfficeFee} ofis` : ''})
+                              ({sBabyFee > 0 ? `${formatMoney(sBabyFee)} bakıcı` : ''}{sBabyFee > 0 && sOfficeFee > 0 ? ' + ' : ''}{sOfficeFee > 0 ? `${formatMoney(sOfficeFee)} ofis` : ''})
                             </span>
                           </span>
                         </div>

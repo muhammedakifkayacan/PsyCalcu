@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, X, Check } from 'lucide-react';
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface DebtPaymentConfirmationModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export default function DebtPaymentConfirmationModal({
   clientName,
   totalAmount,
 }: DebtPaymentConfirmationModalProps) {
+  const { formatMoney } = usePrivacy();
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
@@ -88,7 +90,7 @@ export default function DebtPaymentConfirmationModal({
             <div className="space-y-4">
               <p className="text-sm text-slate-600 leading-relaxed">
                 <strong className="text-slate-800 font-semibold">{clientName}</strong> adlı danışanın toplam{' '}
-                <strong className="text-[#cb997e] font-bold">₺{totalAmount.toLocaleString('tr-TR')}</strong> tutarındaki tüm ödenmemiş seanslarını toplu olarak <strong className="text-emerald-600">ödendi</strong> olarak işaretlemek üzeresiniz.
+                <strong className="text-[#cb997e] font-bold">{formatMoney(totalAmount)}</strong> tutarındaki tüm ödenmemiş seanslarını toplu olarak <strong className="text-emerald-600">ödendi</strong> olarak işaretlemek üzeresiniz.
               </p>
               <div className="bg-[#fdfbf7] border border-amber-100 p-4 rounded-2xl text-xs text-amber-800 leading-relaxed flex gap-2.5 items-start">
                 <span className="text-lg leading-none mt-0.5">⚠️</span>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
 import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export default function SessionModal({
   prefilledRoomId = '',
   prefilledTime = ''
 }: SessionModalProps) {
+  const { formatMoney } = usePrivacy();
   const [clientName, setClientName] = useState('');
   const [type, setType] = useState<SessionType>('online');
   const [date, setDate] = useState(selectedDate);
@@ -481,7 +483,7 @@ export default function SessionModal({
                   return (
                     <p className="text-[9px] sm:text-[10px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-1 animate-fade-in" id="smart-price-badge">
                       <Sparkles className="w-3 h-3 text-[#cb997e]" />
-                      Akıllı fiyat uygulandı ({matchedCosts.price} ₺)
+                      Akıllı fiyat uygulandı ({formatMoney(matchedCosts.price)})
                     </p>
                   );
                 }
@@ -567,7 +569,7 @@ export default function SessionModal({
                         return (
                           <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-babysitter-badge">
                             <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
-                            Akıllı ücret ({matchedCosts.babysitterFeeAmount} ₺)
+                            Akıllı ücret ({formatMoney(matchedCosts.babysitterFeeAmount)})
                           </p>
                         );
                       }
@@ -617,7 +619,7 @@ export default function SessionModal({
                         return (
                           <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-officerent-badge">
                             <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
-                            Akıllı ücret ({matchedCosts.officeRentFeeAmount} ₺)
+                            Akıllı ücret ({formatMoney(matchedCosts.officeRentFeeAmount)})
                           </p>
                         );
                       }

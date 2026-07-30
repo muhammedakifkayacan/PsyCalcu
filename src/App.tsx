@@ -58,6 +58,7 @@ import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
 import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
+import { usePrivacy, Money } from './context/PrivacyContext';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
@@ -66,9 +67,9 @@ import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQu
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
+import PullToRefresh from './components/PullToRefresh';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
-import { PullToRefresh } from './components/PullToRefresh';
-import { PWAInstallBanner } from './components/PWAInstallBanner';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -133,6 +134,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function App() {
+  const { formatMoney } = usePrivacy();
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('psycalcu_settings');
@@ -1858,11 +1860,11 @@ export default function App() {
     const priceVal = Number(found.price) || 0;
     if (nextStatus === 'paid') {
       showToast(
-        `${found.clientName} adlı danışandan ₺${priceVal.toLocaleString('tr-TR')} tahsil edildi!`, 
+        `${found.clientName} adlı danışandan ${formatMoney(priceVal)} tahsil edildi!`, 
         'success',
         {
           title: 'Ödeme Alındı',
-          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (₺${priceVal.toLocaleString('tr-TR')}) başarıyla tahsil edildi.`
+          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
         }
       );
     } else {
@@ -1871,7 +1873,7 @@ export default function App() {
         'info',
         {
           title: 'Ödeme İptal Edildi',
-          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (₺${priceVal.toLocaleString('tr-TR')}) ödenmedi olarak işaretlendi.`,
+          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) ödenmedi olarak işaretlendi.`,
           type: 'info'
         }
       );
@@ -1900,7 +1902,7 @@ export default function App() {
       'success',
       {
         title: 'Ödeme Alındı',
-        message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (₺${priceVal.toLocaleString('tr-TR')}) başarıyla tahsil edildi.`
+        message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
       }
     );
   };
@@ -1934,7 +1936,7 @@ export default function App() {
       'success',
       {
         title: 'Toplu Tahsilat',
-        message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ₺${totalAmount.toLocaleString('tr-TR')}) başarıyla ödendi olarak işaretlendi.`
+        message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ${formatMoney(totalAmount)}) başarıyla ödendi olarak işaretlendi.`
       }
     );
   };
@@ -2019,9 +2021,9 @@ export default function App() {
       localSummary += `\n\n`;
 
       localSummary += `- **Finansal Durum & Tahsilat:** `;
-      localSummary += `Günü ₺${(dailySummary.net || 0).toLocaleString('tr-TR')} net kâr ile tamamladınız. `;
+      localSummary += `Günü ${formatMoney(dailySummary.net || 0)} net kâr ile tamamladınız. `;
       if (unpaidCount > 0) {
-        localSummary += `Tamamlanan seanslardan ${unpaidCount} adedinin (₺${totalUnpaid.toLocaleString('tr-TR')}) ödemesi henüz alınmamış. Bu danışanlara gün sonunda nazik bir hatırlatma göndermeniz nakit akışını olumlu etkileyecektir.`;
+        localSummary += `Tamamlanan seanslardan ${unpaidCount} adedinin (${formatMoney(totalUnpaid)}) ödemesi henüz alınmamış. Bu danışanlara gün sonunda nazik bir hatırlatma göndermeniz nakit akışını olumlu etkileyecektir.`;
       } else if (activeSessions.length > 0) {
         localSummary += `Harika! Bugün tamamlanan tüm seansların ödemeleri tahsil edilmiş durumdadır, finansal akışınız kusursuz.`;
       } else {
@@ -2979,8 +2981,10 @@ export default function App() {
   return (
     <PullToRefresh onRefresh={handlePageRefresh}>
       <div className="flex flex-col min-h-screen bg-[#fdfbf7] font-sans text-slate-800 antialiased selection:bg-[#cb997e]/20" id="psycalcu-root">
-      
-      {/* Header Navigation */}
+        {/* PWA Mobile Installation Reminder */}
+        <PWAInstallPrompt />
+
+        {/* Header Navigation */}
       <HeaderNavigation
         isMobile={isMobile}
         isHeaderCollapsed={isHeaderCollapsed}
@@ -3073,16 +3077,16 @@ export default function App() {
                     <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Aylık Rapor</span>
                   </div>
                   
-                  <h2 className="text-4xl font-serif">₺{monthlyMetrics.netIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h2>
+                  <h2 className="text-4xl font-serif">{formatMoney(monthlyMetrics.netIncome, { decimals: 2 })}</h2>
                   
                   <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/20 pt-4 text-xs">
                     <div>
                       <p className="text-[10px] tracking-widest opacity-70">AYLIK BRÜT GELİR</p>
-                      <p className="text-lg font-semibold mt-0.5">₺{monthlyMetrics.grossIncome.toLocaleString('tr-TR')}</p>
+                      <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.grossIncome)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] tracking-widest opacity-70">AYLIK TOPLAM GİDER</p>
-                      <p className="text-lg font-semibold mt-0.5">₺{monthlyMetrics.totalExpenses.toLocaleString('tr-TR')}</p>
+                      <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.totalExpenses)}</p>
                     </div>
                   </div>
                 </div>
@@ -3112,7 +3116,7 @@ export default function App() {
                           <span className="text-[9px] text-slate-600 font-medium">Seans başı biriken</span>
                         </div>
                       </div>
-                      <span className="font-bold text-sm text-slate-700">₺{monthlyMetrics.officeRentExpenses.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-sm text-slate-700">{formatMoney(monthlyMetrics.officeRentExpenses)}</span>
                     </div>
 
                     {/* Babysitter Fee Item */}
@@ -3124,7 +3128,7 @@ export default function App() {
                           <span className="text-[9px] text-slate-600 font-medium">Seans başı ödenen</span>
                         </div>
                       </div>
-                      <span className="font-bold text-sm text-blue-600">₺{monthlyMetrics.babysitterFees.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-sm text-blue-600">{formatMoney(monthlyMetrics.babysitterFees)}</span>
                     </div>
 
                     {/* Rent percentage hint */}
@@ -3150,7 +3154,7 @@ export default function App() {
                         </div>
                         {showExplanations && (
                           <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium animate-fade-in">
-                            * Bakıcı seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultBabysitterFee}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">₺{settings.defaultOfficeRentFee}</span> üzerinden hesaplanır.
+                            * Bakıcı seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultBabysitterFee)}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultOfficeRentFee)}</span> üzerinden hesaplanır.
                           </p>
                         )}
                       </div>
@@ -3674,18 +3678,18 @@ export default function App() {
                               <div className="text-left sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 gap-1.5">
                                 <div>
                                   <p className={`text-sm font-bold flex items-center gap-1 sm:justify-end ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
-                                    +₺{session.price}
+                                    {formatMoney(session.price, { prefix: '+' })}
                                     {!isCancelled && session.price > settings.defaultSessionPrice && (
-                                      <span title={`Zamlı Fiyat (Varsayılan: ₺${settings.defaultSessionPrice})`}>
+                                      <span title={`Zamlı Fiyat (Varsayılan: ${formatMoney(settings.defaultSessionPrice)})`}>
                                         <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
                                       </span>
                                     )}
                                   </p>
                                   {session.hasBabysitterFee && (
                                     <p className="text-[10px] text-rose-500 font-semibold mt-0.5 flex items-center gap-0.5 sm:justify-end">
-                                      -₺{session.babysitterFeeAmount} (Bakıcı)
+                                      {formatMoney(session.babysitterFeeAmount, { prefix: '-' })} (Bakıcı)
                                       {!isCancelled && session.babysitterFeeAmount > settings.defaultBabysitterFee && (
-                                        <span title={`Yüksek Gider (Varsayılan: ₺${settings.defaultBabysitterFee})`}>
+                                        <span title={`Yüksek Gider (Varsayılan: ${formatMoney(settings.defaultBabysitterFee)})`}>
                                           <Sparkles className="w-2.5 h-2.5 text-rose-400 animate-pulse shrink-0" />
                                         </span>
                                       )}
@@ -3693,9 +3697,9 @@ export default function App() {
                                   )}
                                   {session.hasOfficeRentFee && (
                                     <p className="text-[10px] text-amber-600 font-semibold mt-0.5 flex items-center gap-0.5 sm:justify-end">
-                                      -₺{session.officeRentFeeAmount} (Ofis)
+                                      {formatMoney(session.officeRentFeeAmount, { prefix: '-' })} (Ofis)
                                       {!isCancelled && session.officeRentFeeAmount > settings.defaultOfficeRentFee && (
-                                        <span title={`Yüksek Ofis Kirası (Varsayılan: ₺${settings.defaultOfficeRentFee})`}>
+                                        <span title={`Yüksek Ofis Kirası (Varsayılan: ${formatMoney(settings.defaultOfficeRentFee)})`}>
                                           <Sparkles className="w-2.5 h-2.5 text-amber-500 animate-pulse shrink-0" />
                                         </span>
                                       )}
@@ -3837,7 +3841,7 @@ export default function App() {
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[10px] text-slate-400 font-bold tracking-widest">GÜNLÜK NET KÂR</span>
-                        <span className="text-lg font-serif italic font-bold text-emerald-700">₺{dailySummary.net.toLocaleString('tr-TR')}</span>
+                        <span className="text-lg font-serif italic font-bold text-emerald-700">{formatMoney(dailySummary.net)}</span>
                       </div>
                     </div>
                     <div className="text-center sm:text-right">
@@ -3910,7 +3914,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold tracking-wider block">TOPLAM ALACAK</span>
-                    <span className="text-xl font-bold text-slate-800">₺{debtsData.totalUnpaidAmount.toLocaleString('tr-TR')}</span>
+                    <span className="text-xl font-bold text-slate-800">{formatMoney(debtsData.totalUnpaidAmount)}</span>
                   </div>
                 </div>
 
@@ -3986,7 +3990,7 @@ export default function App() {
                               <p className="text-xs text-slate-400 mt-0.5">{debtor.sessionCount} adet seans borcu</p>
                             </div>
                             <div className="text-right">
-                              <span className="text-lg font-bold text-red-600 block">₺{debtor.totalAmount.toLocaleString('tr-TR')}</span>
+                              <span className="text-lg font-bold text-red-600 block">{formatMoney(debtor.totalAmount)}</span>
                               <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full tracking-wider">ÖDENMEDİ</span>
                             </div>
                           </div>
@@ -4019,7 +4023,7 @@ export default function App() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-800 text-xs">₺{s.price}</span>
+                                    <span className="font-bold text-slate-800 text-xs">{formatMoney(s.price)}</span>
                                     <button
                                       onClick={() => handleMarkSessionAsPaid(s.id)}
                                       className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 cursor-pointer transition-all"
@@ -4042,7 +4046,7 @@ export default function App() {
                             })}
                             className="w-full py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[11px] font-bold rounded-xl shadow-xs cursor-pointer transition-colors text-center"
                           >
-                            Tüm Seansları Ödendi İşaretle (₺{debtor.totalAmount.toLocaleString('tr-TR')})
+                            Tüm Seansları Ödendi İşaretle ({formatMoney(debtor.totalAmount)})
                           </button>
                         </div>
                       ))}
@@ -4480,8 +4484,8 @@ export default function App() {
                   </div>
                   
                   <div className="mt-4">
-                    <h2 className="text-4xl font-serif">₺{searchTabCalculations.netGelir.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</h2>
-                    <p className="text-[10px] opacity-80 mt-1 font-mono">Formül: Brüt Gelir (₺{searchTabCalculations.brütGelir.toLocaleString('tr-TR')}) - Toplam Gider (₺{searchTabCalculations.toplamGider.toLocaleString('tr-TR')})</p>
+                    <h2 className="text-4xl font-serif">{formatMoney(searchTabCalculations.netGelir, { decimals: 2 })}</h2>
+                    <p className="text-[10px] opacity-80 mt-1 font-mono">Formül: Brüt Gelir ({formatMoney(searchTabCalculations.brütGelir)}) - Toplam Gider ({formatMoney(searchTabCalculations.toplamGider)})</p>
                   </div>
                 </div>
 
@@ -4490,19 +4494,19 @@ export default function App() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-400 font-bold tracking-wider uppercase">BRÜT GELİR</span>
-                      <span className="font-bold text-slate-700">₺{searchTabCalculations.brütGelir.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-slate-700">{formatMoney(searchTabCalculations.brütGelir)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-400 font-bold tracking-wider uppercase">TOPLAM GİDER</span>
-                      <span className="font-bold text-slate-700">₺{searchTabCalculations.toplamGider.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-slate-700">{formatMoney(searchTabCalculations.toplamGider)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs pl-2 border-l-2 border-slate-200">
                       <span className="text-slate-400 text-[11px]">Bakıcı Payı</span>
-                      <span className="text-slate-600 font-medium text-[11px]">₺{searchTabCalculations.bakiciGideri.toLocaleString('tr-TR')}</span>
+                      <span className="text-slate-600 font-medium text-[11px]">{formatMoney(searchTabCalculations.bakiciGideri)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs pl-2 border-l-2 border-slate-200">
                       <span className="text-slate-400 text-[11px]">Ofis Kirası</span>
-                      <span className="text-slate-600 font-medium text-[11px]">₺{searchTabCalculations.ofisGideri.toLocaleString('tr-TR')}</span>
+                      <span className="text-slate-600 font-medium text-[11px]">{formatMoney(searchTabCalculations.ofisGideri)}</span>
                     </div>
                   </div>
                   <div className="border-t border-slate-100 pt-3 text-[10px] text-slate-400 leading-normal font-semibold">
@@ -4515,11 +4519,11 @@ export default function App() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-400 font-bold tracking-wider uppercase">TAHSİL EDİLEN</span>
-                      <span className="font-bold text-emerald-600">₺{searchTabCalculations.odenenMiktar.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-emerald-600">{formatMoney(searchTabCalculations.odenenMiktar)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-400 font-bold tracking-wider uppercase">ALACAK (BEKLEYEN)</span>
-                      <span className="font-bold text-rose-500">₺{searchTabCalculations.odenmeyenMiktar.toLocaleString('tr-TR')}</span>
+                      <span className="font-bold text-rose-500">{formatMoney(searchTabCalculations.odenmeyenMiktar)}</span>
                     </div>
                     <div className="border-t border-slate-100 pt-2 flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase">
                       <span>Bulunan Seans</span>
@@ -4605,7 +4609,7 @@ export default function App() {
                                   <span>•</span>
                                   <span>{session.time}</span>
                                   <span>•</span>
-                                  <span className="text-[#cb997e] font-bold">₺{session.price}</span>
+                                  <span className="text-[#cb997e] font-bold">{formatMoney(session.price)}</span>
                                 </div>
 
                                 {(session.notes || (session.isSyncedFromCalendar && (tempNotesCache[session.id] || hasFetchedInstantNotes))) && (

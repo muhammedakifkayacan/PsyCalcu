@@ -3,6 +3,7 @@ import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, Re
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '../types';
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface CalendarSyncGuideProps {
   onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face' | 'rent-income') => { 
@@ -43,6 +44,7 @@ export default function CalendarSyncGuide({
   showExplanations = true,
   onHideExplanations,
 }: CalendarSyncGuideProps) {
+  const { formatMoney } = usePrivacy();
   const [dragActive, setDragActive] = useState(false);
   const [importType, setImportType] = useState<'online' | 'face-to-face'>('online');
   const [onlineUrl, setOnlineUrl] = useState(settings.onlineCalendarWebcalUrl || '');
@@ -1285,7 +1287,7 @@ export default function CalendarSyncGuide({
                               <span>•</span>
                               <span>{session.time}</span>
                               <span>•</span>
-                              <span>{session.price} ₺</span>
+                              <span>{formatMoney(session.price)}</span>
                             </div>
                           </div>
                         </div>
