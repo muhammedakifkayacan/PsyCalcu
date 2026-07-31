@@ -3,11 +3,15 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { PrivacyProvider } from './context/PrivacyContext.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <PrivacyProvider>
-      <App />
-    </PrivacyProvider>
+    <ErrorBoundary>
+      <PrivacyProvider>
+        <App />
+      </PrivacyProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
+

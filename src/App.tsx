@@ -96,8 +96,9 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
 
 // Auto-correct any session before July 1, 2026 to be 0 TL and marked as 'paid'
 const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
-  if (!sessionList) return [];
+  if (!Array.isArray(sessionList)) return [];
   return sessionList.map(s => {
+    if (!s) return s;
     if (s.date && s.date < '2026-07-01') {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
@@ -448,8 +449,16 @@ export default function App() {
     if (isPendingRedirect) {
       setIsInitialAuthCheckDone(false);
     }
+
+    // Safety fallback timeout to ensure auth check NEVER gets stuck indefinitely on loading screen
+    const safetyTimer = setTimeout(() => {
+      localStorage.removeItem('psycalcu_pending_redirect');
+      setIsInitialAuthCheckDone(true);
+    }, 1500);
+
     getRedirectResult(auth)
       .then((result) => {
+        clearTimeout(safetyTimer);
         localStorage.removeItem('psycalcu_pending_redirect');
         if (result?.user) {
           setUser(result.user);
@@ -458,14 +467,16 @@ export default function App() {
         setIsInitialAuthCheckDone(true);
       })
       .catch((err) => {
+        clearTimeout(safetyTimer);
         localStorage.removeItem('psycalcu_pending_redirect');
         console.error("Redirect Auth Error:", err);
-        // Do not block with error toast if it was a user cancellation
-        if (err.code !== 'auth/redirect-cancelled') {
+        if (err?.code !== 'auth/redirect-cancelled') {
           showToast('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyiniz.', 'error');
         }
         setIsInitialAuthCheckDone(true);
       });
+
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   const activeSavesCountRef = useRef(0);
@@ -474,10 +485,8 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      const isPendingRedirect = localStorage.getItem('psycalcu_pending_redirect') === 'true';
-      if (!isPendingRedirect) {
-        setIsInitialAuthCheckDone(true);
-      }
+      setIsInitialAuthCheckDone(true);
+      localStorage.removeItem('psycalcu_pending_redirect');
       setIsAuthLoading(false);
       if (!currentUser) {
         hasSyncedRef.current = null;
