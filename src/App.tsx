@@ -4879,9 +4879,6 @@ export default function App() {
         </div>
       )}
 
-      {/* PWA Home Screen Installation Banner */}
-      <PWAInstallBanner />
-
       {/* Floating Bottom Action Bar for Quick Session Creation */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none" id="floating-bottom-action-bar">
         <button
