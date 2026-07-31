@@ -64,6 +64,7 @@ export const db = dbInstance;
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export { 
   signInWithEmailAndPassword, 

@@ -452,9 +452,8 @@ export default function App() {
 
     // Safety fallback timeout to ensure auth check NEVER gets stuck indefinitely on loading screen
     const safetyTimer = setTimeout(() => {
-      localStorage.removeItem('psycalcu_pending_redirect');
       setIsInitialAuthCheckDone(true);
-    }, 1500);
+    }, 6000);
 
     getRedirectResult(auth)
       .then((result) => {
