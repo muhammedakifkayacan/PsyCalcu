@@ -10,9 +10,10 @@ import {
   Info, 
   Calendar, 
   ArrowRight,
-  Eye
+  Eye,
+  X
 } from 'lucide-react';
-import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { AppNotification } from '../types';
 
 interface NotificationCenterProps {
@@ -35,7 +36,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const dragControls = useDragControls();
 
   // Detect mobile viewport reactively
   useEffect(() => {
@@ -60,16 +60,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMobile]);
 
-  // Lock body scroll when mobile bottom sheet is open to prevent underlying content from scrolling
+  // Lock body scroll when notification modal is open to focus attention
   useEffect(() => {
-    if (isMobile && isOpen) {
+    if (isOpen) {
       const originalStyle = window.getComputedStyle(document.body).overflow;
       document.body.style.overflow = 'hidden';
       return () => {
         document.body.style.overflow = originalStyle;
       };
     }
-  }, [isMobile, isOpen]);
+  }, [isOpen]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -97,39 +97,60 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const renderDropdownContent = () => (
     <>
       {/* Header */}
-      <div className="px-6 py-4 sm:p-5 border-b border-[#e5e1d8] flex items-center justify-between bg-[#fdfbf7] shrink-0">
-        <div>
-          <h3 className="font-serif italic text-base text-[#6b705c] font-bold flex items-center gap-1.5">
-            <Bell className="w-4 h-4 text-[#cb997e]" />
-            Bildirimler
-          </h3>
-          <p className="text-[10px] text-slate-400 mt-0.5">Senkronizasyon hareketleri ve duyurular</p>
+      <div className="px-5 py-4 border-b border-[#e5e1d8] flex items-center justify-between bg-[#fdfbf7] shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-2xl bg-[#cb997e]/15 flex items-center justify-center text-[#cb997e]">
+            <Bell className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-serif italic text-base text-slate-800 font-bold">
+                Bildirimler
+              </h3>
+              {unreadCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-[#cb997e]/15 text-[#9a6448] text-[10px] font-bold">
+                  {unreadCount} Yeni
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-400">Senkronizasyon hareketleri ve duyurular</p>
+          </div>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-1.5">
           {!showClearConfirm && unreadCount > 0 && (
             <button
               onClick={onMarkAllAsRead}
-              className="p-1.5 text-xs text-[#6b705c] hover:bg-[#e5e1d8] rounded-lg transition-colors cursor-pointer"
+              className="p-2 text-slate-500 hover:text-[#6b705c] hover:bg-[#e5e1d8]/50 rounded-xl transition-colors cursor-pointer"
               title="Tümünü Okundu İşaretle"
             >
-              <CheckCheck className="w-3.5 h-3.5" />
+              <CheckCheck className="w-4 h-4" />
             </button>
           )}
           {!showClearConfirm && notifications.length > 0 && (
             <button
               onClick={() => setShowClearConfirm(true)}
-              className="p-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+              className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
               title="Bildirim Geçmişini Temizle"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
             </button>
           )}
+
+          {/* Explicit Close Button */}
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            title="Kapat"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* Body Content */}
       <div 
-        className="p-4 sm:p-5 flex-1 overflow-y-auto overscroll-contain sm:max-h-[360px]"
+        className="p-4 sm:p-5 flex-1 overflow-y-auto overscroll-contain max-h-[60vh] sm:max-h-[380px]"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {showClearConfirm ? (
@@ -260,7 +281,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       </div>
 
       {/* Footer of the dropdown */}
-      <div className="p-4 border-t border-[#e5e1d8] text-center bg-[#fdfbf7] rounded-b-none sm:rounded-b-[2rem] text-[10px] text-slate-400 pb-6 sm:pb-4 shrink-0">
+      <div className="p-3.5 border-t border-[#e5e1d8] text-center bg-[#fdfbf7] rounded-b-[2rem] text-[10px] text-slate-400 shrink-0">
         <span className="flex items-center justify-center gap-1">
           Bütün seans hareketleri ve uyarılar saklanır <ArrowRight className="w-2.5 h-2.5" />
         </span>
@@ -279,7 +300,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         }}
         className={`relative w-10 h-10 rounded-full border border-[#e5e1d8] flex items-center justify-center transition-all cursor-pointer ${
           isOpen || unreadCount > 0
-            ? 'bg-[#cb997e]/10 text-[#cb997e] border-[#cb997e]/30'
+            ? 'bg-[#cb997e]/10 text-[#cb997e] border-[#cb997e]/30 shadow-xs'
             : 'bg-[#fdfbf7] text-slate-500 hover:bg-[#f5f5f0]'
         }`}
         title="Bildirimler"
@@ -292,64 +313,30 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         )}
       </button>
 
-      {/* Desktop Inline Dropdown Box */}
-      <AnimatePresence>
-        {isOpen && !isMobile && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-3 w-[26rem] bg-white border border-[#e5e1d8] rounded-[2rem] shadow-xl z-50 flex flex-col overflow-hidden"
-            id="notification-dropdown-menu"
-          >
-            {renderDropdownContent()}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Mobile Portal Bottom Sheet */}
+      {/* Top Modal with Dark Blur Backdrop (Mobile & Desktop Portal) */}
       {mounted && typeof window !== 'undefined' && createPortal(
         <AnimatePresence>
-          {isOpen && isMobile && (
-            <div className="fixed inset-0 z-50 sm:hidden" id="mobile-notification-portal">
-              {/* Mobile Backdrop Overlay */}
+          {isOpen && (
+            <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 sm:justify-end" id="notification-portal-overlay">
+              {/* Dark Blur Backdrop Overlay */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
                 onClick={() => setIsOpen(false)}
-                className="absolute inset-0 bg-black/40 backdrop-blur-xs"
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm cursor-pointer"
               />
 
-              {/* Bottom Sheet Content Container */}
-              <motion.div
-                drag="y"
-                dragControls={dragControls}
-                dragListener={false}
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0.05, bottom: 0.85 }}
-                onDragEnd={(event, info) => {
-                  if (info.offset.y > 100 || info.velocity.y > 350) {
-                    setIsOpen(false);
-                  }
-                }}
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-white border-t border-[#e5e1d8] rounded-t-[2.5rem] shadow-2xl flex flex-col overflow-hidden"
-                id="notification-dropdown-menu-mobile"
+              {/* Animated Notification Box (Top Anchored) */}
+              <motion.div 
+                initial={{ opacity: 0, y: isMobile ? -24 : -12, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: isMobile ? -18 : -10, scale: 0.94 }}
+                transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+                className="relative z-10 w-full sm:w-[26rem] max-w-lg mt-1 sm:mt-12 bg-white border border-[#e5e1d8] rounded-[2rem] shadow-2xl flex flex-col overflow-hidden"
+                id="notification-dropdown-menu"
               >
-                {/* Drag Handle Notch Zone */}
-                <div 
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="w-full pt-4 pb-3 cursor-grab active:cursor-grabbing shrink-0 touch-none flex flex-col items-center select-none"
-                  style={{ touchAction: 'none' }}
-                >
-                  {/* Drag Indicator / Notch for Bottom Sheet on Mobile */}
-                  <div className="w-12 h-1.5 bg-[#e5e1d8] rounded-full hover:bg-slate-400 transition-colors" />
-                </div>
                 {renderDropdownContent()}
               </motion.div>
             </div>
