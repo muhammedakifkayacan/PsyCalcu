@@ -5082,38 +5082,55 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Toast Notification Overlay */}
-      {toast && (
-        <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm w-auto sm:w-full p-4 bg-white border border-slate-100 shadow-xl rounded-2xl flex gap-3 items-start animate-slide-in-right" id="toast-overlay">
-          <div className={`p-2 rounded-xl shrink-0 ${
-            toast.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
-            toast.type === 'error' ? 'bg-rose-50 text-rose-600' :
-            'bg-blue-50 text-blue-600'
-          }`}>
-            {toast.type === 'success' ? (
-              <ShieldCheck className="w-4 h-4" />
-            ) : toast.type === 'error' ? (
-              <AlertCircle className="w-4 h-4" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
-            )}
-          </div>
-          <div className="space-y-0.5 flex-1 pr-4">
-            <p className="text-xs font-bold text-slate-800 font-sans">
-              {toast.type === 'success' ? 'Başarılı' : toast.type === 'error' ? 'Hata' : 'Bilgi'}
-            </p>
-            <p className="text-[10px] text-slate-500 font-sans leading-relaxed">
-              {toast.message}
-            </p>
-          </div>
-          <button
-            onClick={() => setToast(null)}
-            className="text-slate-300 hover:text-slate-500 font-sans text-xs font-semibold transition-colors absolute right-4 top-4 cursor-pointer"
+      {/* Single Toast Notification Overlay (Top position with spring Framer Motion) */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -24, scale: 0.94 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.94 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            className="fixed top-5 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-[calc(100vw-2rem)] sm:max-w-md w-auto sm:w-full p-4 bg-white/95 backdrop-blur-md border border-[#e5e1d8] shadow-2xl rounded-2xl flex gap-3.5 items-start overflow-hidden"
+            id="toast-overlay"
           >
-            ✕
-          </button>
-        </div>
-      )}
+            {/* Top Accent Stripe */}
+            <div className={`absolute top-0 left-0 right-0 h-1 ${
+              toast.type === 'success' ? 'bg-emerald-500' :
+              toast.type === 'error' ? 'bg-rose-500' :
+              'bg-[#cb997e]'
+            }`} />
+
+            <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
+              toast.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200/60' :
+              toast.type === 'error' ? 'bg-rose-50 text-rose-600 border border-rose-200/60' :
+              'bg-[#cb997e]/15 text-[#9a6448] border border-[#cb997e]/30'
+            }`}>
+              {toast.type === 'success' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : toast.type === 'error' ? (
+                <AlertCircle className="w-5 h-5" />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
+            </div>
+            <div className="space-y-0.5 flex-1 pr-5">
+              <p className="text-xs font-bold text-slate-800 font-sans">
+                {toast.type === 'success' ? 'Başarılı' : toast.type === 'error' ? 'Hata' : 'Bilgi'}
+              </p>
+              <p className="text-xs text-slate-600 font-sans leading-relaxed">
+                {toast.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer absolute right-2.5 top-2.5"
+              title="Kapat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Bottom Action Bar for Quick Session Creation */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none" id="floating-bottom-action-bar">
