@@ -13,6 +13,7 @@ import {
   TrendingUp, 
   Clock, 
   Sliders, 
+  SlidersHorizontal,
   RefreshCw,
   HelpCircle,
   FileSpreadsheet,
@@ -194,6 +195,23 @@ export default function App() {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
   const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
+  const [agendaStatusFilter, setAgendaStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'cancelled'>('all');
+  const [agendaRoomFilter, setAgendaRoomFilter] = useState<string>('all');
+  const [isAgendaFilterOpen, setIsAgendaFilterOpen] = useState(false);
+  const agendaFilterRef = useRef<HTMLDivElement>(null);
+
+  // Close agenda filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (agendaFilterRef.current && !agendaFilterRef.current.contains(e.target as Node)) {
+        setIsAgendaFilterOpen(false);
+      }
+    };
+    if (isAgendaFilterOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAgendaFilterOpen]);
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string }>((() => {
@@ -1539,19 +1557,49 @@ export default function App() {
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [sessions, selectedDate]);
 
-  // Apply owner session filter for the selected day's agenda
+  // Apply agenda filters (Owner, Payment status, Room) for the selected day
   const displayedSessions = useMemo(() => {
-    if (settings.userRole !== 'owner') {
-      return filteredSessions;
+    let result = filteredSessions;
+
+    // 1. Owner Filter
+    if (settings.userRole === 'owner') {
+      if (ownerSessionFilter === 'mine') {
+        result = result.filter(s => s.type !== 'rent-income');
+      } else if (ownerSessionFilter === 'tenant') {
+        result = result.filter(s => s.type === 'rent-income');
+      }
     }
-    if (ownerSessionFilter === 'mine') {
-      return filteredSessions.filter(s => s.type !== 'rent-income');
+
+    // 2. Status / Payment Filter
+    if (agendaStatusFilter === 'paid') {
+      result = result.filter(s => s.paymentStatus === 'paid' && s.type !== 'cancelled');
+    } else if (agendaStatusFilter === 'unpaid') {
+      result = result.filter(s => s.paymentStatus === 'unpaid' && s.type !== 'cancelled');
+    } else if (agendaStatusFilter === 'cancelled') {
+      result = result.filter(s => s.type === 'cancelled');
     }
-    if (ownerSessionFilter === 'tenant') {
-      return filteredSessions.filter(s => s.type === 'rent-income');
+
+    // 3. Room Filter
+    if (agendaRoomFilter !== 'all') {
+      result = result.filter(s => s.roomId === agendaRoomFilter);
     }
-    return filteredSessions;
-  }, [filteredSessions, settings.userRole, ownerSessionFilter]);
+
+    return result;
+  }, [filteredSessions, settings.userRole, ownerSessionFilter, agendaStatusFilter, agendaRoomFilter]);
+
+  const hasActiveAgendaFilters = useMemo(() => {
+    return (
+      (settings.userRole === 'owner' && ownerSessionFilter !== 'all') ||
+      agendaStatusFilter !== 'all' ||
+      agendaRoomFilter !== 'all'
+    );
+  }, [settings.userRole, ownerSessionFilter, agendaStatusFilter, agendaRoomFilter]);
+
+  const resetAgendaFilters = useCallback(() => {
+    setOwnerSessionFilter('all');
+    setAgendaStatusFilter('all');
+    setAgendaRoomFilter('all');
+  }, []);
 
   // Search results for header search box
   const searchedSessions = useMemo(() => {
@@ -3386,47 +3434,35 @@ export default function App() {
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] flex flex-col min-h-[400px] overflow-hidden shadow-sm">
                   
                   {/* Card Header */}
-                  <div className="px-6 md:px-8 py-5 border-b border-[#f5f5f0] flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3">
+                  <div className="px-5 md:px-8 py-4.5 border-b border-[#f5f5f0] flex flex-wrap sm:flex-nowrap justify-between items-center gap-3 bg-[#fdfbf7]/60">
                     <div>
-                      <h3 className="text-xl font-serif text-[#6b705c] flex items-center gap-2">
+                      <h3 className="text-xl font-serif text-[#6b705c] flex items-center gap-2 font-bold">
                         Günlük Ajanda
-                        <span className="text-xs bg-[#f5f5f0] text-slate-700 font-sans font-semibold px-2.5 py-0.5 rounded-full border border-slate-300">
+                        <span className="text-xs bg-white text-slate-700 font-sans font-bold px-2.5 py-0.5 rounded-full border border-[#e5e1d8] shadow-3xs">
                           {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                         </span>
                       </h3>
                       {showExplanations && (
-                        <p className="text-xs text-slate-600 mt-1 font-medium animate-fade-in">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
+                        <p className="text-xs text-slate-500 mt-1 font-medium animate-fade-in">Apple Takvim entegrasyonu ve manuel yönetilen seanslar</p>
                       )}
                     </div>
                     
-                    <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                      {/* Show/Hide Explanations Switch */}
-                      <button
-                        onClick={toggleShowExplanations}
-                        className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none"
-                        title={showExplanations ? "Açıklamaları Gizle" : "Açıklamaları Göster"}
-                      >
-                        <span className="text-xs font-medium text-slate-500 group-hover:text-[#6b705c] transition-colors">Açıklamaları Göster</span>
-                        <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
-                          <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showExplanations ? 'translate-x-3.5' : 'translate-x-0'}`} />
-                        </div>
-                      </button>
-
+                    <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
                       {/* Fetch Dynamic Calendar Notes (KVKK Uyumlu) */}
                       {showNotes && settings.calendarSyncEnabled && (
                         <button
                           type="button"
                           onClick={() => fetchInstantCalendarNotes()}
                           disabled={isFetchingNotes}
-                          className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer border ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
                             isFetchingNotes
                               ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                              : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 hover:border-amber-300'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
                           }`}
-                          title="Takvimdeki açıklamaları/notları anlık ve geçici olarak tarayıcıya yükler. Veritabanına asla kaydedilmez (KVKK Uyumlu)."
+                          title="Takvimdeki açıklamaları/notları anlık yükle (KVKK Uyumlu)"
                         >
                           <FileText className="w-3.5 h-3.5" />
-                          {isFetchingNotes ? 'Notlar Çekiliyor...' : 'Takvim Notlarını Çek'}
+                          <span className="hidden sm:inline">{isFetchingNotes ? 'Çekiliyor...' : 'Takvim Notları'}</span>
                         </button>
                       )}
 
@@ -3434,69 +3470,261 @@ export default function App() {
                       <button
                         onClick={() => handleManualCalendarSync(true)}
                         disabled={isManualSyncing}
-                        className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer border ${
-                          isManualSyncing
-                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                            : 'bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8] hover:border-[#6b705c]/40'
-                        }`}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
                         title="Tüm iCloud/Google takvim seanslarını şimdi eşitle"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin' : ''}`} />
-                        {isManualSyncing ? 'Eşitleniyor...' : 'Takvimi Eşitle'}
+                        <span className="hidden sm:inline">{isManualSyncing ? 'Eşitleniyor...' : 'Eşitle'}</span>
                       </button>
 
+                      {/* Agenda Filter Dropdown Button */}
+                      <div className="relative" ref={agendaFilterRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsAgendaFilterOpen(!isAgendaFilterOpen)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border shadow-3xs ${
+                            hasActiveAgendaFilters
+                              ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-[#e5e1d8]'
+                          }`}
+                          title="Ajanda Filtreleri"
+                        >
+                          <Filter className="w-3.5 h-3.5" />
+                          <span>Filtrele</span>
+                          {hasActiveAgendaFilters && (
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                          )}
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isAgendaFilterOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        <AnimatePresence>
+                          {isAgendaFilterOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                              transition={{ duration: 0.15 }}
+                              className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-2xl border border-[#e5e1d8] shadow-2xl z-30 p-4 space-y-4"
+                            >
+                              <div className="flex items-center justify-between pb-2 border-b border-[#f5f5f0]">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                  <SlidersHorizontal className="w-4 h-4 text-[#6b705c]" />
+                                  Ajanda Filtreleri
+                                </div>
+                                {hasActiveAgendaFilters && (
+                                  <button
+                                    onClick={resetAgendaFilters}
+                                    className="text-[11px] text-[#cb997e] hover:text-[#b08066] font-semibold transition-colors cursor-pointer"
+                                  >
+                                    Sıfırla
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Owner Filter */}
+                              {settings.userRole === 'owner' && (
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                    Seans Sahibi
+                                  </label>
+                                  <div className="grid grid-cols-3 gap-1 bg-[#fdfbf7] p-1 rounded-xl border border-[#e5e1d8]">
+                                    <button
+                                      type="button"
+                                      onClick={() => setOwnerSessionFilter('all')}
+                                      className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                                        ownerSessionFilter === 'all'
+                                          ? 'bg-[#6b705c] text-white shadow-3xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Tümü ({filteredSessions.length})
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setOwnerSessionFilter('mine')}
+                                      className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                                        ownerSessionFilter === 'mine'
+                                          ? 'bg-[#6b705c] text-white shadow-3xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Benim ({filteredSessions.filter(s => s.type !== 'rent-income').length})
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setOwnerSessionFilter('tenant')}
+                                      className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                                        ownerSessionFilter === 'tenant'
+                                          ? 'bg-[#6b705c] text-white shadow-3xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Kiracı ({filteredSessions.filter(s => s.type === 'rent-income').length})
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Status / Payment Filter */}
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                  Ödeme & Seans Durumu
+                                </label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAgendaStatusFilter('all')}
+                                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer text-left flex items-center justify-between ${
+                                      agendaStatusFilter === 'all'
+                                        ? 'bg-[#6b705c]/10 text-[#6b705c] border-[#6b705c]/30 font-bold'
+                                        : 'bg-white text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <span>Tüm Durumlar</span>
+                                    {agendaStatusFilter === 'all' && <Check className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAgendaStatusFilter('paid')}
+                                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer text-left flex items-center justify-between ${
+                                      agendaStatusFilter === 'paid'
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                                        : 'bg-white text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <span>Ödenmiş</span>
+                                    {agendaStatusFilter === 'paid' && <Check className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAgendaStatusFilter('unpaid')}
+                                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer text-left flex items-center justify-between ${
+                                      agendaStatusFilter === 'unpaid'
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
+                                        : 'bg-white text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <span>Ödeme Bekleyen</span>
+                                    {agendaStatusFilter === 'unpaid' && <Check className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAgendaStatusFilter('cancelled')}
+                                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer text-left flex items-center justify-between ${
+                                      agendaStatusFilter === 'cancelled'
+                                        ? 'bg-rose-50 text-rose-800 border-rose-300 font-bold'
+                                        : 'bg-white text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <span>İptal Edilenler</span>
+                                    {agendaStatusFilter === 'cancelled' && <Check className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Room Filter */}
+                              {settings.rooms && settings.rooms.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                    Oda / Salon
+                                  </label>
+                                  <select
+                                    value={agendaRoomFilter}
+                                    onChange={(e) => setAgendaRoomFilter(e.target.value)}
+                                    className="w-full text-xs p-2 rounded-xl bg-[#fdfbf7] border border-[#e5e1d8] text-slate-700 font-medium focus:outline-none focus:border-[#6b705c]"
+                                  >
+                                    <option value="all">Tüm Odalar</option>
+                                    {settings.rooms.map((room) => (
+                                      <option key={room.id} value={room.id}>
+                                        {room.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Toggle Explanations Option */}
+                              <div className="pt-2 border-t border-[#f5f5f0] flex items-center justify-between">
+                                <span className="text-xs font-medium text-slate-600">Açıklamaları Göster</span>
+                                <button
+                                  type="button"
+                                  onClick={toggleShowExplanations}
+                                  className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none"
+                                >
+                                  <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                                    <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showExplanations ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                                  </div>
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Primary Add Session Button */}
                       <button 
                         id="add-session-btn"
                         onClick={() => {
                           setEditingSession(null);
                           setIsSessionModalOpen(true);
                         }}
-                        className="px-5 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        className="px-3.5 sm:px-5 py-1.5 sm:py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-xl sm:rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
-                        Yeni Seans Ekle
+                        <span className="hidden sm:inline">Yeni Seans Ekle</span>
+                        <span className="sm:hidden">Ekle</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Owner Calendar Filter (Only for Property Owners) */}
-                  {settings.userRole === 'owner' && (
-                    <div className="px-4 md:px-6 pt-1 pb-3 border-b border-[#e5e1d8]/50 flex items-center justify-between gap-2 flex-wrap bg-slate-50/50" id="owner-agenda-filter">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-[#555a4a] uppercase tracking-wider">Ajanda Filtresi:</span>
+                  {/* Active Filter Bar (when any filter is active) */}
+                  {hasActiveAgendaFilters && (
+                    <div className="px-5 py-2 bg-amber-50/80 border-b border-amber-200/60 flex items-center justify-between text-xs gap-2 flex-wrap animate-fade-in">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Aktif Filtre:</span>
+                        {ownerSessionFilter === 'mine' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            Benim Seanslarım
+                            <button onClick={() => setOwnerSessionFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
+                        {ownerSessionFilter === 'tenant' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            Kiracı Seansları
+                            <button onClick={() => setOwnerSessionFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
+                        {agendaStatusFilter === 'paid' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            Ödenmiş
+                            <button onClick={() => setAgendaStatusFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
+                        {agendaStatusFilter === 'unpaid' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            Ödeme Bekleyen
+                            <button onClick={() => setAgendaStatusFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
+                        {agendaStatusFilter === 'cancelled' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            İptal Edilenler
+                            <button onClick={() => setAgendaStatusFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
+                        {agendaRoomFilter !== 'all' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                            Oda: {settings.rooms?.find(r => r.id === agendaRoomFilter)?.name || agendaRoomFilter}
+                            <button onClick={() => setAgendaRoomFilter('all')} className="hover:text-rose-600 font-bold cursor-pointer">×</button>
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center bg-white border border-[#e5e1d8] rounded-full p-0.5 shadow-3xs">
-                        <button
-                          onClick={() => setOwnerSessionFilter('all')}
-                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
-                            ownerSessionFilter === 'all'
-                              ? 'bg-[#6b705c] text-white shadow-3xs'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Tümü ({filteredSessions.length})
-                        </button>
-                        <button
-                          onClick={() => setOwnerSessionFilter('mine')}
-                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
-                            ownerSessionFilter === 'mine'
-                              ? 'bg-[#6b705c] text-white shadow-3xs'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Benim Seanslarım ({filteredSessions.filter(s => s.type !== 'rent-income').length})
-                        </button>
-                        <button
-                          onClick={() => setOwnerSessionFilter('tenant')}
-                          className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer ${
-                            ownerSessionFilter === 'tenant'
-                              ? 'bg-[#6b705c] text-white shadow-3xs'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Kiracı Seansları ({filteredSessions.filter(s => s.type === 'rent-income').length})
-                        </button>
-                      </div>
+                      <button
+                        onClick={resetAgendaFilters}
+                        className="text-[11px] font-bold text-amber-900 hover:underline cursor-pointer ml-auto"
+                      >
+                        Tümünü Temizle
+                      </button>
                     </div>
                   )}
 
