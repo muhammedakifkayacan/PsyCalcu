@@ -73,7 +73,8 @@ export function parseICS(
   defaultBabysitterFee: number,
   defaultOfficeRentFee: number,
   forcedType?: 'online' | 'face-to-face' | 'rent-income',
-  membershipDate?: string | null
+  membershipDate?: string | null,
+  autoMarkShortEvents: boolean = true
 ): Session[] {
   const sessions: Session[] = [];
   
@@ -169,8 +170,8 @@ export function parseICS(
       }
 
       // Duration rule: Events 30 minutes or less from calendar are marked as 'non-session' (seans değil)
-      // so they do not impact accounting or financial calculations.
-      if (currentEvent.duration && currentEvent.duration <= 30) {
+      // so they do not impact accounting or financial calculations when autoMarkShortEvents is true.
+      if (autoMarkShortEvents && currentEvent.duration && currentEvent.duration <= 30) {
         finalType = 'non-session';
       }
 

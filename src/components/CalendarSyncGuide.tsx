@@ -147,7 +147,7 @@ export default function CalendarSyncGuide({
       const text = e.target?.result as string;
       if (text) {
         try {
-          const parsed = parseICS(text, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, type);
+          const parsed = parseICS(text, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, type, null, settings.autoMarkShortEventsAsNonSession ?? true);
           if (parsed.length > 0) {
             const stats = onImportSessions(parsed, type);
             const typeLabel = type === 'online' ? 'Online' : 'Yüzyüze';
@@ -196,7 +196,7 @@ export default function CalendarSyncGuide({
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
-      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online');
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online', null, settings.autoMarkShortEventsAsNonSession ?? true);
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
@@ -236,7 +236,7 @@ export default function CalendarSyncGuide({
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
-      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face');
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face', null, settings.autoMarkShortEventsAsNonSession ?? true);
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
@@ -322,7 +322,7 @@ export default function CalendarSyncGuide({
         throw new Error(`HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
-      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'rent-income');
+      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'rent-income', null, settings.autoMarkShortEventsAsNonSession ?? true);
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {

@@ -69,6 +69,7 @@ export interface AppSettings {
   googleSheetId: string;
   googleSheetsLinked: boolean;
   enableSmartClientPriceMatching?: boolean;
+  autoMarkShortEventsAsNonSession?: boolean;
   defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search';
   userRole?: 'tenant' | 'owner';
   ownerCalendars?: OwnerCalendar[];

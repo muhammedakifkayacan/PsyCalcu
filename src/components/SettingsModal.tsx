@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown, Building } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -31,6 +31,7 @@ export default function SettingsModal({
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
+  const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
   const [userRole, setUserRole] = useState<'tenant' | 'owner' | undefined>(settings.userRole);
 
@@ -56,6 +57,7 @@ export default function SettingsModal({
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
+      setAutoMarkShortEventsAsNonSession(settings.autoMarkShortEventsAsNonSession ?? true);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
       setUserRole(settings.userRole);
       setPendingSmartPriceToggle(null);
@@ -71,6 +73,7 @@ export default function SettingsModal({
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
       enableSmartClientPriceMatching,
+      autoMarkShortEventsAsNonSession,
       defaultLandingPage,
       userRole,
     });
@@ -276,7 +279,35 @@ export default function SettingsModal({
             )}
           </div>
 
-          {/* Smart Client Price Matching Toggle */}
+          {/* Auto Mark Short Events (<= 30 mins) as Non-Session Toggle */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
+              <div className="space-y-0.5 max-w-[75%]">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Clock className="w-3.5 h-3.5 text-[#cb997e]" />
+                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Kısa Etkinlikleri Seans Dışı Say (≤30 Dk)</label>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Takvimden aktarılan 30 dakika ve altındaki etkinlikleri (kısa görüşme, not, blok) otomatik "Seans Dışı Not" kabul eder ve muhasebe hesabına katmaz.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoMarkShortEventsAsNonSession(!autoMarkShortEventsAsNonSession)}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  autoMarkShortEventsAsNonSession ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
+                }`}
+                role="switch"
+                aria-checked={autoMarkShortEventsAsNonSession}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    autoMarkShortEventsAsNonSession ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
           <div className="space-y-1">
             <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-colors ${
               !featuresSmartPriceMatchingAllowed ? 'border-rose-100 bg-rose-50/10' : 'border-[#e5e1d8] bg-[#fdfbf7]'

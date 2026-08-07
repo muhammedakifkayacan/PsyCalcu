@@ -129,6 +129,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   googleSheetId: '',
   googleSheetsLinked: false,
   enableSmartClientPriceMatching: false,
+  autoMarkShortEventsAsNonSession: true,
   defaultLandingPage: 'agenda',
   userRole: undefined,
   ownerCalendars: [],
@@ -154,6 +155,7 @@ export default function App() {
           googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
           googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
           enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
+          autoMarkShortEventsAsNonSession: parsed.autoMarkShortEventsAsNonSession ?? DEFAULT_SETTINGS.autoMarkShortEventsAsNonSession,
           defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
           userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
           ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
@@ -553,6 +555,7 @@ export default function App() {
               googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
               googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
               enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
+              autoMarkShortEventsAsNonSession: parsed.autoMarkShortEventsAsNonSession ?? DEFAULT_SETTINGS.autoMarkShortEventsAsNonSession,
               defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
               userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
               ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
@@ -1247,7 +1250,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(item.url)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, item.type, registrationCreatedAt);
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, item.type, registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           parsed.forEach(ev => {
             if (ev.id && ev.notes) {
               newCache[ev.id] = ev.notes;
@@ -2331,7 +2334,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt);
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -2349,7 +2352,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt);
+          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -2372,7 +2375,7 @@ export default function App() {
           const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
           if (response.ok) {
             const icsText = await response.text();
-            const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'rent-income', registrationCreatedAt);
+            const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'rent-income', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
             const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
             if (isValidIcs) {
               const adjustedParsed = parsed.map(session => ({
