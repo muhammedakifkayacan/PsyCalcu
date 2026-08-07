@@ -15,6 +15,8 @@ import {
   Home
 } from 'lucide-react';
 import { Room } from '../types';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface PublicAvailabilityProps {
   userId: string;
@@ -62,32 +64,69 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
           throw new Error('Geçersiz paylaşım linki veya klinik ID\'si.');
         }
 
-        const res = await fetch(`/api/public-availability/${userId}`);
-        
-        // Safety check for Content-Type to avoid Parsing HTML as JSON (which causes the "Unexpected token '<'" error)
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) {
-          throw new Error('Sunucu müsaitlik bilgisi yerine bir web sayfası (HTML) döndürdü. Lütfen linki doğru kopyaladığınızdan ve klinisyenin paneline en az bir kere girdiğinden emin olun.');
+        // 1. Instant client-side demo handling
+        if (userId === 'demo_klinik' || userId === 'demo') {
+          const todayStr = new Date().toISOString().split('T')[0];
+          setData({
+            therapistName: 'PsyCalcu Örnek Klinik',
+            rooms: [
+              { id: 'room_1', name: 'Oda 1 - Ege (Bireysel)', type: 'standard', color: '#6b705c' },
+              { id: 'room_2', name: 'Oda 2 - Marmara (Oyun)', type: 'play-therapy', color: '#cb997e' },
+              { id: 'room_3', name: 'Oda 3 - Akdeniz (Çift & Aile)', type: 'family-therapy', color: '#b5838d' }
+            ],
+            blockedSlots: [],
+            sessions: [
+              { id: 's1', date: todayStr, time: '10:00', duration: 50, roomId: 'room_1', type: 'busy' },
+              { id: 's2', date: todayStr, time: '14:00', duration: 50, roomId: 'room_2', type: 'busy' },
+              { id: 's3', date: todayStr, time: '16:00', duration: 50, roomId: 'room_3', type: 'busy' }
+            ]
+          });
+          setError(null);
+          return;
         }
 
-        if (!res.ok) {
-          let errorMessage = 'Müsaitlik bilgileri yüklenirken sunucu hatası oluştu.';
-          try {
-            const errJson = await res.json();
-            if (errJson && errJson.error) {
-              errorMessage = errJson.error;
-            }
-          } catch (e) {
-            if (res.status === 404) {
-              errorMessage = 'Klinik veya terapist bulunamadı.';
+        // 2. Try direct client-side Firestore fetch (fast, bypasses server API / HTML issues completely)
+        try {
+          const publicDocRef = doc(db, 'public_availability', userId);
+          const docSnap = await getDoc(publicDocRef);
+          if (docSnap.exists()) {
+            const rawData = docSnap.data();
+            setData({
+              therapistName: rawData.therapistName || 'Klinik',
+              rooms: rawData.rooms || [],
+              blockedSlots: rawData.blockedSlots || [],
+              sessions: rawData.sessions || []
+            });
+            setError(null);
+            return;
+          }
+        } catch (fsErr) {
+          console.warn("Client-side Firestore fetch failed, trying backend API route:", fsErr);
+        }
+
+        // 3. Fallback to Express backend API proxy
+        try {
+          const res = await fetch(`/api/public-availability/${userId}`);
+          const contentType = res.headers.get('content-type') || '';
+          
+          if (contentType.includes('application/json')) {
+            const json = await res.json();
+            if (res.ok && json) {
+              setData(json);
+              setError(null);
+              return;
+            } else if (json && json.error) {
+              throw new Error(json.error);
             }
           }
-          throw new Error(errorMessage);
+        } catch (apiErr: any) {
+          if (apiErr?.message) {
+            console.warn("API route error:", apiErr.message);
+          }
         }
 
-        const json = await res.json();
-        setData(json);
-        setError(null);
+        // 4. Final clean error if no data was retrieved
+        throw new Error('Klinik veya oda müsaitlik takvimi henüz oluşturulmamış. Lütfen klinisyenin paneline giriş yaparak oda ayarlarını güncellediğinden emin olun.');
       } catch (err: any) {
         setError(err.message || 'Bir hata oluştu.');
       } finally {
