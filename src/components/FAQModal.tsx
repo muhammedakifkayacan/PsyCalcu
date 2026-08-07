@@ -135,6 +135,70 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
       )
     },
     {
+      category: 'sync',
+      icon: <Sparkles className="w-5 h-5 text-[#cb997e]" />,
+      question: "Takvim Entegrasyonundaki Otomatik Kurallar Nelerdir? (30 Dk, Muhasebe & KVKK)",
+      answer: (
+        <div className="space-y-3 text-slate-600 text-xs md:text-sm leading-relaxed">
+          <p className="font-semibold text-slate-800">
+            Dış takvimlerden (Apple / Google Takvim) aktarılan seansların doğru muhasebeleştirilmesi ve veri güvenliği için uygulanan otomatik sistem kuralları şunlardır:
+          </p>
+          
+          <div className="space-y-2.5 text-xs">
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] uppercase font-mono">1. Kural</span>
+                ⏱️ 30 Dakika ve Altı Etkinlikler (Seans Dışı / Not)
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Takviminizden gelen ve süresi <strong>30 dakika veya daha kısa</strong> olan etkinlikler (kısa görüşmeler, yarım seanslar, hatırlatma notları veya bloklar) muhasebe bilançonuzu ve gelir/gider hesaplarınızı bozmaması için otomatik olarak <strong>"Seans Dışı Not / Görev"</strong> tipinde işaretlenir ve ücreti 0 TL kabul edilir. Dilerseniz seans detayından tipini manuel olarak yüz yüze veya online seansa dönüştürebilirsiniz.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 text-[10px] uppercase font-mono">2. Kural</span>
+                💡 Akıllı Fiyat & Gider Eşleştirme (Smart Pricing)
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Aynı danışana ait daha önce tanımlanmış özel bir seans ücreti, bakıcı ücreti veya oda kiralama payı varsa; takvimden yeni gelen seanslarda bu danışan ismi tespit edilerek geçmiş seans ücreti otomatik olarak uygulanır.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 text-[10px] uppercase font-mono">3. Kural</span>
+                🛡️ Manuel Düzenleme Koruması
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Takvimden aktarılan bir seansın fiyatını, bakıcı durumunu veya ödeme bilgisini PsyCalcu üzerinden elle değiştirdiğinizde, sistem bu veriyi korur. Dış takviminizde tarih/saat değişse dahi sizin girdiğiniz finansal veriler asla silinmez.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 text-[10px] uppercase font-mono">4. Kural</span>
+                🔒 KVKK & Danışan Mahremiyeti Filtresi
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Dış takvimden alınan veriler yalnızca saat ve rumuz düzeyinde işlenir. Takvimi dışa aktarma (ICS indirme veya dışa verme) aşamasında danışanlarınıza ait kişisel notlar maskelenerek veri güvenliği garanti altına alınır.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 text-[10px] uppercase font-mono">5. Kural</span>
+                📅 Üyelik Öncesi Geçmiş Kayıtlar
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Kayıt oluşturduğunuz tarihten önceki eski takvim kayıtları geçmiş ajanda takibi için çekilir ancak geçmiş aylara dönük ciro ve borç bakiyesi oluşturmaması için fiyatları 0 TL olarak kaydedilir.
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
       category: 'security',
       icon: <ShieldCheck className="w-5 h-5 text-[#cb997e]" />,
       question: "Verilerim Güvende mi? Kaybolur mu?",
