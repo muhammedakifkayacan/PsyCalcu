@@ -2191,8 +2191,8 @@ export default function App() {
           return;
         }
 
-        // Determine if the incoming session is cancelled or before membership
-        const isCancelledOrBeforeMembership = ns.price === 0 || ns.paymentStatus === 'paid';
+        // Determine if the incoming session is cancelled, non-session, or zero price
+        const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || ns.price === 0;
 
         // Auto-match room if not manually edited/set
         const mergedNotes = ns.notes || existing.notes;
@@ -2202,17 +2202,18 @@ export default function App() {
         const updated = {
           ...existing,
           clientName: ns.clientName,
+          type: ns.type,
           date: ns.date,
           time: ns.time,
           duration: ns.duration,
           notes: mergedNotes,
           roomId: matchedRoomId,
-          price: isCancelledOrBeforeMembership ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
-          paymentStatus: isCancelledOrBeforeMembership ? 'paid' : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
-          hasBabysitterFee: isCancelledOrBeforeMembership ? false : ns.hasBabysitterFee,
-          babysitterFeeAmount: isCancelledOrBeforeMembership ? 0 : ns.babysitterFeeAmount,
-          hasOfficeRentFee: isCancelledOrBeforeMembership ? false : ns.hasOfficeRentFee,
-          officeRentFeeAmount: isCancelledOrBeforeMembership ? 0 : ns.officeRentFeeAmount,
+          price: isCancelledOrNonSessionOrBefore ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
+          paymentStatus: isCancelledOrNonSessionOrBefore ? (ns.type === 'non-session' ? 'unpaid' : 'paid') : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
+          hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : ns.hasBabysitterFee,
+          babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : ns.babysitterFeeAmount,
+          hasOfficeRentFee: isCancelledOrNonSessionOrBefore ? false : ns.hasOfficeRentFee,
+          officeRentFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : ns.officeRentFeeAmount,
         };
         
         // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
@@ -2232,7 +2233,7 @@ export default function App() {
         let finalPrice = ns.price;
         let finalBabysitterFee = ns.babysitterFeeAmount;
         let finalOfficeRentFee = ns.officeRentFeeAmount;
-        if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled') {
+        if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled' && ns.type !== 'non-session') {
           const matchedCosts = getSmartClientCosts(
             ns.clientName,
             ns.date,

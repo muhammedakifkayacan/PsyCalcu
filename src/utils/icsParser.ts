@@ -1,5 +1,68 @@
 import { Session, SessionType } from '../types';
 
+function parseISO8601Duration(durationStr: string): number | null {
+  const regex = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
+  const match = durationStr.trim().match(regex);
+  if (!match) return null;
+  const days = parseInt(match[1] || '0', 10);
+  const hours = parseInt(match[2] || '0', 10);
+  const minutes = parseInt(match[3] || '0', 10);
+  const total = days * 1440 + hours * 60 + minutes;
+  return total > 0 ? total : null;
+}
+
+function parseIcsDateTimeToUtcMs(rawLine: string): number | null {
+  const firstColon = rawLine.indexOf(':');
+  if (firstColon === -1) return null;
+  const rawValue = rawLine.substring(firstColon + 1).trim();
+  const cleanValue = rawValue.replace(/[-:]/g, '');
+
+  if (cleanValue.length < 8) return null;
+
+  const year = parseInt(cleanValue.substring(0, 4), 10);
+  const month = parseInt(cleanValue.substring(4, 6), 10) - 1;
+  const day = parseInt(cleanValue.substring(6, 8), 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+
+  const tIndex = cleanValue.indexOf('T');
+  if (tIndex !== -1 && tIndex + 5 <= cleanValue.length) {
+    hour = parseInt(cleanValue.substring(tIndex + 1, tIndex + 3), 10) || 0;
+    minute = parseInt(cleanValue.substring(tIndex + 3, tIndex + 5), 10) || 0;
+    if (tIndex + 7 <= cleanValue.length) {
+      second = parseInt(cleanValue.substring(tIndex + 5, tIndex + 7), 10) || 0;
+    }
+  }
+
+  return Date.UTC(year, month, day, hour, minute, second);
+}
+
+function calculateEventDuration(
+  dtStartRaw?: string,
+  dtEndRaw?: string,
+  durationRaw?: string
+): number {
+  if (durationRaw) {
+    const parsed = parseISO8601Duration(durationRaw);
+    if (parsed && parsed > 0) return parsed;
+  }
+
+  if (dtStartRaw && dtEndRaw) {
+    const startMs = parseIcsDateTimeToUtcMs(dtStartRaw);
+    const endMs = parseIcsDateTimeToUtcMs(dtEndRaw);
+    if (startMs !== null && endMs !== null && endMs > startMs) {
+      const diffMins = Math.round((endMs - startMs) / (1000 * 60));
+      if (diffMins > 0) return diffMins;
+    }
+  }
+
+  return 50; // Default fallback duration in minutes
+}
+
 /**
  * Parses iCalendar (.ics) text format into structured Session objects.
  * This supports real Apple Calendar exports!
@@ -24,7 +87,14 @@ export function parseICS(
   const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
   const lines = unfoldedText.split('\n');
   
-  let currentEvent: Partial<Session> & { dtStartRaw?: string; descriptionRaw?: string; locationRaw?: string; noteRaw?: string } | null = null;
+  let currentEvent: Partial<Session> & { 
+    dtStartRaw?: string; 
+    dtEndRaw?: string; 
+    durationRaw?: string; 
+    descriptionRaw?: string; 
+    locationRaw?: string; 
+    noteRaw?: string; 
+  } | null = null;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -72,6 +142,13 @@ export function parseICS(
           }
         }
       }
+
+      // Calculate event duration in minutes from DTSTART, DTEND or DURATION
+      currentEvent.duration = calculateEventDuration(
+        currentEvent.dtStartRaw,
+        currentEvent.dtEndRaw,
+        currentEvent.durationRaw
+      );
       
       // Determine type (online or face-to-face) from summary, description or location
       let finalType: SessionType = 'online';
@@ -89,6 +166,12 @@ export function parseICS(
         } else if (searchSource.includes('iptal') || searchSource.includes('cancel')) {
           finalType = 'cancelled';
         }
+      }
+
+      // Duration rule: Events 30 minutes or less from calendar are marked as 'non-session' (seans değil)
+      // so they do not impact accounting or financial calculations.
+      if (currentEvent.duration && currentEvent.duration <= 30) {
+        finalType = 'non-session';
       }
 
       currentEvent.type = finalType;
@@ -125,13 +208,13 @@ export function parseICS(
         isBeforeMembership = !!(currentEvent.date && currentEvent.date < currentMonthStartStr);
       }
 
-      if (finalType === 'cancelled' || isBeforeMembership) {
+      if (finalType === 'cancelled' || finalType === 'non-session' || isBeforeMembership) {
         currentEvent.price = 0;
         currentEvent.hasBabysitterFee = false;
         currentEvent.babysitterFeeAmount = 0;
         currentEvent.hasOfficeRentFee = false;
         currentEvent.officeRentFeeAmount = 0;
-        currentEvent.paymentStatus = 'paid';
+        currentEvent.paymentStatus = 'unpaid';
       } else if (finalType === 'rent-income') {
         currentEvent.price = defaultOfficeRentFee;
         currentEvent.hasBabysitterFee = false;
@@ -172,6 +255,10 @@ export function parseICS(
           currentEvent.id = 'ics_' + cleanVal.replace(/[^a-zA-Z0-9_\-]/g, '').substring(0, 50);
         } else if (key === 'DTSTART') {
           currentEvent.dtStartRaw = line;
+        } else if (key === 'DTEND') {
+          currentEvent.dtEndRaw = line;
+        } else if (key === 'DURATION') {
+          currentEvent.durationRaw = cleanVal;
         } else if (key === 'DESCRIPTION') {
           currentEvent.descriptionRaw = cleanVal;
         } else if (key === 'NOTE' || key === 'COMMENT') {
