@@ -652,6 +652,16 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <Lightbulb className="w-3.5 h-3.5" />
                 </button>
 
+                {/* FAQ / Help Modal Button Mobile */}
+                <button
+                  id="faq-btn-mobile"
+                  onClick={() => setIsFaqOpen(true)}
+                  className="w-8 h-8 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#cb997e] hover:bg-[#f5f5f0] transition-all cursor-pointer"
+                  title="Yardım & Bilgi Merkezi (Kılavuz)"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+
                 {/* Settings Gear */}
                 <button
                   id="settings-btn-mobile"

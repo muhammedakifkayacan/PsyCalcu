@@ -292,6 +292,25 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         return res.status(400).json({ error: "Geçerli bir Kullanıcı ID gereklidir." });
       }
 
+      // Demo klinik handling for instant preview & testing without db record
+      if (userId === "demo_klinik" || userId === "demo") {
+        const todayStr = new Date().toISOString().split('T')[0];
+        return res.json({
+          therapistName: "PsyCalcu Örnek Klinik",
+          rooms: [
+            { id: "room_1", name: "Oda 1 - Ege (Bireysel)", type: "standard", color: "#6b705c" },
+            { id: "room_2", name: "Oda 2 - Marmara (Oyun)", type: "play-therapy", color: "#cb997e" },
+            { id: "room_3", name: "Oda 3 - Akdeniz (Çift & Aile)", type: "family-therapy", color: "#b5838d" }
+          ],
+          blockedSlots: [],
+          sessions: [
+            { id: "s1", date: todayStr, time: "10:00", duration: 50, roomId: "room_1", type: "busy" },
+            { id: "s2", date: todayStr, time: "14:00", duration: 50, roomId: "room_2", type: "busy" },
+            { id: "s3", date: todayStr, time: "16:00", duration: 50, roomId: "room_3", type: "busy" }
+          ]
+        });
+      }
+
       const configPath = path.join(process.cwd(), "firebase-applet-config.json");
       if (!fs.existsSync(configPath)) {
         return res.status(500).json({ error: "Firebase konfigürasyon dosyası bulunamadı." });
