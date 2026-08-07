@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -27,6 +27,7 @@ export default function SettingsModal({
   onRequestRoleChange
 }: SettingsModalProps) {
   const [therapistName, setTherapistName] = useState(settings.therapistName);
+  const [therapistPhone, setTherapistPhone] = useState(settings.therapistPhone || '');
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
@@ -53,6 +54,7 @@ export default function SettingsModal({
   useEffect(() => {
     if (isOpen) {
       setTherapistName(settings.therapistName);
+      setTherapistPhone(settings.therapistPhone || '');
       setDefaultSessionPrice(settings.defaultSessionPrice);
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
@@ -69,6 +71,7 @@ export default function SettingsModal({
     onSave({
       ...settings,
       therapistName,
+      therapistPhone,
       defaultSessionPrice: Number(defaultSessionPrice),
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
@@ -120,7 +123,7 @@ export default function SettingsModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto font-sans">
           {/* Therapist Name */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Psikolog Adı</label>
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Psikolog / Klinik Adı</label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
@@ -132,6 +135,26 @@ export default function SettingsModal({
                 placeholder="Örn. Dr. Melis Kaya"
               />
             </div>
+          </div>
+
+          {/* Therapist Phone / WhatsApp */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">İletişim / WhatsApp Telefon Numarası</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+              <input
+                type="tel"
+                value={therapistPhone}
+                onChange={(e) => setTherapistPhone(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                placeholder="Örn. 0532 123 45 67 veya +905321234567"
+              />
+            </div>
+            {showExplanations && (
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 mt-1">
+                Oda paylaşım sayfasını ziyaret eden kişilerin direkt WhatsApp üzerinden seans/oda kiralama talebi gönderebilmesi için kullanılır.
+              </p>
+            )}
           </div>
 
           {/* User Role Display (Read-Only) */}

@@ -390,7 +390,10 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
           {/* Bottom Row: Navigation Tabs */}
           <div className="flex items-center justify-center w-full border-t border-slate-100 pt-3">
-            <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto scrollbar-none gap-0.5">
+            <div 
+              className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto scrollbar-none gap-0.5 touch-pan-x overscroll-x-contain"
+              style={{ touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}
+            >
               <button
                 id="tab-agenda"
                 onClick={() => setActiveTab('agenda')}
@@ -751,7 +754,9 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
           )}
 
           {/* Row 2: Navigation Tabs */}
-          <div className={`flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden transition-all duration-300 ${
+          <div 
+            style={{ touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}
+            className={`flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap touch-pan-x overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden transition-all duration-300 ${
             isHeaderCollapsed 
               ? 'h-0 opacity-0 overflow-hidden border-0 p-0 pointer-events-none scale-95 mt-0' 
               : 'h-auto opacity-100 scale-100 mt-1'

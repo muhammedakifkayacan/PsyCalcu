@@ -98,6 +98,7 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
       });
       const publicAvailabilityData = JSON.parse(JSON.stringify({
         therapistName: settings?.therapistName || "Terapist",
+        therapistPhone: settings?.therapistPhone || "",
         rooms: settings?.rooms || [],
         blockedSlots: settings?.blockedSlots || [],
         sessions: publicSessions,

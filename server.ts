@@ -297,6 +297,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         const todayStr = new Date().toISOString().split('T')[0];
         return res.json({
           therapistName: "PsyCalcu Örnek Klinik",
+          therapistPhone: "05320000000",
           rooms: [
             { id: "room_1", name: "Oda 1 - Ege (Bireysel)", type: "standard", color: "#6b705c" },
             { id: "room_2", name: "Oda 2 - Marmara (Oyun)", type: "play-therapy", color: "#cb997e" },

@@ -276,7 +276,10 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
             </div>
 
             {/* Navigation Tabs for categories */}
-            <div className="px-6 pt-4 pb-2 md:px-8 border-b border-[#e5e1d8]/40 flex items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div 
+              style={{ touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}
+              className="px-6 pt-4 pb-2 md:px-8 border-b border-[#e5e1d8]/40 flex items-center gap-2 overflow-x-auto whitespace-nowrap touch-pan-x overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
               <button
                 onClick={() => { setActiveCategory('all'); setOpenIndex(0); }}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${

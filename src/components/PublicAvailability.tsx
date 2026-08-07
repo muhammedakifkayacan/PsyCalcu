@@ -8,11 +8,15 @@ import {
   MapPin, 
   Phone, 
   Mail, 
-  CheckCircle, 
   Lock, 
   AlertCircle,
   RefreshCw,
-  Home
+  Home,
+  MessageCircle,
+  Send,
+  X,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { Room } from '../types';
 import { db } from '../lib/firebase';
@@ -24,6 +28,7 @@ interface PublicAvailabilityProps {
 
 interface PublicData {
   therapistName: string;
+  therapistPhone?: string;
   rooms: Room[];
   blockedSlots: {
     id: string;
@@ -44,12 +49,25 @@ interface PublicData {
 }
 
 export default function PublicAvailability({ userId }: PublicAvailabilityProps) {
-  const [loading, setLoading] = useState(true);
+  // Load initial cached data from sessionStorage for instantaneous rendering
+  const cacheKey = `psycalcu_pub_${userId}`;
+  const cachedDataStr = typeof window !== 'undefined' ? sessionStorage.getItem(cacheKey) : null;
+  const initialCachedData: PublicData | null = cachedDataStr ? JSON.parse(cachedDataStr) : null;
+
+  const [loading, setLoading] = useState(!initialCachedData);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PublicData | null>(null);
+  const [data, setData] = useState<PublicData | null>(initialCachedData);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  // Selected slot state for WhatsApp booking
+  const [selectedSlot, setSelectedSlot] = useState<{
+    roomId: string;
+    roomName: string;
+    hour: string;
+    date: string;
+  } | null>(null);
 
   const hoursList = [
     '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', 
@@ -57,18 +75,20 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
   ];
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       try {
-        setLoading(true);
         if (!userId || userId === 'undefined' || userId === 'null' || userId.trim() === '') {
           throw new Error('Geçersiz paylaşım linki veya klinik ID\'si.');
         }
 
-        // 1. Instant client-side demo handling
+        // Demo klinik instant data
         if (userId === 'demo_klinik' || userId === 'demo') {
           const todayStr = new Date().toISOString().split('T')[0];
-          setData({
+          const demoData: PublicData = {
             therapistName: 'PsyCalcu Örnek Klinik',
+            therapistPhone: '05320000000',
             rooms: [
               { id: 'room_1', name: 'Oda 1 - Ege (Bireysel)', type: 'standard', color: '#6b705c' },
               { id: 'room_2', name: 'Oda 2 - Marmara (Oyun)', type: 'play-therapy', color: '#cb997e' },
@@ -80,60 +100,81 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
               { id: 's2', date: todayStr, time: '14:00', duration: 50, roomId: 'room_2', type: 'busy' },
               { id: 's3', date: todayStr, time: '16:00', duration: 50, roomId: 'room_3', type: 'busy' }
             ]
-          });
-          setError(null);
+          };
+          if (isMounted) {
+            setData(demoData);
+            setError(null);
+            setLoading(false);
+          }
           return;
         }
 
-        // 2. Try direct client-side Firestore fetch (fast, bypasses server API / HTML issues completely)
-        try {
-          const publicDocRef = doc(db, 'public_availability', userId);
-          const docSnap = await getDoc(publicDocRef);
-          if (docSnap.exists()) {
-            const rawData = docSnap.data();
-            setData({
-              therapistName: rawData.therapistName || 'Klinik',
-              rooms: rawData.rooms || [],
-              blockedSlots: rawData.blockedSlots || [],
-              sessions: rawData.sessions || []
-            });
-            setError(null);
-            return;
-          }
-        } catch (fsErr) {
-          console.warn("Client-side Firestore fetch failed, trying backend API route:", fsErr);
-        }
-
-        // 3. Fallback to Express backend API proxy
-        try {
-          const res = await fetch(`/api/public-availability/${userId}`);
-          const contentType = res.headers.get('content-type') || '';
-          
-          if (contentType.includes('application/json')) {
-            const json = await res.json();
-            if (res.ok && json) {
-              setData(json);
-              setError(null);
-              return;
-            } else if (json && json.error) {
-              throw new Error(json.error);
+        // Fast parallel fetch: try Firestore client-side SDK & Express API route concurrently
+        const fetchFromFirestore = async (): Promise<PublicData | null> => {
+          try {
+            const publicDocRef = doc(db, 'public_availability', userId);
+            const docSnap = await getDoc(publicDocRef);
+            if (docSnap.exists()) {
+              const rawData = docSnap.data();
+              return {
+                therapistName: rawData.therapistName || 'Klinik',
+                therapistPhone: rawData.therapistPhone || '',
+                rooms: rawData.rooms || [],
+                blockedSlots: rawData.blockedSlots || [],
+                sessions: rawData.sessions || []
+              };
             }
+          } catch (e) {}
+          return null;
+        };
+
+        const fetchFromApi = async (): Promise<PublicData | null> => {
+          try {
+            const res = await fetch(`/api/public-availability/${userId}`);
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const json = await res.json();
+              if (res.ok && json) return json;
+            }
+          } catch (e) {}
+          return null;
+        };
+
+        // Fire both fetches simultaneously for maximum speed
+        const [fsData, apiData] = await Promise.all([
+          fetchFromFirestore(),
+          fetchFromApi()
+        ]);
+
+        const resolvedData = fsData || apiData;
+
+        if (resolvedData) {
+          if (isMounted) {
+            setData(resolvedData);
+            setError(null);
+            sessionStorage.setItem(cacheKey, JSON.stringify(resolvedData));
           }
-        } catch (apiErr: any) {
-          if (apiErr?.message) {
-            console.warn("API route error:", apiErr.message);
+        } else {
+          if (isMounted && !data) {
+            throw new Error('Klinik veya oda müsaitlik takvimi henüz oluşturulmamış.');
           }
         }
-
-        // 4. Final clean error if no data was retrieved
-        throw new Error('Klinik veya oda müsaitlik takvimi henüz oluşturulmamış. Lütfen klinisyenin paneline giriş yaparak oda ayarlarını güncellediğinden emin olun.');
       } catch (err: any) {
-        setError(err.message || 'Bir hata oluştu.');
+        if (isMounted && !data) {
+          setError(err.message || 'Müsaitlik bilgileri yüklenemedi.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
+
     loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [userId]);
 
   const handlePrevDay = () => {
@@ -150,6 +191,34 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
 
   const handleToday = () => {
     setSelectedDate(new Date().toISOString().split('T')[0]);
+  };
+
+  // Helper to build WhatsApp wa.me link
+  const getWhatsAppLink = (slot?: { roomName: string; hour: string; date: string } | null) => {
+    const rawPhone = data?.therapistPhone || '';
+    let phoneNum = rawPhone.replace(/\D/g, '');
+    if (phoneNum.startsWith('0')) {
+      phoneNum = '90' + phoneNum.substring(1);
+    } else if (phoneNum.length === 10) {
+      phoneNum = '90' + phoneNum;
+    }
+
+    const therapistName = data?.therapistName || 'Klinik Yöneticisi';
+    const dateFormatted = slot ? new Date(slot.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' }) : '';
+    
+    let messageText = '';
+    if (slot) {
+      messageText = `Merhaba ${therapistName}, PsyCalcu Müsaitlik Takviminiz üzerinden ${dateFormatted} tarihi, saat ${slot.hour} için ${slot.roomName} odasını kiralama / rezervasyon talebinde bulunmak istiyorum. Müsaitliği teyit edebilir misiniz?`;
+    } else {
+      messageText = `Merhaba ${therapistName}, PsyCalcu Oda Müsaitlik Takvimi üzerinden oda kiralama ve seans rezervasyonu hakkında bilgi almak istiyorum.`;
+    }
+
+    const encodedText = encodeURIComponent(messageText);
+
+    if (phoneNum) {
+      return `https://wa.me/${phoneNum}?text=${encodedText}`;
+    }
+    return `https://wa.me/?text=${encodedText}`;
   };
 
   if (loading) {
@@ -188,25 +257,21 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
     );
   }
 
-  const { therapistName, rooms = [], blockedSlots = [], sessions = [] } = data;
+  const { therapistName, therapistPhone, rooms = [], blockedSlots = [], sessions = [] } = data;
 
   // Helpers for blockage and session checks
   const getCellStatus = (roomId: string, hourStr: string): { status: 'available' | 'busy' | 'blocked'; reason?: string } => {
     const targetHour = parseInt(hourStr.split(':')[0], 10);
     const dateObj = new Date(selectedDate);
-    const dayOfWeekNum = dateObj.getDay(); // 0 (Sunday) to 6 (Saturday)
+    const dayOfWeekNum = dateObj.getDay();
 
-    // 1. Check for specific date blockage or day-of-week blockage
     const block = blockedSlots.find(b => {
-      // Room match: either specific room or "all"
       const isRoomMatch = b.roomId === 'all' || b.roomId === roomId;
       if (!isRoomMatch) return false;
 
-      // Time match: either specific time hour or entire day (no time specified)
       const isTimeMatch = !b.time || parseInt(b.time.split(':')[0], 10) === targetHour;
       if (!isTimeMatch) return false;
 
-      // Date match OR DayOfWeek match
       if (b.date && b.date === selectedDate) return true;
       if (b.dayOfWeek !== undefined && b.dayOfWeek === dayOfWeekNum) return true;
 
@@ -217,7 +282,6 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
       return { status: 'blocked', reason: block.reason || 'Rezervasyona Kapalı' };
     }
 
-    // 2. Check for active non-cancelled session
     const session = sessions.find(s => {
       if (s.date !== selectedDate || s.roomId !== roomId) return false;
       const sHour = parseInt(s.time.split(':')[0], 10);
@@ -241,8 +305,10 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
     }
   };
 
+  const selectedDateFormatted = new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+
   return (
-    <div className="min-h-screen bg-[#fdfbf7] font-sans flex flex-col justify-between py-8 px-4 sm:px-6">
+    <div className="min-h-screen bg-[#fdfbf7] font-sans flex flex-col justify-between py-8 px-4 sm:px-6 relative pb-28">
       <div className="max-w-5xl w-full mx-auto space-y-6">
         
         {/* Header Brand Banner */}
@@ -250,24 +316,25 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
           <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
           
           <div className="space-y-2">
-            <span className="text-[9px] bg-white/25 px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">Çevrimiçi Müsaitlik</span>
+            <span className="text-[9px] bg-white/25 px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">Çevrimiçi Müsaitlik Takvimi</span>
             <h1 className="text-xl sm:text-2xl font-serif italic font-bold">
               {therapistName}
             </h1>
             <p className="text-xs opacity-90 leading-relaxed max-w-md">
-              Klinik çalışma odalarının günlük doluluk durumunu aşağıdan izleyebilir ve müsait saatler için iletişime geçebilirsiniz.
+              Klinik çalışma odalarının günlük doluluk durumunu aşağıdan inceleyebilir ve müsait saatler için tek tıkla WhatsApp üzerinden iletişime geçebilirsiniz.
             </p>
           </div>
 
-          <div className="bg-white/10 border border-white/20 p-4 rounded-2xl text-xs space-y-2 shrink-0 w-full sm:w-auto">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5 text-[#ffe8d6]" />
-              <span>Güvenli & KVKK Uyumlu Takvim</span>
-            </div>
-            <p className="text-[10px] text-white/75 max-w-[220px]">
-              Tüm danışan detayları gizlidir; sadece doluluk bilgisi paylaşılmaktadır.
-            </p>
-          </div>
+          {/* Direct WhatsApp Call to Action Header Button */}
+          <a
+            href={getWhatsAppLink(null)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-5 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 shrink-0 border border-emerald-400 cursor-pointer active:scale-95"
+          >
+            <MessageCircle className="w-4 h-4 fill-current" />
+            <span>WhatsApp ile İletişim</span>
+          </a>
         </div>
 
         {/* Calendar Navigation and Interactive Timeline Grid */}
@@ -282,7 +349,7 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-slate-500 font-medium">Seçili Tarih:</span>
                 <span className="text-xs font-semibold text-[#6b705c] bg-[#6b705c]/10 px-2.5 py-0.5 rounded-lg">
-                  {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}
+                  {selectedDateFormatted}
                 </span>
               </div>
             </div>
@@ -317,28 +384,38 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
                 <input 
                   type="date" 
                   value={selectedDate} 
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setSelectedSlot(null);
+                  }}
                   className="text-xs bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-slate-700 font-bold cursor-pointer"
                 />
               </div>
             </div>
           </div>
 
-          {/* Color Legend for public users */}
-          <div className="flex flex-wrap items-center gap-4 text-xs font-medium bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8]/40">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Gösterge:</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-lg bg-emerald-50 border border-emerald-200 inline-block shrink-0" />
-              <span className="text-slate-600">Boş / Müsait</span>
+          {/* Color Legend & WhatsApp hint */}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-medium bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8]/40">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Gösterge:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-lg bg-emerald-100 border border-emerald-300 inline-block shrink-0" />
+                <span className="text-slate-700 font-bold">Müsait (Seç ve Kirala)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-lg bg-slate-100 border border-slate-200 inline-block shrink-0" />
+                <span className="text-slate-500">Dolu (Rezerve)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-lg bg-amber-50 border border-amber-200 inline-block shrink-0" />
+                <span className="text-slate-500">Kapalı</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-lg bg-slate-100 border border-slate-200 inline-block shrink-0" />
-              <span className="text-slate-600">Dolu (Rezerve)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-lg bg-amber-50 border border-amber-200 inline-block shrink-0" />
-              <span className="text-slate-600">Rezervasyona Kapalı</span>
-            </div>
+
+            <p className="text-[11px] text-emerald-800 font-semibold italic flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              Müsait saate tıklayarak WhatsApp mesaj şablonunu oluşturabilirsiniz.
+            </p>
           </div>
 
           {/* Timeline Table Grid */}
@@ -396,8 +473,6 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
                               title={cell.reason}
                             >
                               <Lock className="w-3 h-3 text-amber-400" />
-                              
-                              {/* Hover Reason tooltip */}
                               <div className="absolute bottom-full mb-1 hidden group-hover:block bg-slate-800 text-white text-[9px] py-1 px-2.5 rounded shadow-lg z-20 whitespace-nowrap">
                                 {cell.reason}
                               </div>
@@ -417,14 +492,27 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
                           );
                         }
 
+                        const isSelected = selectedSlot?.roomId === room.id && selectedSlot?.hour === hour;
+
                         return (
-                          <div
+                          <button
                             key={hour}
-                            className="h-9 rounded-xl bg-emerald-50/45 border border-emerald-100 flex items-center justify-center text-emerald-700 text-[10px] font-bold select-none cursor-default"
-                            title="Bu saat rezervasyon için uygundur"
+                            type="button"
+                            onClick={() => setSelectedSlot({
+                              roomId: room.id,
+                              roomName: room.name,
+                              hour,
+                              date: selectedDate
+                            })}
+                            className={`h-9 rounded-xl border flex items-center justify-center text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
+                              isSelected 
+                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400 scale-105 z-10' 
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 hover:border-emerald-300'
+                            }`}
+                            title={`${room.name} - ${hour} için rezervasyon yap`}
                           >
-                            Müsait
-                          </div>
+                            {isSelected ? <Check className="w-3.5 h-3.5" /> : 'Müsait'}
+                          </button>
                         );
                       })}
                     </div>
@@ -441,26 +529,67 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
             <Building className="w-6 h-6" />
           </div>
           <div className="space-y-1.5 max-w-md mx-auto">
-            <h3 className="text-base font-bold font-serif text-slate-800">Rezervasyon ve Seans Talebi</h3>
+            <h3 className="text-base font-bold font-serif text-slate-800">Rezervasyon ve Oda Kiralama Talebi</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Müsait odalar için seans oluşturmak, saatlik veya aylık oda kiralamak veya diğer detayları görüşmek için klinik iletişimiyle irtibata geçebilirsiniz.
+              Müsait odalar için seans oluşturmak, saatlik veya günlük oda kiralamak için direkt WhatsApp üzerinden klinik yöneticisine mesaj gönderebilirsiniz.
             </p>
           </div>
           
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-2 text-xs font-semibold text-slate-600">
-            <div className="flex items-center gap-1.5">
-              <Mail className="w-4 h-4 text-[#cb997e]" />
-              <span>muhammedakifkayacan@gmail.com</span>
-            </div>
-            <div className="hidden sm:inline text-slate-300">|</div>
-            <div className="flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-[#cb997e]" />
-              <span>PsyCalcu Klinik Kampüsü</span>
-            </div>
+          <div className="pt-2 flex justify-center">
+            <a
+              href={getWhatsAppLink(selectedSlot)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl shadow-md transition-all cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4 fill-current" />
+              <span>WhatsApp ile Genel Müsaitlik Sor / Mesaj Gönder</span>
+            </a>
           </div>
         </div>
 
       </div>
+
+      {/* Floating Sticky Bottom Bar when a specific available slot is selected */}
+      {selectedSlot && (
+        <div className="fixed bottom-4 left-4 right-4 max-w-xl mx-auto z-50 animate-bounce-in">
+          <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-2xl border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="space-y-1 text-center sm:text-left min-w-0">
+              <div className="flex items-center justify-center sm:justify-start gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Seçili Müsait Saat</span>
+              </div>
+              <p className="text-sm font-bold truncate text-white">
+                {selectedSlot.roomName} — {selectedSlot.hour}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                {new Date(selectedSlot.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+              <a
+                href={getWhatsAppLink(selectedSlot)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+                <span>WhatsApp ile Kirala</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSlot(null)}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl transition-all cursor-pointer"
+                title="Seçimi İptal Et"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Public Footer */}
       <div className="text-center text-[10px] text-slate-400 font-medium py-6">

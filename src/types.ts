@@ -63,6 +63,7 @@ export interface AppSettings {
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number; // per face-to-face session office rent
   therapistName: string;
+  therapistPhone?: string;
   calendarSyncEnabled: boolean;
   onlineCalendarWebcalUrl: string; // URL for online sessions calendar
   faceToFaceCalendarWebcalUrl: string; // URL for face-to-face sessions calendar
