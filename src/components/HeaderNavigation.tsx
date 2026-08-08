@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Search, 
   X, 
@@ -10,11 +10,24 @@ import {
   Settings as SettingsIcon, 
   LogOut,
   Eye,
-  EyeOff
+  EyeOff,
+  Menu,
+  Calendar as CalendarIcon,
+  TrendingUp,
+  CreditCard,
+  Database,
+  Building,
+  ShieldCheck,
+  UserCheck,
+  Bell,
+  Sparkles,
+  ChevronRight,
+  User,
+  SlidersHorizontal
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
-import { AppNotification, AppSettings, Session, SessionType } from '../types';
+import { AppNotification, AppSettings, Session } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 
 interface HeaderNavigationProps {
@@ -89,6 +102,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   handleLogout
 }) => {
   const { isPrivacyMode, togglePrivacyMode, formatMoney } = usePrivacy();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handlePrivacyToggle = () => {
     togglePrivacyMode();
@@ -99,40 +113,106 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
     }
   };
 
+  const handleTabClick = (tabName: string) => {
+    setActiveTab(tabName);
+    setIsMenuOpen(false);
+  };
+
   return (
-    <nav className={`sticky top-0 z-40 flex flex-col lg:flex-row items-center justify-between px-6 md:px-8 border-b border-[#e5e1d8] bg-white transition-all duration-300 ${
-      isHeaderCollapsed ? 'gap-0 py-2 shadow-xs' : 'gap-4 py-4 shadow-none'
-    }`}>
-      {!isMobile && (
-        /* DESKTOP HEADER VIEW */
-        <div className="hidden lg:flex lg:flex-col w-full gap-4">
-          {/* Top Row: Brand, Search, and Action Status/Buttons */}
-          <div className="flex items-center justify-between w-full gap-4">
-            {/* Brand Logo & Name */}
-            <div 
-              onClick={() => setActiveTab('agenda')}
-              className="flex items-center gap-3 shrink-0 cursor-pointer hover:opacity-85 select-none transition-all"
-              title="Ana Sayfaya Git (Ajanda)"
-            >
-              <div className="w-10 h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">P</div>
-              <div>
-                <h1 className="text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
-                <p className="text-[10px] text-slate-400 font-semibold tracking-wider mt-1">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
-              </div>
+    <>
+      <nav className={`sticky top-0 z-40 flex flex-col items-center justify-between px-4 md:px-8 border-b border-[#e5e1d8] bg-white transition-all duration-300 ${
+        isHeaderCollapsed ? 'py-2 shadow-xs' : 'py-3.5 shadow-none'
+      }`}>
+        <div className="flex items-center justify-between w-full max-w-7xl mx-auto gap-3">
+          
+          {/* Brand Logo & Name */}
+          <div 
+            onClick={() => handleTabClick('agenda')}
+            className="flex items-center gap-2.5 shrink-0 cursor-pointer hover:opacity-85 select-none transition-all"
+            title="Ana Sayfaya Git (Günlük Ajanda)"
+          >
+            <div className="w-9 h-9 md:w-10 md:h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-xl md:text-2xl italic shadow-md">
+              P
+            </div>
+            <div>
+              <h1 className="text-lg md:text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-semibold tracking-wider mt-0.5 hidden sm:block">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
             </div>
 
-            {/* Search Bar */}
-            <div className={`relative w-full max-w-xs xl:max-w-sm z-50 transition-all duration-300 lg:h-auto lg:opacity-100 lg:visible lg:scale-100 lg:pointer-events-auto ${
-              isHeaderCollapsed 
-                ? 'lg:h-0 lg:opacity-0 lg:overflow-hidden lg:pointer-events-none lg:scale-95' 
-                : 'lg:h-auto lg:opacity-100 lg:scale-100'
-            }`}>
-              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
-                <Search className="w-4 h-4 text-[#6b705c]" />
+            {/* Cloud Sync Status Indicator Badge */}
+            {user && (
+              <div className="ml-1 flex items-center gap-1.5" title={
+                isQuotaExceeded ? 'Kota Doldu (Yerel Depolama Aktif)' :
+                isAuthSyncing ? 'Bulut Senkronizasyonu Sürüyor...' :
+                isCloudSaving ? 'Buluta Kaydediliyor...' : 'Bulut Verisi Eşleşti'
+              }>
+                <span className="relative flex h-2.5 w-2.5">
+                  {isQuotaExceeded ? (
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                  ) : (isAuthSyncing || isCloudSaving) ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                    </>
+                  ) : (
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* CENTER: PRIMARY TWO-WAY SEGMENTED SWITCH (Günlük Ajanda | Muhasebe) */}
+          <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs">
+            <button
+              id="tab-agenda-main"
+              onClick={() => handleTabClick('agenda')}
+              className={`relative px-3.5 md:px-5 py-1.5 md:py-2 rounded-full font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+              }`}
+            >
+              {activeTab === 'agenda' && (
+                <motion.div
+                  layoutId="mainHeaderSwitchIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                />
+              )}
+              <CalendarIcon className="w-3.5 h-3.5" />
+              <span>Günlük Ajanda</span>
+            </button>
+
+            <button
+              id="tab-stats-main"
+              onClick={() => handleTabClick('stats')}
+              className={`relative px-3.5 md:px-5 py-1.5 md:py-2 rounded-full font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+              }`}
+            >
+              {activeTab === 'stats' && (
+                <motion.div
+                  layoutId="mainHeaderSwitchIndicator"
+                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                />
+              )}
+              <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
+              <span>Muhasebe</span>
+              {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
+            </button>
+          </div>
+
+          {/* RIGHT: SEARCH, NOTIFICATIONS, AND BURGER MENU BUTTON */}
+          <div className="flex items-center gap-2">
+            
+            {/* Desktop Quick Search */}
+            <div className="hidden lg:block relative w-48 xl:w-56">
+              <div className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-[#6b705c]">
+                <Search className="w-3.5 h-3.5" />
               </div>
               <input
                 type="text"
-                placeholder="Danışan, seans veya not ara..."
+                placeholder="Ara..."
                 value={headerSearchQuery}
                 onChange={(e) => setHeaderSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -142,744 +222,417 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     setHeaderSearchQuery('');
                   }
                 }}
-                className="w-full pl-9 pr-8 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] focus:ring-1 focus:ring-[#6b705c]/20 transition-all font-medium placeholder:text-slate-400 shadow-xs"
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] font-medium placeholder:text-slate-400 shadow-3xs"
               />
               {headerSearchQuery && (
                 <button
                   onClick={() => setHeaderSearchQuery('')}
-                  className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute inset-y-0 right-2.5 flex items-center text-slate-400 hover:text-slate-600"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
 
+              {/* Quick Search Overlay Results */}
               {headerSearchQuery.trim() && (
-                <div className="absolute top-full mt-2 left-0 right-0 max-h-[340px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1.5 animate-fade-in divide-y divide-slate-100">
-                  <div className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                    Seans Arama Sonuçları ({searchedSessions.length})
+                <div className="absolute top-full mt-2 right-0 w-80 max-h-[300px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-fade-in">
+                  <div className="px-2 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    Arama Sonuçları ({searchedSessions.length})
                   </div>
                   {searchedSessions.length === 0 ? (
-                    <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium space-y-2">
-                      <div>Eşleşen seans bulunamadı.</div>
-                      <button
+                    <div className="px-3 py-3 text-center text-xs text-slate-400">Sonuç bulunamadı</div>
+                  ) : (
+                    searchedSessions.slice(0, 4).map(session => (
+                      <div 
+                        key={session.id}
                         onClick={() => {
-                          setSearchTabQuery(headerSearchQuery);
-                          setActiveTab('search');
+                          setSelectedDate(session.date);
+                          setActiveTab('agenda');
                           setHeaderSearchQuery('');
                         }}
-                        className="px-3 py-1.5 bg-[#f5f5f0] hover:bg-[#e5e5df] border border-[#e5e1d8] rounded-full text-slate-600 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                        className="p-2 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs"
                       >
-                        <Search className="w-3 h-3" />
-                        Gelişmiş Arama Sayfasına Git
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
-                        {searchedSessions.slice(0, 5).map(session => {
-                          const [year, month, day] = session.date.split('-');
-                          const formattedDate = `${day}.${month}.${year}`;
-                          return (
-                            <div 
-                              key={session.id} 
-                              className="p-2 hover:bg-[#fdfbf7] rounded-xl transition-all flex items-center justify-between gap-2 group pt-2"
-                            >
-                              <div className="space-y-0.5 text-left min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-xs text-[#555a4a] truncate block max-w-[150px]">
-                                    {session.clientName}
-                                  </span>
-                                  <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
-                                    session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
-                                    session.type === 'face-to-face' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
-                                    'bg-rose-50 text-rose-600 border border-rose-100/50'
-                                  }`}>
-                                    {session.type === 'online' ? 'Çevrimiçi' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold font-mono">
-                                  <span>{formattedDate}</span>
-                                  <span>•</span>
-                                  <span>{session.time}</span>
-                                  <span>•</span>
-                                  <span className="text-[#cb997e]">{formatMoney(session.price)}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  onClick={() => {
-                                    setSelectedDate(session.date);
-                                    setActiveTab('agenda');
-                                    setHeaderSearchQuery('');
-                                  }}
-                                  className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all"
-                                  title="Seans gününe git"
-                                >
-                                  Git
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedDate(session.date);
-                                    setEditingSession(session);
-                                    setIsSessionModalOpen(true);
-                                    setHeaderSearchQuery('');
-                                  }}
-                                  className="px-2 py-1 bg-[#6b705c] hover:bg-[#585c4c] text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all"
-                                  title="Seansı düzenle"
-                                >
-                                  Düzenle
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        <div className="truncate pr-2">
+                          <p className="font-bold text-slate-700 truncate">{session.clientName}</p>
+                          <p className="text-[10px] text-slate-400">{session.date} • {session.time}</p>
+                        </div>
+                        <span className="font-bold text-[#cb997e] shrink-0">{formatMoney(session.price)}</span>
                       </div>
-                      <div className="pt-2 px-1">
-                        <button
-                          onClick={() => {
-                            setSearchTabQuery(headerSearchQuery);
-                            setActiveTab('search');
-                            setHeaderSearchQuery('');
-                          }}
-                          className="w-full py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl text-amber-800 text-[10px] font-bold text-center flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                        >
-                          <Search className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Tüm {searchedSessions.length} Sonucu Gelişmiş Arama Sayfasında Gör ✨</span>
-                        </button>
-                      </div>
-                    </>
+                    ))
                   )}
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons & Cloud Status */}
-            <div className={`flex items-center gap-3 shrink-0 transition-all duration-300 lg:h-auto lg:opacity-100 lg:visible lg:scale-100 lg:pointer-events-auto ${
-              isHeaderCollapsed 
-                ? 'lg:h-0 lg:opacity-0 lg:overflow-hidden lg:pointer-events-none lg:scale-95' 
-                : 'lg:h-auto lg:opacity-100 lg:scale-100'
-            }`}>
-              {settings.onlineCalendarWebcalUrl || settings.faceToFaceCalendarWebcalUrl ? (
-                <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100" id="calendar-sync-active-pill">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  Takvim Entegrasyonu Aktif
-                </div>
-              ) : (
-                <div className="hidden lg:flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100" id="calendar-sync-inactive-pill">
-                  <span className="relative flex h-2 w-2">
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 animate-pulse"></span>
-                  </span>
-                  Takvim Linki Eklenmedi
-                </div>
-              )}
-
-              {/* Bulut Senkronizasyon Durumu Pill */}
-              {user && (
-                <div className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
-                  isQuotaExceeded
-                    ? 'text-amber-700 bg-amber-50 border-amber-100'
-                    : (isAuthSyncing || isCloudSaving)
-                      ? 'text-amber-700 bg-amber-50 border-amber-100' 
-                      : 'text-emerald-700 bg-emerald-50 border-emerald-100'
-                }`} id="cloud-sync-status-pill">
-                  {isQuotaExceeded ? (
-                    <>
-                      <div className="p-0.5 bg-amber-100 text-amber-700 rounded-full">
-                        <span className="text-xs">⚠️</span>
-                      </div>
-                      <span className="font-semibold text-amber-800">Kota Doldu (Yerel Aktif)</span>
-                    </>
-                  ) : isAuthSyncing ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                      <span className="font-semibold">Bulut Senkronizasyonu...</span>
-                    </>
-                  ) : isCloudSaving ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                      <span className="font-semibold">Buluta Kaydediliyor...</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-0.5 bg-emerald-100 text-emerald-700 rounded-full">
-                        <Check className="w-3 h-3 font-bold" />
-                      </div>
-                      <span className="font-semibold text-emerald-800">Bulut Eşleşti (Tamamlandı)</span>
-                    </>
-                  )}
-                </div>
-              )}
-              
-              <div className="text-right hidden xl:block">
-                <p className="text-xs font-medium text-slate-700">{settings.therapistName}</p>
-                <p className="text-[10px] text-slate-600 font-semibold">{headerDateStr}</p>
-              </div>
-              
-              <NotificationCenter
-                notifications={allNotifications}
-                onMarkAllAsRead={handleMarkAllAsRead}
-                onClearAll={handleClearAllNotifications}
-                showToast={showToast}
-                onViewSyncDetails={(details) => {
-                  setSyncDetailsToShow(details);
-                  setIsSyncDetailsModalOpen(true);
-                }}
-              />
-
-              {/* Privacy Mode Toggle Button */}
-              <button
-                id="toggle-privacy-btn"
-                onClick={handlePrivacyToggle}
-                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
-                  isPrivacyMode
-                    ? 'bg-amber-500 text-white border-amber-600 shadow-md animate-pulse'
-                    : 'bg-[#fdfbf7] text-slate-600 hover:bg-[#f5f5f0] border-[#e5e1d8]'
-                }`}
-                title={isPrivacyMode ? "Gizlilik Modu Açık (Paraları Göster)" : "Gizlilik Modu Kapalı (Paraları Gizle)"}
-              >
-                {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-
-              <button
-                id="toggle-explanations-btn"
-                onClick={toggleShowExplanations}
-                className={`w-10 h-10 rounded-full border border-[#e5e1d8] flex items-center justify-center transition-all cursor-pointer ${
-                  showExplanations 
-                    ? 'bg-[#6b705c] text-white hover:bg-[#585c4c]' 
-                    : 'bg-[#fdfbf7] text-slate-500 hover:bg-[#f5f5f0]'
-                }`}
-                title={showExplanations ? "Yardımcı Açıklamaları Gizle" : "Yardımcı Açıklamaları Göster"}
-              >
-                <Lightbulb className="w-4 h-4" />
-              </button>
-
-              <button
-                id="faq-btn"
-                onClick={() => setIsFaqOpen(true)}
-                className="w-10 h-10 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#cb997e] hover:bg-[#f5f5f0] transition-all cursor-pointer"
-                title="Yardım Merkezi & Sıkça Sorulan Sorular"
-              >
-                <HelpCircle className="w-4 h-4" />
-              </button>
-
-              <button
-                id="settings-btn"
-                onClick={() => setIsSettingsOpen(true)}
-                className="w-10 h-10 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#6b705c] hover:bg-[#f5f5f0] transition-all cursor-pointer"
-                title="Ayarlar"
-              >
-                <SettingsIcon className="w-4 h-4" />
-              </button>
-
-              {user && (
-                <button
-                  id="header-logout-btn"
-                  onClick={handleLogout}
-                  className="w-10 h-10 rounded-full border border-red-200 bg-red-50/50 flex items-center justify-center text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all cursor-pointer shadow-xs"
-                  title="Güvenli Çıkış Yap"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Row: Navigation Tabs */}
-          <div className="flex items-center justify-center w-full border-t border-slate-100 pt-3">
-            <div 
-              className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto scrollbar-none gap-0.5 touch-pan-x overscroll-x-contain"
-              style={{ touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}
-            >
-              <button
-                id="tab-agenda"
-                onClick={() => setActiveTab('agenda')}
-                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'agenda' && (
-                  <motion.div
-                    layoutId="desktopActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Günlük Ajanda
-              </button>
-              <button
-                id="tab-stats"
-                onClick={() => setActiveTab('stats')}
-                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'stats' && (
-                  <motion.div
-                    layoutId="desktopActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Muhasebe Raporu {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-              </button>
-              <button
-                id="tab-debts"
-                onClick={() => setActiveTab('debts')}
-                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'debts' && (
-                  <motion.div
-                    layoutId="desktopActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-              </button>
-              <button
-                id="tab-sync"
-                onClick={() => setActiveTab('sync')}
-                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'sync' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'sync' && (
-                  <motion.div
-                    layoutId="desktopActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Takvim Entegrasyonu {featuresCalendarAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-              </button>
-              <button
-                id="tab-backup"
-                onClick={() => setActiveTab('backup')}
-                className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'backup' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'backup' && (
-                  <motion.div
-                    layoutId="desktopActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Yedek & E-Tablo
-              </button>
-              {settings.userRole === 'owner' && (
-                <button
-                  id="tab-rooms"
-                  onClick={() => setActiveTab('rooms')}
-                  className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                    activeTab === 'rooms' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                  }`}
-                >
-                  {activeTab === 'rooms' && (
-                    <motion.div
-                      layoutId="desktopActiveTabIndicator"
-                      className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                  Odalar & Doluluk 🛋️
-                </button>
-              )}
-              {user?.email === 'muhammedakifkayacan@gmail.com' && (
-                <button
-                  id="tab-admin"
-                  onClick={() => setActiveTab('admin')}
-                  className={`relative px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer shrink-0 ${
-                    activeTab === 'admin' ? 'text-white z-10' : 'text-slate-600 hover:text-slate-800'
-                  }`}
-                >
-                  {activeTab === 'admin' && (
-                    <motion.div
-                      layoutId="desktopActiveTabIndicator"
-                      className="absolute inset-0 bg-[#cb997e] rounded-full -z-10 shadow-3xs"
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                  Yönetici Paneli
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isMobile && (
-        /* MOBILE HEADER VIEW */
-        <div className="flex flex-col w-full gap-2 lg:hidden">
-          {isMobileSearchOpen ? (
-            /* Search Mode Row */
-            <div className="flex items-center gap-2 w-full h-10 px-1 animate-fade-in">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileSearchOpen(false);
-                  setHeaderSearchQuery('');
-                }}
-                className="p-1.5 rounded-xl hover:bg-[#f5f5f0] text-[#6b705c] transition-colors cursor-pointer"
-                title="Aramadan Çık"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              
-              <div className="relative flex-1">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#6b705c]/60">
-                  <Search className="w-4 h-4" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Danışan, seans veya not ara..."
-                  value={headerSearchQuery}
-                  onChange={(e) => setHeaderSearchQuery(e.target.value)}
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && headerSearchQuery.trim()) {
+                  <button
+                    onClick={() => {
                       setSearchTabQuery(headerSearchQuery);
                       setActiveTab('search');
                       setHeaderSearchQuery('');
-                      setIsMobileSearchOpen(false);
-                    }
-                  }}
-                  className="w-full pl-9 pr-8 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] focus:ring-1 focus:ring-[#6b705c]/20 transition-all font-medium placeholder:text-slate-400"
-                />
-                {headerSearchQuery && (
-                  <button
-                    onClick={() => setHeaderSearchQuery('')}
-                    className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    }}
+                    className="w-full py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-[10px] font-bold text-center mt-1 block"
                   >
-                    <X className="w-4 h-4" />
+                    Tüm Sonuçları Gör
                   </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* Standard Mode Row */
-            <div className="flex items-center justify-between w-full h-10">
-              {/* Logo & Brand */}
-              <div 
-                onClick={() => setActiveTab('agenda')}
-                className="flex items-center gap-2 cursor-pointer hover:opacity-85 select-none transition-all"
-                title="Ana Sayfaya Git (Ajanda)"
-              >
-                <div className="w-8 h-8 bg-[#6b705c] rounded-lg flex items-center justify-center text-white font-serif text-lg italic shadow-xs">P</div>
-                <div>
-                  <h1 className="text-sm font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
-                  <span className="text-[8px] text-slate-400 font-bold tracking-wider block mt-0.5">SEANS & BÜTÇE</span>
-                </div>
-                
-                {/* Cloud Sync Status Circle / Dot next to title */}
-                {user && (
-                  <div className="ml-1 animate-fade-in" title={
-                    isQuotaExceeded ? 'Kota Doldu (Yerel Aktif)' :
-                    isAuthSyncing ? 'Bulut Senkronizasyonu Sürüyor...' :
-                    isCloudSaving ? 'Buluta Kaydediliyor...' : 'Bulut Eşleşti'
-                  }>
-                    <span className="relative flex h-2 w-2">
-                      {isQuotaExceeded ? (
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                      ) : (isAuthSyncing || isCloudSaving) ? (
-                        <>
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Utility Buttons */}
-              <div className="flex items-center gap-1.5">
-                {/* Search Toggle button */}
-                <button
-                  type="button"
-                  onClick={() => setIsMobileSearchOpen(true)}
-                  className="w-8 h-8 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#6b705c] hover:bg-[#f5f5f0] transition-all cursor-pointer"
-                  title="Arama"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Privacy Mode Toggle Button */}
-                <button
-                  id="toggle-privacy-btn-mobile"
-                  onClick={handlePrivacyToggle}
-                  className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
-                    isPrivacyMode
-                      ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
-                      : 'bg-[#fdfbf7] text-slate-600 hover:bg-[#f5f5f0] border-[#e5e1d8]'
-                  }`}
-                  title={isPrivacyMode ? "Gizlilik Modu Açık (Paraları Göster)" : "Gizlilik Modu Kapalı (Paraları Gizle)"}
-                >
-                  {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-
-                {/* Notifications Bell */}
-                <NotificationCenter
-                  notifications={allNotifications}
-                  onMarkAllAsRead={handleMarkAllAsRead}
-                  onClearAll={handleClearAllNotifications}
-                  showToast={showToast}
-                  onViewSyncDetails={(details) => {
-                    setSyncDetailsToShow(details);
-                    setIsSyncDetailsModalOpen(true);
-                  }}
-                />
-
-                {/* Lightbulb (explanations) */}
-                <button
-                  id="toggle-explanations-btn-mobile"
-                  onClick={toggleShowExplanations}
-                  className={`w-8 h-8 rounded-full border border-[#e5e1d8] flex items-center justify-center transition-all cursor-pointer ${
-                    showExplanations 
-                      ? 'bg-[#6b705c] text-white' 
-                      : 'bg-[#fdfbf7] text-slate-500 hover:bg-[#f5f5f0]'
-                  }`}
-                  title={showExplanations ? "Yardımcı Açıklamaları Gizle" : "Yardımcı Açıklamaları Göster"}
-                >
-                  <Lightbulb className="w-3.5 h-3.5" />
-                </button>
-
-                {/* FAQ / Help Modal Button Mobile */}
-                <button
-                  id="faq-btn-mobile"
-                  onClick={() => setIsFaqOpen(true)}
-                  className="w-8 h-8 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#cb997e] hover:bg-[#f5f5f0] transition-all cursor-pointer"
-                  title="Yardım & Bilgi Merkezi (Kılavuz)"
-                >
-                  <HelpCircle className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Settings Gear */}
-                <button
-                  id="settings-btn-mobile"
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="w-8 h-8 rounded-full border border-[#e5e1d8] bg-[#fdfbf7] flex items-center justify-center text-[#6b705c] hover:bg-[#f5f5f0] transition-all cursor-pointer"
-                  title="Ayarlar"
-                >
-                  <SettingsIcon className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Mobile Logout Button */}
-                {user && (
-                  <button
-                    id="mobile-logout-btn"
-                    onClick={handleLogout}
-                    className="w-8 h-8 rounded-full border border-rose-200 bg-rose-50 flex items-center justify-center text-rose-600 hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shadow-3xs"
-                    title="Güvenli Çıkış Yap"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Search suggestions if search query exists */}
-          {isMobileSearchOpen && headerSearchQuery.trim() && (
-            <div className="absolute top-12 left-2 right-2 max-h-[300px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1.5 animate-fade-in divide-y divide-slate-100">
-              <div className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                Seans Arama Sonuçları ({searchedSessions.length})
-              </div>
-              {searchedSessions.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium space-y-2">
-                  <div>Eşleşen seans bulunamadı.</div>
-                </div>
-              ) : (
-                <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
-                  {searchedSessions.slice(0, 5).map(session => {
-                    const [year, month, day] = session.date.split('-');
-                    const formattedDate = `${day}.${month}.${year}`;
-                    return (
-                      <div 
-                        key={session.id} 
-                        className="p-2 hover:bg-[#fdfbf7] rounded-xl transition-all flex items-center justify-between gap-2 group pt-2"
-                      >
-                        <div className="space-y-0.5 text-left min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-xs text-[#555a4a] truncate block max-w-[150px]">
-                              {session.clientName}
-                            </span>
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
-                              session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
-                              session.type === 'face-to-face' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
-                              'bg-rose-50 text-rose-600 border border-rose-100/50'
-                            }`}>
-                              {session.type === 'online' ? 'Çevrimiçi' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold font-mono">
-                            <span>{formattedDate}</span>
-                            <span>•</span>
-                            <span>{session.time}</span>
-                            <span>•</span>
-                            <span className="text-[#cb997e]">{formatMoney(session.price)}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => {
-                              setSelectedDate(session.date);
-                              setActiveTab('agenda');
-                              setHeaderSearchQuery('');
-                              setIsMobileSearchOpen(false);
-                            }}
-                            className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all"
-                          >
-                            Git
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </div>
-          )}
 
-          {/* Row 2: Navigation Tabs */}
-          <div 
-            style={{ touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}
-            className={`flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs max-w-full overflow-x-auto whitespace-nowrap touch-pan-x overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden transition-all duration-300 ${
-            isHeaderCollapsed 
-              ? 'h-0 opacity-0 overflow-hidden border-0 p-0 pointer-events-none scale-95 mt-0' 
-              : 'h-auto opacity-100 scale-100 mt-1'
-          }`}>
+            {/* Notifications Center */}
+            <NotificationCenter
+              notifications={allNotifications}
+              onMarkAllAsRead={handleMarkAllAsRead}
+              onClearAll={handleClearAllNotifications}
+              showToast={showToast}
+              onViewSyncDetails={(details) => {
+                setSyncDetailsToShow(details);
+                setIsSyncDetailsModalOpen(true);
+              }}
+            />
+
+            {/* BURGER MENU BUTTON (🍔 / Menu) */}
             <button
-              id="tab-agenda"
-              onClick={() => setActiveTab('agenda')}
-              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c]'
-              }`}
+              id="burger-menu-toggle-btn"
+              onClick={() => setIsMenuOpen(true)}
+              className="p-2 md:px-3 md:py-2 rounded-2xl bg-[#6b705c] hover:bg-[#585c4c] text-white transition-all cursor-pointer flex items-center gap-2 font-bold text-xs shadow-sm active:scale-95"
+              title="Tüm Menüler ve Ayarlar"
             >
-              {activeTab === 'agenda' && (
-                <motion.div
-                  layoutId="mobileActiveTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              Günlük Ajanda
+              <Menu className="w-5 h-5" />
+              <span className="hidden sm:inline">Menü</span>
             </button>
-            <button
-              id="tab-stats"
-              onClick={() => setActiveTab('stats')}
-              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c]'
-              }`}
-            >
-              {activeTab === 'stats' && (
-                <motion.div
-                  layoutId="mobileActiveTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              Muhasebe Raporu {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-            </button>
-            <button
-              id="tab-debts"
-              onClick={() => setActiveTab('debts')}
-              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c]'
-              }`}
-            >
-              {activeTab === 'debts' && (
-                <motion.div
-                  layoutId="mobileActiveTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              Borç Takip {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-            </button>
-            <button
-              id="tab-sync"
-              onClick={() => setActiveTab('sync')}
-              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                activeTab === 'sync' ? 'text-white z-10' : 'text-[#6b705c]'
-              }`}
-            >
-              {activeTab === 'sync' && (
-                <motion.div
-                  layoutId="mobileActiveTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              Takvim Entegrasyonu {featuresCalendarAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-            </button>
-            <button
-              id="tab-backup"
-              onClick={() => setActiveTab('backup')}
-              className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                activeTab === 'backup' ? 'text-white z-10' : 'text-[#6b705c]'
-              }`}
-            >
-              {activeTab === 'backup' && (
-                <motion.div
-                  layoutId="mobileActiveTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              Yedek & E-Tablo
-            </button>
-            {settings.userRole === 'owner' && (
-              <button
-                id="tab-rooms"
-                onClick={() => setActiveTab('rooms')}
-                className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === 'rooms' ? 'text-white z-10' : 'text-[#6b705c]'
-                }`}
-              >
-                {activeTab === 'rooms' && (
-                  <motion.div
-                    layoutId="mobileActiveTabIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Odalar & Doluluk 🛋️
-              </button>
-            )}
-            {user?.email === 'muhammedakifkayacan@gmail.com' && (
-              <button
-                id="tab-admin"
-                onClick={() => setActiveTab('admin')}
-                className={`relative px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'admin' ? 'text-white z-10' : 'text-slate-600'
-                }`}
-              >
-                {activeTab === 'admin' && (
-                  <motion.div
-                    layoutId="mobileActiveTabIndicator"
-                    className="absolute inset-0 bg-[#cb997e] rounded-full -z-10 shadow-3xs"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                Yönetici Paneli
-              </button>
-            )}
           </div>
         </div>
-      )}
-    </nav>
+      </nav>
+
+      {/* FULL-SCREEN / SPACIOUS BURGER MENU OVERLAY DRAWER */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <div className="fixed inset-0 z-[100] flex justify-end">
+            {/* Backdrop Blur Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+
+            {/* Drawer Content Card */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-full max-w-md bg-[#fdfbf7] min-h-full h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 p-6 md:p-8 space-y-8"
+            >
+              {/* DRAWER TOP HEADER */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between pb-4 border-b border-[#e5e1d8]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#6b705c] rounded-2xl flex items-center justify-center text-white font-serif text-2xl italic shadow-md">
+                      P
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-serif italic text-[#6b705c]">PsyCalcu</h2>
+                      <p className="text-[10px] text-slate-400 font-bold tracking-wider">TÜM MENÜLER & SİSTEM</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setIsMenuOpen(false)}
+                    className="w-9 h-9 rounded-full bg-white border border-[#e5e1d8] flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer shadow-3xs"
+                    title="Menüyü Kapat"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* USER PROFILE & CLOUD CARD */}
+                {user && (
+                  <div className="p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center font-bold text-sm border border-[#6b705c]/20">
+                        <User className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800 truncate">{settings.therapistName || user.email}</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate">{user.email}</p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase border ${
+                        settings.userRole === 'owner' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-blue-50 text-blue-800 border-blue-200'
+                      }`}>
+                        {settings.userRole === 'owner' ? 'Ofis Sahibi' : 'Kiralayan'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-medium">Bulut Veri Durumu:</span>
+                      <span className="font-bold text-emerald-700 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Bulut Eşleşti
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* PRIMARY SWITCH (Quick Jump) */}
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Ana Çalışma Alanı</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleTabClick('agenda')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                        activeTab === 'agenda'
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
+                          : 'bg-white text-slate-700 border-[#e5e1d8] hover:border-[#6b705c]/40'
+                      }`}
+                    >
+                      <CalendarIcon className="w-5 h-5" />
+                      <div>
+                        <p className="font-bold text-xs">Günlük Ajanda</p>
+                        <p className={`text-[9px] mt-0.5 ${activeTab === 'agenda' ? 'text-white/80' : 'text-slate-400'}`}>Seans Takvimi</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleTabClick('stats')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                        activeTab === 'stats'
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
+                          : 'bg-white text-slate-700 border-[#e5e1d8] hover:border-[#6b705c]/40'
+                      }`}
+                    >
+                      <TrendingUp className="w-5 h-5" />
+                      <div>
+                        <p className="font-bold text-xs">Muhasebe & Gider</p>
+                        <p className={`text-[9px] mt-0.5 ${activeTab === 'stats' ? 'text-white/80' : 'text-slate-400'}`}>Finansal Rapor</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* OTHER NAVIGATION PAGES */}
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Diğer Menüler & Modüller</h3>
+                  <div className="bg-white rounded-2xl border border-[#e5e1d8] divide-y divide-[#f5f5f0] overflow-hidden shadow-3xs">
+                    
+                    {/* Debt Tracker */}
+                    <button
+                      onClick={() => handleTabClick('debts')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        activeTab === 'debts' ? 'bg-amber-50/70 text-amber-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
+                          <CreditCard className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Borç & Tahsilat Takibi</p>
+                          <p className="text-[10px] text-slate-400">Danışan ödenmemiş seans bakiyeleri</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </button>
+
+                    {/* Calendar Sync */}
+                    <button
+                      onClick={() => handleTabClick('sync')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        activeTab === 'sync' ? 'bg-emerald-50/70 text-emerald-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700">
+                          <RefreshCw className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Takvim Entegrasyonu</p>
+                          <p className="text-[10px] text-slate-400">iCloud & Google Takvim eşitleme</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </button>
+
+                    {/* Backup & Spreadsheet */}
+                    <button
+                      onClick={() => handleTabClick('backup')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        activeTab === 'backup' ? 'bg-blue-50/70 text-blue-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-700">
+                          <Database className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Yedek & E-Tablo Dökümü</p>
+                          <p className="text-[10px] text-slate-400">Excel / JSON aktarma ve alma</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </button>
+
+                    {/* Room Management (Owner only) */}
+                    {settings.userRole === 'owner' && (
+                      <button
+                        onClick={() => handleTabClick('rooms')}
+                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                          activeTab === 'rooms' ? 'bg-indigo-50/70 text-indigo-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-700">
+                            <Building className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Odalar & Doluluk Yönetimi 🛋️</p>
+                            <p className="text-[10px] text-slate-400">Ofis odaları ve saatlik randevular</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </button>
+                    )}
+
+                    {/* Admin Panel (Superadmin) */}
+                    {user?.email === 'muhammedakifkayacan@gmail.com' && (
+                      <button
+                        onClick={() => handleTabClick('admin')}
+                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                          activeTab === 'admin' ? 'bg-rose-50/70 text-rose-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center text-rose-700">
+                            <ShieldCheck className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Yönetici Onay Paneli</p>
+                            <p className="text-[10px] text-slate-400">Kullanıcı üyelik yetkilendirme</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </button>
+                    )}
+
+                    {/* Advanced Search */}
+                    <button
+                      onClick={() => handleTabClick('search')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        activeTab === 'search' ? 'bg-purple-50/70 text-purple-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center text-purple-700">
+                          <Search className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Gelişmiş Seans Arama</p>
+                          <p className="text-[10px] text-slate-400">Detaylı danışan ve tarih araması</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* QUICK TOOLS & SYSTEM ACTIONS */}
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Hızlı Araçlar & Kontroller</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    
+                    {/* Settings Modal */}
+                    <button
+                      onClick={() => {
+                        setIsSettingsOpen(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#6b705c] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center">
+                        <SettingsIcon className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-xs text-slate-800">Sistem Ayarları</p>
+                      <p className="text-[9px] text-slate-400">Kira, katsayı ve fiyatlar</p>
+                    </button>
+
+                    {/* FAQ / Info Modal */}
+                    <button
+                      onClick={() => {
+                        setIsFaqOpen(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#cb997e] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-[#cb997e]/10 text-[#cb997e] flex items-center justify-center">
+                        <HelpCircle className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-xs text-slate-800">Bilgi & SSS (?)</p>
+                      <p className="text-[9px] text-slate-400">Kullanım rehberi ve sorular</p>
+                    </button>
+
+                    {/* Privacy Mode Toggle */}
+                    <button
+                      onClick={handlePrivacyToggle}
+                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs ${
+                        isPrivacyMode ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-[#e5e1d8]'
+                      }`}
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                        isPrivacyMode ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </div>
+                      <p className="font-bold text-xs text-slate-800">Gizlilik Modu</p>
+                      <p className="text-[9px] text-slate-500 font-medium">
+                        {isPrivacyMode ? '👁️‍🗨️ Paralar Gizli' : '👁️ Paralar Açık'}
+                      </p>
+                    </button>
+
+                    {/* Toggle Explanations */}
+                    <button
+                      onClick={toggleShowExplanations}
+                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs ${
+                        showExplanations ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-white border-[#e5e1d8]'
+                      }`}
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                        showExplanations ? 'bg-[#6b705c] text-white' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        <Lightbulb className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-xs text-slate-800">Rehber İpuçları</p>
+                      <p className="text-[9px] text-slate-500 font-medium">
+                        {showExplanations ? '💡 Açıklamalar Açık' : '💡 Açıklamalar Kapalı'}
+                      </p>
+                    </button>
+
+                  </div>
+                </div>
+
+              </div>
+
+              {/* DRAWER FOOTER: LOGOUT BUTTON */}
+              {user && (
+                <div className="pt-4 border-t border-[#e5e1d8] space-y-3">
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full py-3.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-2xl text-rose-700 hover:text-rose-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-3xs active:scale-98"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Güvenli Çıkış Yap</span>
+                  </button>
+                  
+                  <p className="text-center text-[10px] text-slate-400 font-medium">
+                    PsyCalcu v2.4 • Terapistler için Sevgiyle Tasarlandı
+                  </p>
+                </div>
+              )}
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };

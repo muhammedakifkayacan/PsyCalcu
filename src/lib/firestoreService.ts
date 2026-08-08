@@ -1,10 +1,11 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, disableNetwork } from 'firebase/firestore';
-import { Session, AppSettings } from '../types';
+import { Session, AppSettings, Expense } from '../types';
 
 interface UserData {
   settings: AppSettings;
   sessions: Session[];
+  expenses?: Expense[];
 }
 
 export let isFirestoreQuotaExceeded = false;
@@ -47,7 +48,8 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
       const data = docSnap.data();
       return {
         settings: data.settings as AppSettings,
-        sessions: data.sessions as Session[]
+        sessions: data.sessions as Session[],
+        expenses: (data.expenses as Expense[]) || []
       };
     }
     return null;
@@ -64,7 +66,7 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
 /**
  * Save all user data (sessions and settings) to Firestore
  */
-export async function saveUserData(userId: string, settings: AppSettings, sessions: Session[]): Promise<void> {
+export async function saveUserData(userId: string, settings: AppSettings, sessions: Session[], expenses?: Expense[]): Promise<void> {
   if (isFirestoreQuotaExceeded) {
     throw new Error('quota-exceeded');
   }
@@ -78,7 +80,8 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
       }
       return s;
     });
-    await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions }, { merge: true });
+    const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
+    await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions, expenses: cleanedExpenses }, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
     try {

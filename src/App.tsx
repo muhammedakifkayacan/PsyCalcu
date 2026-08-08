@@ -41,11 +41,12 @@ import {
   Lock,
   Filter,
   Calculator,
-  CalendarRange
+  CalendarRange,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
@@ -179,6 +180,74 @@ export default function App() {
     return [];
   });
 
+  // Load clinic expenses from localStorage or use empty array
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const saved = localStorage.getItem('psycalcu_expenses');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const expensesRef = useRef(expenses);
+  useEffect(() => {
+    expensesRef.current = expenses;
+  }, [expenses]);
+
+  const handleAddExpense = (newExpense: Omit<Expense, 'id' | 'createdAt'>) => {
+    const item: Expense = {
+      ...newExpense,
+      id: 'exp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      createdAt: Date.now()
+    };
+    setExpenses(prev => [item, ...prev]);
+    const undoFn = () => {
+      setExpenses(prev => prev.filter(e => e.id !== item.id));
+      setToast({ message: 'Gider ekleme işlemi geri alındı.', type: 'info' });
+    };
+    setToast({
+      message: `"${item.title}" gideri (${item.amount} ₺) eklendi.`,
+      type: 'success',
+      onUndo: undoFn,
+      undoLabel: 'Geri Al'
+    });
+  };
+
+  const handleUpdateExpense = (updatedExpense: Expense) => {
+    const previous = expenses.find(e => e.id === updatedExpense.id);
+    setExpenses(prev => prev.map(e => (e.id === updatedExpense.id ? updatedExpense : e)));
+    if (previous) {
+      const undoFn = () => {
+        setExpenses(prev => prev.map(e => (e.id === previous.id ? previous : e)));
+        setToast({ message: 'Gider güncelleme geri alındı.', type: 'info' });
+      };
+      setToast({
+        message: `"${updatedExpense.title}" gideri güncellendi.`,
+        type: 'success',
+        onUndo: undoFn,
+        undoLabel: 'Geri Al'
+      });
+    }
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    const previous = expenses.find(e => e.id === id);
+    if (!previous) return;
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    const undoFn = () => {
+      setExpenses(prev => [previous, ...prev]);
+      setToast({ message: 'Silinen gider geri yüklendi.', type: 'success' });
+    };
+    setToast({
+      message: `"${previous.title}" gideri silindi.`,
+      type: 'info',
+      onUndo: undoFn,
+      undoLabel: 'Geri Al'
+    });
+  };
+
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
@@ -218,7 +287,7 @@ export default function App() {
   }, [isAgendaFilterOpen]);
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
-  const lastSavedRef = useRef<{ settings: string; sessions: string }>((() => {
+  const lastSavedRef = useRef<{ settings: string; sessions: string; expenses: string }>((() => {
     const savedSessions = localStorage.getItem('psycalcu_sessions');
     let initialSessionsStr = '[]';
     if (savedSessions) {
@@ -227,7 +296,8 @@ export default function App() {
       } catch (e) {}
     }
     const savedSettingsStr = localStorage.getItem('psycalcu_settings') || '';
-    return { settings: savedSettingsStr, sessions: initialSessionsStr };
+    const savedExpensesStr = localStorage.getItem('psycalcu_expenses') || '[]';
+    return { settings: savedSettingsStr, sessions: initialSessionsStr, expenses: savedExpensesStr };
   })());
 
   // Notification States
@@ -400,10 +470,18 @@ export default function App() {
   const [toast, setToast] = useState<{
     message: string;
     type: 'success' | 'error' | 'info';
+    onUndo?: () => void;
+    undoLabel?: string;
   } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success', extraNotifData?: Partial<AppNotification>) => {
-    setToast({ message, type });
+  const showToast = (
+    message: string, 
+    type: 'success' | 'error' | 'info' = 'success', 
+    extraNotifData?: Partial<AppNotification>,
+    onUndo?: () => void,
+    undoLabel: string = 'Geri Al'
+  ) => {
+    setToast({ message, type, onUndo, undoLabel });
 
     // Auto-log a notification
     const newNotif: AppNotification = {
@@ -428,7 +506,7 @@ export default function App() {
     if (toast) {
       const timer = setTimeout(() => {
         setToast(null);
-      }, 4500);
+      }, toast.onUndo ? 8000 : 4500);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -511,7 +589,7 @@ export default function App() {
       setIsAuthLoading(false);
       if (!currentUser) {
         hasSyncedRef.current = null;
-        lastSavedRef.current = { settings: '', sessions: '' };
+        lastSavedRef.current = { settings: '', sessions: '', expenses: '' };
         setRegistrationCreatedAt(null);
         setIsCloudSaving(false);
         setIsAuthSyncing(false);
@@ -569,9 +647,12 @@ export default function App() {
         }
         
         // Also initialize lastSavedRef to prevent immediate auto-saving before sync
+        const userExpensesKey = `psycalcu_expenses_${currentUser.uid}`;
+        const savedExpenses = localStorage.getItem(userExpensesKey);
         lastSavedRef.current = {
           settings: savedSettings || '',
-          sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]'
+          sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]',
+          expenses: savedExpenses || '[]'
         };
       }
     });
@@ -749,10 +830,11 @@ export default function App() {
             setSessions(finalSessions);
             setSettings(cloudData.settings);
             // Save the merged data to the cloud
-            await saveUserData(user.uid, cloudData.settings, finalSessions);
+            await saveUserData(user.uid, cloudData.settings, finalSessions, cloudData.expenses || []);
             lastSavedRef.current = {
               settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(finalSessions)
+              sessions: JSON.stringify(finalSessions),
+              expenses: JSON.stringify(cloudData.expenses || [])
             };
 
             // Wipe anonymous local storage
@@ -765,21 +847,27 @@ export default function App() {
             // No merge with stale local storage to prevent overwriting newer edits from other devices.
             setSessions(cloudSessions);
             setSettings(cloudData.settings);
+            if (cloudData.expenses) {
+              setExpenses(cloudData.expenses);
+            }
             
             // Auto-sync public availability to make sure public_availability collection is populated
-            saveUserData(user.uid, cloudData.settings, cloudSessions).catch(err => {
+            saveUserData(user.uid, cloudData.settings, cloudSessions, cloudData.expenses || []).catch(err => {
               console.warn("Public availability auto-sync failed:", err);
             });
             
             // Update the user-specific localStorage cache immediately with the newest cloud data
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
+            const userExpensesKey = `psycalcu_expenses_${user.uid}`;
             localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
             localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
+            localStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []));
 
             lastSavedRef.current = {
               settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(cloudSessions)
+              sessions: JSON.stringify(cloudSessions),
+              expenses: JSON.stringify(cloudData.expenses || [])
             };
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           }
@@ -809,21 +897,23 @@ export default function App() {
           }
           
           if (hasRealLocalSessions && shouldMigrate) {
-            await saveUserData(user.uid, settingsToSave, correctedSessions);
+            await saveUserData(user.uid, settingsToSave, correctedSessions, expenses);
             setSessions(correctedSessions);
             setSettings(settingsToSave);
             lastSavedRef.current = {
               settings: JSON.stringify(settingsToSave),
-              sessions: JSON.stringify(correctedSessions)
+              sessions: JSON.stringify(correctedSessions),
+              expenses: JSON.stringify(expenses)
             };
             showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
           } else {
-            await saveUserData(user.uid, settingsToSave, []);
+            await saveUserData(user.uid, settingsToSave, [], []);
             setSessions([]);
             setSettings(settingsToSave);
             lastSavedRef.current = {
               settings: JSON.stringify(settingsToSave),
-              sessions: '[]'
+              sessions: '[]',
+              expenses: '[]'
             };
             showToast('Yeni bulut profiliniz oluşturuldu.', 'info');
           }
@@ -849,6 +939,7 @@ export default function App() {
         // Use user-specific or generic local storage keys dynamically based on auth status
         const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
         const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
+        const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
         // Initialize lastSavedRef on failure to prevent infinite failing save retries
         const finalSavedSessions = localStorage.getItem(localSessionsKey) || '[]';
@@ -857,9 +948,11 @@ export default function App() {
           correctedSavedStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(finalSavedSessions)));
         } catch (e) {}
         const finalSavedSettings = localStorage.getItem(localSettingsKey) || '';
+        const finalSavedExpenses = localStorage.getItem(localExpensesKey) || '[]';
         lastSavedRef.current = {
           settings: finalSavedSettings,
-          sessions: correctedSavedStr
+          sessions: correctedSavedStr,
+          expenses: finalSavedExpenses
         };
  
         // Graceful fallback to local storage on offline/network errors
@@ -924,13 +1017,15 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [user, isQuotaExceeded]);
 
-  // Save settings & sessions to local & cloud on changes with debouncing and change-detection
+  // Save settings, sessions & expenses to local & cloud on changes with debouncing and change-detection
   useEffect(() => {
     const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
     const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
+    const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
     localStorage.setItem(localSettingsKey, JSON.stringify(settings));
     localStorage.setItem(localSessionsKey, JSON.stringify(sessions));
+    localStorage.setItem(localExpensesKey, JSON.stringify(expenses));
 
     if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
       return;
@@ -938,10 +1033,12 @@ export default function App() {
 
     const currentSettingsStr = JSON.stringify(settings);
     const currentSessionsStr = JSON.stringify(sessions);
+    const currentExpensesStr = JSON.stringify(expenses);
 
     // Skip saving to cloud if data hasn't changed since last cloud synchronization or save
     if (currentSettingsStr === lastSavedRef.current.settings &&
-        currentSessionsStr === lastSavedRef.current.sessions) {
+        currentSessionsStr === lastSavedRef.current.sessions &&
+        currentExpensesStr === lastSavedRef.current.expenses) {
       return;
     }
 
@@ -951,14 +1048,15 @@ export default function App() {
 
     // Debounce cloud save by 500ms for high responsiveness
     const timer = setTimeout(() => {
-      saveUserData(user.uid, settings, sessions).then(() => {
+      saveUserData(user.uid, settings, sessions, expenses).then(() => {
         activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
         if (activeSavesCountRef.current === 0) {
           setIsCloudSaving(false);
         }
         lastSavedRef.current = {
           settings: currentSettingsStr,
-          sessions: currentSessionsStr
+          sessions: currentSessionsStr,
+          expenses: currentExpensesStr
         };
       }).catch((err: any) => {
         activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
@@ -985,7 +1083,7 @@ export default function App() {
         setIsCloudSaving(false);
       }
     };
-  }, [settings, sessions, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
+  }, [settings, sessions, expenses, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
 
   // Automatic Background Calendar Sync on App Load
   const hasAutoSyncedRef = useRef(false);
@@ -1018,7 +1116,7 @@ export default function App() {
 
   const handleLogout = async () => {
     hasSyncedRef.current = null;
-    lastSavedRef.current = { settings: '', sessions: '' };
+    lastSavedRef.current = { settings: '', sessions: '', expenses: '' };
     hasAutoSyncedRef.current = false;
 
     try {
@@ -1358,7 +1456,8 @@ export default function App() {
       if (searchTabQuery.trim()) {
         const query = toTurkishUpper(searchTabQuery.trim());
         const matchName = toTurkishUpper(session.clientName).includes(query);
-        const matchNotes = session.notes ? toTurkishUpper(session.notes).includes(query) : false;
+        const noteText = session.isSyncedFromCalendar ? (tempNotesCache[session.id] || '') : (session.notes || '');
+        const matchNotes = noteText ? toTurkishUpper(noteText).includes(query) : false;
         const matchTime = session.time.includes(query);
         const matchPrice = String(session.price).includes(query);
         if (!matchName && !matchNotes && !matchTime && !matchPrice) {
@@ -1613,7 +1712,8 @@ export default function App() {
     const q = headerSearchQuery.trim().toLowerCase();
     return sessions.filter(s => {
       const clientMatch = s.clientName.toLowerCase().includes(q);
-      const notesMatch = s.notes ? s.notes.toLowerCase().includes(q) : false;
+      const noteText = s.isSyncedFromCalendar ? (tempNotesCache[s.id] || '') : (s.notes || '');
+      const notesMatch = noteText ? noteText.toLowerCase().includes(q) : false;
       const typeMatch = s.type.toLowerCase().includes(q);
       
       const [year, month, day] = s.date.split('-');
@@ -1825,9 +1925,15 @@ export default function App() {
     }
     triggerConfirm(
       'Seansı Sil',
-      'Bu seansı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+      'Bu seansı silmek istediğinizden emin misiniz?',
       () => {
+        if (!session) return;
         setSessions(prev => prev.filter(s => s.id !== id));
+        const undoFn = () => {
+          setSessions(prev => [...prev, session]);
+          showToast('Silinen seans geri yüklendi.', 'success');
+        };
+        showToast(`${session.clientName} seansı silindi.`, 'info', { title: 'Seans Silindi' }, undoFn);
       },
       true
     );
@@ -1905,7 +2011,8 @@ export default function App() {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
 
-    const nextStatus = found.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+    const prevStatus = found.paymentStatus;
+    const nextStatus = prevStatus === 'paid' ? 'unpaid' : 'paid';
 
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
@@ -1919,6 +2026,21 @@ export default function App() {
       return s;
     }));
 
+    const undoFn = () => {
+      setSessions(prev => prev.map(s => {
+        if (s.id === id) {
+          return {
+            ...s,
+            paymentStatus: prevStatus,
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      }));
+      showToast('İşlem geri alındı.', 'info');
+    };
+
     const priceVal = Number(found.price) || 0;
     if (nextStatus === 'paid') {
       showToast(
@@ -1927,7 +2049,8 @@ export default function App() {
         {
           title: 'Ödeme Alındı',
           message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
-        }
+        },
+        undoFn
       );
     } else {
       showToast(
@@ -1937,7 +2060,8 @@ export default function App() {
           title: 'Ödeme İptal Edildi',
           message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) ödenmedi olarak işaretlendi.`,
           type: 'info'
-        }
+        },
+        undoFn
       );
     }
   };
@@ -1945,6 +2069,8 @@ export default function App() {
   const handleMarkSessionAsPaid = (id: string) => {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
+
+    const prevStatus = found.paymentStatus;
 
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
@@ -1958,6 +2084,21 @@ export default function App() {
       return s;
     }));
 
+    const undoFn = () => {
+      setSessions(prev => prev.map(s => {
+        if (s.id === id) {
+          return {
+            ...s,
+            paymentStatus: prevStatus,
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      }));
+      showToast('Tahsilat geri alındı.', 'info');
+    };
+
     const priceVal = Number(found.price) || 0;
     showToast(
       `${found.clientName} ödemesi başarıyla tahsil edildi!`, 
@@ -1965,21 +2106,25 @@ export default function App() {
       {
         title: 'Ödeme Alındı',
         message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
-      }
+      },
+      undoFn
     );
   };
 
   const handleMarkAllClientSessionsAsPaid = (clientName: string) => {
     let totalAmount = 0;
     let sessionCount = 0;
+    const modifiedPreviousStates: Record<string, 'paid' | 'unpaid'> = {};
+
+    sessions.forEach(s => {
+      if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+        totalAmount += Number(s.price) || 0;
+        sessionCount++;
+        modifiedPreviousStates[s.id] = s.paymentStatus;
+      }
+    });
 
     setSessions(prev => {
-      prev.forEach(s => {
-        if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
-          totalAmount += Number(s.price) || 0;
-          sessionCount++;
-        }
-      });
       return prev.map(s => {
         if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
           return {
@@ -1993,13 +2138,29 @@ export default function App() {
       });
     });
 
+    const undoFn = () => {
+      setSessions(prev => prev.map(s => {
+        if (modifiedPreviousStates[s.id]) {
+          return {
+            ...s,
+            paymentStatus: modifiedPreviousStates[s.id],
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      }));
+      showToast(`${clientName} için toplu ödeme işlemi geri alındı.`, 'info');
+    };
+
     showToast(
       `${clientName} adlı danışanın tüm borçları ödendi!`, 
       'success',
       {
         title: 'Toplu Tahsilat',
         message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ${formatMoney(totalAmount)}) başarıyla ödendi olarak işaretlendi.`
-      }
+      },
+      undoFn
     );
   };
 
@@ -2200,9 +2361,11 @@ export default function App() {
         // Determine if the incoming session is cancelled, non-session, or zero price
         const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || ns.price === 0;
 
-        // Auto-match room if not manually edited/set
-        const mergedNotes = ns.notes || existing.notes;
-        const matchedRoomId = findMatchedRoomId(mergedNotes) || existing.roomId;
+        // Auto-match room if not manually edited/set using temp notes
+        const tempNotesForRoomMatch = ns.notes || existing.notes;
+        const matchedRoomId = findMatchedRoomId(tempNotesForRoomMatch) || existing.roomId;
+        // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
+        const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
         // Merge changed calendar fields, preserving custom user edits on price/payment status
         const updated = {
@@ -2212,7 +2375,7 @@ export default function App() {
           date: ns.date,
           time: ns.time,
           duration: ns.duration,
-          notes: mergedNotes,
+          notes: persistentNotes,
           roomId: matchedRoomId,
           price: isCancelledOrNonSessionOrBefore ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
           paymentStatus: isCancelledOrNonSessionOrBefore ? (ns.type === 'non-session' ? 'unpaid' : 'paid') : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
@@ -2262,6 +2425,7 @@ export default function App() {
 
         const nsWithTimestamp = { 
           ...ns, 
+          notes: ns.isSyncedFromCalendar ? "" : (ns.notes || ""),
           roomId: matchedRoomId || ns.roomId,
           price: finalPrice, 
           babysitterFeeAmount: finalBabysitterFee,
@@ -3889,31 +4053,6 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
-                              
-                              {showNotes && (
-                                <p className="text-xs text-slate-700 mt-1 font-semibold italic animate-fade-in">
-                                  {session.isSyncedFromCalendar ? (
-                                    tempNotesCache[session.id] ? (
-                                      <span>{tempNotesCache[session.id]}</span>
-                                    ) : hasFetchedInstantNotes ? (
-                                      <span className="text-slate-400 font-normal">not girilmemiş</span>
-                                    ) : (
-                                      <span className="text-slate-400 font-normal">
-                                        Takvim açıklamaları gizlendi.{' '}
-                                        <button 
-                                          onClick={() => fetchInstantCalendarNotes()} 
-                                          disabled={isFetchingNotes}
-                                          className="text-[#6b705c] hover:underline font-bold focus:outline-none cursor-pointer"
-                                        >
-                                          {isFetchingNotes ? 'Çekiliyor...' : 'Takvimden Çek (KVKK)'}
-                                        </button>
-                                      </span>
-                                    )
-                                  ) : (
-                                    session.notes || 'not girilmemiş'
-                                  )}
-                                </p>
-                              )}
                             </div>
 
                             {/* Financial item state */}
@@ -3974,6 +4113,20 @@ export default function App() {
 
                             {/* Quick Actions (Hover visible on desktop, always visible on mobile) */}
                             <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0 flex-wrap">
+                              {/* Jump to Session in Agenda */}
+                              <button
+                                onClick={() => {
+                                  setSelectedDate(session.date);
+                                  setActiveTab('agenda');
+                                  showToast(`${session.date} tarihli ajandaya gidildi.`, 'info');
+                                }}
+                                className="p-2 md:px-2.5 md:py-1 rounded-xl md:rounded-lg bg-emerald-50/90 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100/90 transition-all cursor-pointer font-bold flex items-center gap-1.5 text-xs shadow-3xs"
+                                title="Ajandada Göster / Seansa Git"
+                              >
+                                <CalendarIcon className="w-3.5 h-3.5 text-emerald-700" />
+                                <span className="text-[11px] font-semibold">Seansa Git</span>
+                              </button>
+
                               {/* Toggle Type */}
                               <button
                                 onClick={() => {
@@ -4113,7 +4266,16 @@ export default function App() {
                   description="Finansal muhasebe raporlarınız, seans istatistikleriniz ve aylık gelir-gider grafikleriniz geçici olarak devre dışıdır." 
                 />
               ) : (
-                <StatsDashboard sessions={sessions} settings={settings} showExplanations={showExplanations} />
+                <StatsDashboard 
+                  sessions={sessions} 
+                  settings={settings} 
+                  expenses={expenses}
+                  onAddExpense={handleAddExpense}
+                  onUpdateExpense={handleUpdateExpense}
+                  onDeleteExpense={handleDeleteExpense}
+                  showExplanations={showExplanations}
+                  showToast={(msg, type) => setToast({ message: msg, type })}
+                />
               )}
             </motion.div>
           )}
@@ -4855,9 +5017,29 @@ export default function App() {
                                   <span className="text-[#cb997e] font-bold">{formatMoney(session.price)}</span>
                                 </div>
 
-                                {(session.notes || (session.isSyncedFromCalendar && (tempNotesCache[session.id] || hasFetchedInstantNotes))) && (
-                                  <p className="text-xs text-slate-500 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
-                                    <strong>Not:</strong> {session.isSyncedFromCalendar ? (tempNotesCache[session.id] || 'not girilmemiş') : (session.notes || 'not girilmemiş')}
+                                {showNotes && (
+                                  <p className="text-xs text-slate-600 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">
+                                    <strong className="text-slate-700 not-italic">Not:</strong>{' '}
+                                    {session.isSyncedFromCalendar ? (
+                                      tempNotesCache[session.id] ? (
+                                        <span>{tempNotesCache[session.id]}</span>
+                                      ) : hasFetchedInstantNotes ? (
+                                        <span className="text-slate-400 not-italic font-normal">not girilmemiş</span>
+                                      ) : (
+                                        <span className="text-slate-400 not-italic font-normal">
+                                          Takvim açıklamaları gizlendi.{' '}
+                                          <button 
+                                            onClick={() => fetchInstantCalendarNotes()} 
+                                            disabled={isFetchingNotes}
+                                            className="text-[#6b705c] hover:underline font-bold focus:outline-none cursor-pointer"
+                                          >
+                                            {isFetchingNotes ? 'Çekiliyor...' : 'Takvimden Çek (KVKK)'}
+                                          </button>
+                                        </span>
+                                      )
+                                    ) : (
+                                      session.notes || <span className="text-slate-400 not-italic font-normal">not girilmemiş</span>
+                                    )}
                                   </p>
                                 )}
                               </div>
@@ -5120,7 +5302,7 @@ export default function App() {
                 <Sparkles className="w-5 h-5" />
               )}
             </div>
-            <div className="space-y-0.5 flex-1 pr-5">
+            <div className="space-y-0.5 flex-1 pr-2">
               <p className="text-xs font-bold text-slate-800 font-sans">
                 {toast.type === 'success' ? 'Başarılı' : toast.type === 'error' ? 'Hata' : 'Bilgi'}
               </p>
@@ -5128,9 +5310,25 @@ export default function App() {
                 {toast.message}
               </p>
             </div>
+
+            {toast.onUndo && (
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = toast.onUndo;
+                  setToast(null);
+                  fn?.();
+                }}
+                className="shrink-0 text-xs font-bold text-[#6b705c] bg-[#6b705c]/10 hover:bg-[#6b705c]/20 px-3 py-1.5 rounded-xl border border-[#6b705c]/20 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs self-center"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{toast.undoLabel || 'Geri Al'}</span>
+              </button>
+            )}
+
             <button
               onClick={() => setToast(null)}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer absolute right-2.5 top-2.5"
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
               title="Kapat"
             >
               <X className="w-4 h-4" />

@@ -58,6 +58,19 @@ export interface BlockedSlot {
   reason?: string; // reason for blockage
 }
 
+export type ExpenseCategory = 'salary' | 'utilities' | 'rent' | 'maintenance' | 'supplies' | 'marketing' | 'tax' | 'other';
+
+export interface Expense {
+  id: string;
+  title: string; // e.g. "Temizlik Elemanı Maaşı", "Elektrik Faturası", "Mutfak Alışverişi"
+  category: ExpenseCategory;
+  amount: number; // ₺
+  date: string; // YYYY-MM-DD
+  paymentMethod?: 'cash' | 'bank' | 'card'; // Kasa / Nakit, Banka / Havale, Kredi Kartı
+  notes?: string;
+  createdAt?: number;
+}
+
 export interface AppSettings {
   defaultSessionPrice: number;
   defaultBabysitterFee: number;
