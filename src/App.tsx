@@ -3401,14 +3401,15 @@ export default function App() {
                     
                     {/* Custom Calendar Popover */}
                     <div className="relative" ref={calendarRef}>
-                      <button 
+                      <motion.button 
+                        whileTap={{ scale: 0.94 }}
                         onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-sm"
+                        className="flex items-center gap-1.5 px-3 py-1 bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-semibold text-[#6b705c] rounded-full border border-[#e5e1d8] transition-all cursor-pointer shadow-sm select-none touch-manipulation"
                       >
                         <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
                         <span>{new Date(selectedDate).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                         <ChevronDown className="w-3 h-3 text-[#6b705c] opacity-70" />
-                      </button>
+                      </motion.button>
 
                       <AnimatePresence>
                         {isCalendarOpen && (
@@ -3558,10 +3559,11 @@ export default function App() {
                         )
                       );
                       return (
-                        <button
+                        <motion.button
                           key={day.dateStr}
+                          whileTap={{ scale: 0.92 }}
                           onClick={() => setSelectedDate(day.dateStr)}
-                          className={`flex flex-col items-center justify-center p-2.5 rounded-2xl transition-all relative cursor-pointer ${
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-2xl transition-all relative cursor-pointer select-none touch-manipulation ${
                             isSelected 
                               ? 'bg-[#6b705c] text-white shadow-md' 
                               : hasPriceIncrease
@@ -3595,7 +3597,7 @@ export default function App() {
                               }`}></span>
                             )}
                           </div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -5337,19 +5339,32 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Floating Bottom Action Bar for Quick Session Creation */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none" id="floating-bottom-action-bar">
-        <button
-          onClick={() => {
-            setEditingSession(null);
-            setIsSessionModalOpen(true);
-          }}
-          className="pointer-events-auto bg-[#cb997e] hover:bg-[#b58368] hover:shadow-lg text-white font-medium text-xs sm:text-sm px-6 py-3 rounded-full flex items-center gap-2 shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-4 h-4" />
-          Yeni Seans Ekle
-        </button>
-      </div>
+      {/* Floating Bottom Action Bar for Quick Session Creation (Günlük Ajanda tab'ında gösterilir) */}
+      <AnimatePresence>
+        {activeTab === 'agenda' && (
+          <motion.div
+            initial={{ opacity: 0, y: 28, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 28, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none"
+            id="floating-bottom-action-bar"
+          >
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.04 }}
+              onClick={() => {
+                setEditingSession(null);
+                setIsSessionModalOpen(true);
+              }}
+              className="pointer-events-auto bg-[#cb997e] hover:bg-[#b58368] hover:shadow-lg text-white font-medium text-xs sm:text-sm px-6 py-3 rounded-full flex items-center gap-2 shadow-xl transition-all cursor-pointer whitespace-nowrap select-none touch-manipulation active:bg-[#b58368]"
+            >
+              <Plus className="w-4 h-4" />
+              Yeni Seans Ekle
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
     </PullToRefresh>
   );

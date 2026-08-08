@@ -240,8 +240,9 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             <div className="flex items-center gap-2">
               
               {/* Dedicated Search Icon Button */}
-              <button
+              <motion.button
                 id="header-search-toggle-btn"
+                whileTap={{ scale: 0.92 }}
                 onClick={() => {
                   if (isMobileSearchOpen) {
                     setIsMobileSearchOpen(false);
@@ -249,7 +250,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     setIsMobileSearchOpen(true);
                   }
                 }}
-                className={`p-2.5 rounded-full border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+                className={`p-2.5 rounded-full border transition-all cursor-pointer flex items-center justify-center select-none touch-manipulation ${
                   isMobileSearchOpen 
                     ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-3xs' 
                     : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] text-[#6b705c] border-[#e5e1d8]'
@@ -257,7 +258,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 title="Arama Yap"
               >
                 <Search className="w-4 h-4" />
-              </button>
+              </motion.button>
 
               {/* Notifications Center */}
               <NotificationCenter
@@ -272,15 +273,16 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               />
 
               {/* BURGER MENU BUTTON (🍔 / Menu) */}
-              <button
+              <motion.button
                 id="burger-menu-toggle-btn"
+                whileTap={{ scale: 0.92 }}
                 onClick={() => setIsMenuOpen(true)}
-                className="p-2 md:px-3.5 md:py-2 rounded-2xl bg-[#6b705c] hover:bg-[#585c4c] text-white transition-all cursor-pointer flex items-center gap-2 font-bold text-xs shadow-sm active:scale-95"
+                className="p-2 md:px-3.5 md:py-2 rounded-2xl bg-[#6b705c] hover:bg-[#585c4c] text-white transition-all cursor-pointer flex items-center gap-2 font-bold text-xs shadow-sm select-none touch-manipulation"
                 title="Tüm Menüler ve Ayarlar"
               >
                 <Menu className="w-4.5 h-4.5" />
                 <span className="hidden sm:inline">Menü</span>
-              </button>
+              </motion.button>
             </div>
           </div>
 
@@ -319,7 +321,8 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       <X className="w-4 h-4" />
                     </button>
                   )}
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       if (headerSearchQuery.trim()) {
                         setSearchTabQuery(headerSearchQuery);
@@ -328,10 +331,10 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       }
                       setIsMobileSearchOpen(false);
                     }}
-                    className="px-3 py-1 bg-[#6b705c] text-white rounded-xl text-xs font-bold hover:bg-[#585c4c]"
+                    className="px-3 py-1 bg-[#6b705c] text-white rounded-xl text-xs font-bold hover:bg-[#585c4c] select-none touch-manipulation"
                   >
                     Ara
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* Mobile Search Overlay Results */}
@@ -344,35 +347,37 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       <div className="px-3 py-3 text-center text-xs text-slate-400">Sonuç bulunamadı</div>
                     ) : (
                       searchedSessions.slice(0, 5).map(session => (
-                        <div 
+                        <motion.div 
                           key={session.id}
+                          whileTap={{ scale: 0.98 }}
                           onClick={() => {
                             setSelectedDate(session.date);
                             setActiveTab('agenda');
                             setHeaderSearchQuery('');
                             setIsMobileSearchOpen(false);
                           }}
-                          className="p-2.5 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs"
+                          className="p-2.5 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs touch-manipulation"
                         >
                           <div className="truncate pr-2">
                             <p className="font-bold text-slate-800 truncate">{session.clientName}</p>
                             <p className="text-[10px] text-slate-400">{session.date} • {session.time}</p>
                           </div>
                           <span className="font-bold text-[#cb997e] shrink-0">{formatMoney(session.price)}</span>
-                        </div>
+                        </motion.div>
                       ))
                     )}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
                       onClick={() => {
                         setSearchTabQuery(headerSearchQuery);
                         setActiveTab('search');
                         setHeaderSearchQuery('');
                         setIsMobileSearchOpen(false);
                       }}
-                      className="w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold text-center mt-1 block"
+                      className="w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold text-center mt-1 block touch-manipulation"
                     >
                       Tüm Sonuçları Gelişmiş Arama Ekranında Gör →
-                    </button>
+                    </motion.button>
                   </div>
                 )}
               </motion.div>
@@ -384,10 +389,11 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-xs md:max-w-sm justify-center">
               
               {/* Agenda Tab Switch Button */}
-              <button
+              <motion.button
                 id="tab-agenda-main"
+                whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('agenda')}
-                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 select-none touch-manipulation ${
                   activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
@@ -400,13 +406,14 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 )}
                 <CalendarIcon className="w-3.5 h-3.5" />
                 <span>Günlük Ajanda</span>
-              </button>
+              </motion.button>
 
               {/* Stats / Accounting Tab Switch Button */}
-              <button
+              <motion.button
                 id="tab-stats-main"
+                whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('stats')}
-                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 select-none touch-manipulation ${
                   activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
@@ -420,7 +427,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
                 <span>Muhasebe</span>
                 {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-              </button>
+              </motion.button>
 
             </div>
           </div>
@@ -428,7 +435,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
         </div>
       </nav>
 
-      {/* FULL-SCREEN / SPACIOUS BURGER MENU OVERLAY DRAWER */}
+      {/* FULL-SCREEN / SPACIOUS BURGER MENU OVERLAY DRAWER WITH SWIPE TO CLOSE */}
       <AnimatePresence>
         {isMenuOpen && (
           <div className="fixed inset-0 z-[100] flex justify-end">
@@ -442,13 +449,21 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
             />
 
-            {/* Drawer Content Card */}
+            {/* Drawer Content Card with Swipe-to-Close Touch Gesture */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={{ left: 0, right: 0.8 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.x > 80 || info.velocity.x > 250) {
+                  setIsMenuOpen(false);
+                }
+              }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative w-full max-w-md bg-[#fdfbf7] min-h-full h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 p-6 md:p-8 space-y-8"
+              className="relative w-full max-w-md bg-[#fdfbf7] min-h-full h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 p-6 md:p-8 space-y-8 touch-pan-y"
             >
               {/* DRAWER TOP HEADER */}
               <div className="space-y-5">
@@ -459,17 +474,18 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     </div>
                     <div>
                       <h2 className="text-xl font-serif italic text-[#6b705c]">PsyCalcu</h2>
-                      <p className="text-[10px] text-slate-400 font-bold tracking-wider">TÜM MENÜLER & SİSTEM</p>
+                      <p className="text-[10px] text-slate-400 font-bold tracking-wider">TÜM MENÜLER & SİSTEM • (Kapatmak için sağa kaydırın 👉)</p>
                     </div>
                   </div>
 
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
                     onClick={() => setIsMenuOpen(false)}
-                    className="w-9 h-9 rounded-full bg-white border border-[#e5e1d8] flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer shadow-3xs"
+                    className="w-9 h-9 rounded-full bg-white border border-[#e5e1d8] flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer shadow-3xs touch-manipulation"
                     title="Menüyü Kapat"
                   >
                     <X className="w-5 h-5" />
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* USER PROFILE & CLOUD CARD */}
@@ -504,9 +520,10 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <div className="space-y-2">
                   <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Ana Çalışma Alanı</h3>
                   <div className="grid grid-cols-2 gap-2">
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => handleTabClick('agenda')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer touch-manipulation select-none ${
                         activeTab === 'agenda'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
                           : 'bg-white text-slate-700 border-[#e5e1d8] hover:border-[#6b705c]/40'
@@ -517,11 +534,12 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         <p className="font-bold text-xs">Günlük Ajanda</p>
                         <p className={`text-[9px] mt-0.5 ${activeTab === 'agenda' ? 'text-white/80' : 'text-slate-400'}`}>Seans Takvimi</p>
                       </div>
-                    </button>
+                    </motion.button>
 
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => handleTabClick('stats')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer touch-manipulation select-none ${
                         activeTab === 'stats'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
                           : 'bg-white text-slate-700 border-[#e5e1d8] hover:border-[#6b705c]/40'
@@ -532,7 +550,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         <p className="font-bold text-xs">Muhasebe & Gider</p>
                         <p className={`text-[9px] mt-0.5 ${activeTab === 'stats' ? 'text-white/80' : 'text-slate-400'}`}>Finansal Rapor</p>
                       </div>
-                    </button>
+                    </motion.button>
                   </div>
                 </div>
 
@@ -542,9 +560,10 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <div className="bg-white rounded-2xl border border-[#e5e1d8] divide-y divide-[#f5f5f0] overflow-hidden shadow-3xs">
                     
                     {/* Debt Tracker */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleTabClick('debts')}
-                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                         activeTab === 'debts' ? 'bg-amber-50/70 text-amber-900 font-bold' : 'hover:bg-[#fdfbf7]'
                       }`}
                     >
@@ -558,12 +577,13 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </button>
+                    </motion.button>
 
                     {/* Calendar Sync */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleTabClick('sync')}
-                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                         activeTab === 'sync' ? 'bg-emerald-50/70 text-emerald-900 font-bold' : 'hover:bg-[#fdfbf7]'
                       }`}
                     >
@@ -577,12 +597,13 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </button>
+                    </motion.button>
 
                     {/* Backup & Spreadsheet */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleTabClick('backup')}
-                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                         activeTab === 'backup' ? 'bg-blue-50/70 text-blue-900 font-bold' : 'hover:bg-[#fdfbf7]'
                       }`}
                     >
@@ -596,13 +617,14 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </button>
+                    </motion.button>
 
                     {/* Room Management (Owner only) */}
                     {settings.userRole === 'owner' && (
-                      <button
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
                         onClick={() => handleTabClick('rooms')}
-                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                           activeTab === 'rooms' ? 'bg-indigo-50/70 text-indigo-900 font-bold' : 'hover:bg-[#fdfbf7]'
                         }`}
                       >
@@ -616,14 +638,15 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-300" />
-                      </button>
+                      </motion.button>
                     )}
 
                     {/* Admin Panel (Superadmin) */}
                     {user?.email === 'muhammedakifkayacan@gmail.com' && (
-                      <button
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
                         onClick={() => handleTabClick('admin')}
-                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                        className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                           activeTab === 'admin' ? 'bg-rose-50/70 text-rose-900 font-bold' : 'hover:bg-[#fdfbf7]'
                         }`}
                       >
@@ -637,13 +660,14 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-300" />
-                      </button>
+                      </motion.button>
                     )}
 
                     {/* Advanced Search */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleTabClick('search')}
-                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
                         activeTab === 'search' ? 'bg-purple-50/70 text-purple-900 font-bold' : 'hover:bg-[#fdfbf7]'
                       }`}
                     >
@@ -657,7 +681,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </button>
+                    </motion.button>
                   </div>
                 </div>
 
@@ -667,39 +691,42 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     
                     {/* Settings Modal */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         setIsSettingsOpen(true);
                         setIsMenuOpen(false);
                       }}
-                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#6b705c] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs"
+                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#6b705c] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation"
                     >
                       <div className="w-7 h-7 rounded-lg bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center">
                         <SettingsIcon className="w-4 h-4" />
                       </div>
                       <p className="font-bold text-xs text-slate-800">Sistem Ayarları</p>
                       <p className="text-[9px] text-slate-400">Kira, katsayı ve fiyatlar</p>
-                    </button>
+                    </motion.button>
 
                     {/* FAQ / Info Modal */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         setIsFaqOpen(true);
                         setIsMenuOpen(false);
                       }}
-                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#cb997e] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs"
+                      className="p-3.5 rounded-2xl bg-white border border-[#e5e1d8] hover:border-[#cb997e] transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation"
                     >
                       <div className="w-7 h-7 rounded-lg bg-[#cb997e]/10 text-[#cb997e] flex items-center justify-center">
                         <HelpCircle className="w-4 h-4" />
                       </div>
                       <p className="font-bold text-xs text-slate-800">Bilgi & SSS (?)</p>
                       <p className="text-[9px] text-slate-400">Kullanım rehberi ve sorular</p>
-                    </button>
+                    </motion.button>
 
                     {/* Privacy Mode Toggle */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={handlePrivacyToggle}
-                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs ${
+                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation ${
                         isPrivacyMode ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-[#e5e1d8]'
                       }`}
                     >
@@ -712,12 +739,13 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       <p className="text-[9px] text-slate-500 font-medium">
                         {isPrivacyMode ? '👁️‍🗨️ Paralar Gizli' : '👁️ Paralar Açık'}
                       </p>
-                    </button>
+                    </motion.button>
 
                     {/* Toggle Explanations */}
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
                       onClick={toggleShowExplanations}
-                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs ${
+                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation ${
                         showExplanations ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-white border-[#e5e1d8]'
                       }`}
                     >
@@ -730,7 +758,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       <p className="text-[9px] text-slate-500 font-medium">
                         {showExplanations ? '💡 Açıklamalar Açık' : '💡 Açıklamalar Kapalı'}
                       </p>
-                    </button>
+                    </motion.button>
 
                   </div>
                 </div>
@@ -740,16 +768,17 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               {/* DRAWER FOOTER: LOGOUT BUTTON */}
               {user && (
                 <div className="pt-4 border-t border-[#e5e1d8] space-y-3">
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
                     onClick={() => {
                       setIsMenuOpen(false);
                       handleLogout();
                     }}
-                    className="w-full py-3.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-2xl text-rose-700 hover:text-rose-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-3xs active:scale-98"
+                    className="w-full py-3.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-2xl text-rose-700 hover:text-rose-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-3xs touch-manipulation"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Güvenli Çıkış Yap</span>
-                  </button>
+                  </motion.button>
                   
                   <p className="text-center text-[10px] text-slate-400 font-medium">
                     PsyCalcu v2.4 • Terapistler için Sevgiyle Tasarlandı
