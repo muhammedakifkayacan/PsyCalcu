@@ -120,99 +120,61 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
   return (
     <>
-      <nav className={`sticky top-0 z-40 flex flex-col items-center justify-between px-4 md:px-8 border-b border-[#e5e1d8] bg-white transition-all duration-300 ${
-        isHeaderCollapsed ? 'py-2 shadow-xs' : 'py-3.5 shadow-none'
-      }`}>
-        <div className="flex items-center justify-between w-full max-w-7xl mx-auto gap-3">
+      <nav 
+        className={`sticky top-0 z-40 bg-white border-b border-[#e5e1d8] transition-all duration-300 transform ${
+          isHeaderCollapsed ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100 shadow-3xs'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-2.5 flex flex-col gap-2.5">
           
-          {/* Brand Logo & Name */}
-          <div 
-            onClick={() => handleTabClick('agenda')}
-            className="flex items-center gap-2.5 shrink-0 cursor-pointer hover:opacity-85 select-none transition-all"
-            title="Ana Sayfaya Git (Günlük Ajanda)"
-          >
-            <div className="w-9 h-9 md:w-10 md:h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-xl md:text-2xl italic shadow-md">
-              P
-            </div>
-            <div>
-              <h1 className="text-lg md:text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
-              <p className="text-[9px] md:text-[10px] text-slate-400 font-semibold tracking-wider mt-0.5 hidden sm:block">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
-            </div>
-
-            {/* Cloud Sync Status Indicator Badge */}
-            {user && (
-              <div className="ml-1 flex items-center gap-1.5" title={
-                isQuotaExceeded ? 'Kota Doldu (Yerel Depolama Aktif)' :
-                isAuthSyncing ? 'Bulut Senkronizasyonu Sürüyor...' :
-                isCloudSaving ? 'Buluta Kaydediliyor...' : 'Bulut Verisi Eşleşti'
-              }>
-                <span className="relative flex h-2.5 w-2.5">
-                  {isQuotaExceeded ? (
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                  ) : (isAuthSyncing || isCloudSaving) ? (
-                    <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                    </>
-                  ) : (
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                  )}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* CENTER: PRIMARY TWO-WAY SEGMENTED SWITCH (Günlük Ajanda | Muhasebe) */}
-          <div className="flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs">
-            <button
-              id="tab-agenda-main"
-              onClick={() => handleTabClick('agenda')}
-              className={`relative px-3.5 md:px-5 py-1.5 md:py-2 rounded-full font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-              }`}
-            >
-              {activeTab === 'agenda' && (
-                <motion.div
-                  layoutId="mainHeaderSwitchIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                />
-              )}
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Günlük Ajanda</span>
-            </button>
-
-            <button
-              id="tab-stats-main"
-              onClick={() => handleTabClick('stats')}
-              className={`relative px-3.5 md:px-5 py-1.5 md:py-2 rounded-full font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-              }`}
-            >
-              {activeTab === 'stats' && (
-                <motion.div
-                  layoutId="mainHeaderSwitchIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                />
-              )}
-              <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
-              <span>Muhasebe</span>
-              {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-            </button>
-          </div>
-
-          {/* RIGHT: SEARCH, NOTIFICATIONS, AND BURGER MENU BUTTON */}
-          <div className="flex items-center gap-2">
+          {/* TOP ROW: BRAND LOGO + HEADER ACTIONS (SEARCH, NOTIFICATIONS, BURGER MENU) */}
+          <div className="flex items-center justify-between w-full gap-3">
             
-            {/* Desktop Quick Search */}
-            <div className="hidden lg:block relative w-48 xl:w-56">
-              <div className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-[#6b705c]">
+            {/* Brand Logo & Name */}
+            <div 
+              onClick={() => handleTabClick('agenda')}
+              className="flex items-center gap-2.5 shrink-0 cursor-pointer hover:opacity-85 select-none transition-all"
+              title="Ana Sayfaya Git (Günlük Ajanda)"
+            >
+              <div className="w-9 h-9 md:w-10 md:h-10 bg-[#6b705c] rounded-xl flex items-center justify-center text-white font-serif text-xl md:text-2xl italic shadow-md">
+                P
+              </div>
+              <div>
+                <h1 className="text-lg md:text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
+                <p className="text-[9px] md:text-[10px] text-slate-400 font-semibold tracking-wider mt-0.5 hidden sm:block">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
+              </div>
+
+              {/* Cloud Sync Status Indicator Badge */}
+              {user && (
+                <div className="ml-1 flex items-center gap-1.5" title={
+                  isQuotaExceeded ? 'Kota Doldu (Yerel Depolama Aktif)' :
+                  isAuthSyncing ? 'Bulut Senkronizasyonu Sürüyor...' :
+                  isCloudSaving ? 'Buluta Kaydediliyor...' : 'Bulut Verisi Eşleşti'
+                }>
+                  <span className="relative flex h-2.5 w-2.5">
+                    {isQuotaExceeded ? (
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                    ) : (isAuthSyncing || isCloudSaving) ? (
+                      <>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                      </>
+                    ) : (
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop Inline Search Bar */}
+            <div className="hidden md:block relative w-56 xl:w-64">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#6b705c]">
                 <Search className="w-3.5 h-3.5" />
               </div>
               <input
                 type="text"
-                placeholder="Ara..."
+                placeholder="Seans veya danışan ara..."
                 value={headerSearchQuery}
                 onChange={(e) => setHeaderSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -222,18 +184,18 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     setHeaderSearchQuery('');
                   }
                 }}
-                className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] font-medium placeholder:text-slate-400 shadow-3xs"
+                className="w-full pl-9 pr-7 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-full focus:outline-none focus:border-[#6b705c] font-medium placeholder:text-slate-400 shadow-3xs"
               />
               {headerSearchQuery && (
                 <button
                   onClick={() => setHeaderSearchQuery('')}
-                  className="absolute inset-y-0 right-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
 
-              {/* Quick Search Overlay Results */}
+              {/* Search Overlay Dropdown */}
               {headerSearchQuery.trim() && (
                 <div className="absolute top-full mt-2 right-0 w-80 max-h-[300px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-fade-in">
                   <div className="px-2 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
@@ -242,7 +204,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   {searchedSessions.length === 0 ? (
                     <div className="px-3 py-3 text-center text-xs text-slate-400">Sonuç bulunamadı</div>
                   ) : (
-                    searchedSessions.slice(0, 4).map(session => (
+                    searchedSessions.slice(0, 5).map(session => (
                       <div 
                         key={session.id}
                         onClick={() => {
@@ -274,29 +236,195 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               )}
             </div>
 
-            {/* Notifications Center */}
-            <NotificationCenter
-              notifications={allNotifications}
-              onMarkAllAsRead={handleMarkAllAsRead}
-              onClearAll={handleClearAllNotifications}
-              showToast={showToast}
-              onViewSyncDetails={(details) => {
-                setSyncDetailsToShow(details);
-                setIsSyncDetailsModalOpen(true);
-              }}
-            />
+            {/* RIGHT HEADER ACTIONS: SEARCH ICON, NOTIFICATIONS, BURGER MENU */}
+            <div className="flex items-center gap-2">
+              
+              {/* Dedicated Search Icon Button */}
+              <button
+                id="header-search-toggle-btn"
+                onClick={() => {
+                  if (isMobileSearchOpen) {
+                    setIsMobileSearchOpen(false);
+                  } else {
+                    setIsMobileSearchOpen(true);
+                  }
+                }}
+                className={`p-2.5 rounded-full border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+                  isMobileSearchOpen 
+                    ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-3xs' 
+                    : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] text-[#6b705c] border-[#e5e1d8]'
+                }`}
+                title="Arama Yap"
+              >
+                <Search className="w-4 h-4" />
+              </button>
 
-            {/* BURGER MENU BUTTON (🍔 / Menu) */}
-            <button
-              id="burger-menu-toggle-btn"
-              onClick={() => setIsMenuOpen(true)}
-              className="p-2 md:px-3 md:py-2 rounded-2xl bg-[#6b705c] hover:bg-[#585c4c] text-white transition-all cursor-pointer flex items-center gap-2 font-bold text-xs shadow-sm active:scale-95"
-              title="Tüm Menüler ve Ayarlar"
-            >
-              <Menu className="w-5 h-5" />
-              <span className="hidden sm:inline">Menü</span>
-            </button>
+              {/* Notifications Center */}
+              <NotificationCenter
+                notifications={allNotifications}
+                onMarkAllAsRead={handleMarkAllAsRead}
+                onClearAll={handleClearAllNotifications}
+                showToast={showToast}
+                onViewSyncDetails={(details) => {
+                  setSyncDetailsToShow(details);
+                  setIsSyncDetailsModalOpen(true);
+                }}
+              />
+
+              {/* BURGER MENU BUTTON (🍔 / Menu) */}
+              <button
+                id="burger-menu-toggle-btn"
+                onClick={() => setIsMenuOpen(true)}
+                className="p-2 md:px-3.5 md:py-2 rounded-2xl bg-[#6b705c] hover:bg-[#585c4c] text-white transition-all cursor-pointer flex items-center gap-2 font-bold text-xs shadow-sm active:scale-95"
+                title="Tüm Menüler ve Ayarlar"
+              >
+                <Menu className="w-4.5 h-4.5" />
+                <span className="hidden sm:inline">Menü</span>
+              </button>
+            </div>
           </div>
+
+          {/* EXPANDABLE SEARCH INPUT BAR (WHEN SEARCH ICON IS CLICKED ON MOBILE/DESKTOP) */}
+          <AnimatePresence>
+            {isMobileSearchOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="w-full relative overflow-visible"
+              >
+                <div className="flex items-center gap-2 bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl p-2 shadow-inner">
+                  <Search className="w-4 h-4 text-[#6b705c] ml-2 shrink-0" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Danışan adı, tarih veya seans notu yazıp Enter'a basın..."
+                    value={headerSearchQuery}
+                    onChange={(e) => setHeaderSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && headerSearchQuery.trim()) {
+                        setSearchTabQuery(headerSearchQuery);
+                        setActiveTab('search');
+                        setHeaderSearchQuery('');
+                        setIsMobileSearchOpen(false);
+                      }
+                    }}
+                    className="w-full bg-transparent text-xs font-medium focus:outline-none text-slate-800 placeholder:text-slate-400"
+                  />
+                  {headerSearchQuery && (
+                    <button
+                      onClick={() => setHeaderSearchQuery('')}
+                      className="p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (headerSearchQuery.trim()) {
+                        setSearchTabQuery(headerSearchQuery);
+                        setActiveTab('search');
+                        setHeaderSearchQuery('');
+                      }
+                      setIsMobileSearchOpen(false);
+                    }}
+                    className="px-3 py-1 bg-[#6b705c] text-white rounded-xl text-xs font-bold hover:bg-[#585c4c]"
+                  >
+                    Ara
+                  </button>
+                </div>
+
+                {/* Mobile Search Overlay Results */}
+                {headerSearchQuery.trim() && (
+                  <div className="absolute top-full mt-2 left-0 right-0 max-h-[280px] overflow-y-auto bg-white border border-[#e5e1d8] rounded-2xl shadow-xl z-50 p-2 space-y-1">
+                    <div className="px-2 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                      Arama Sonuçları ({searchedSessions.length})
+                    </div>
+                    {searchedSessions.length === 0 ? (
+                      <div className="px-3 py-3 text-center text-xs text-slate-400">Sonuç bulunamadı</div>
+                    ) : (
+                      searchedSessions.slice(0, 5).map(session => (
+                        <div 
+                          key={session.id}
+                          onClick={() => {
+                            setSelectedDate(session.date);
+                            setActiveTab('agenda');
+                            setHeaderSearchQuery('');
+                            setIsMobileSearchOpen(false);
+                          }}
+                          className="p-2.5 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs"
+                        >
+                          <div className="truncate pr-2">
+                            <p className="font-bold text-slate-800 truncate">{session.clientName}</p>
+                            <p className="text-[10px] text-slate-400">{session.date} • {session.time}</p>
+                          </div>
+                          <span className="font-bold text-[#cb997e] shrink-0">{formatMoney(session.price)}</span>
+                        </div>
+                      ))
+                    )}
+                    <button
+                      onClick={() => {
+                        setSearchTabQuery(headerSearchQuery);
+                        setActiveTab('search');
+                        setHeaderSearchQuery('');
+                        setIsMobileSearchOpen(false);
+                      }}
+                      className="w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold text-center mt-1 block"
+                    >
+                      Tüm Sonuçları Gelişmiş Arama Ekranında Gör →
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* SECOND ROW: TWO-WAY PRIMARY SWITCH (GÜNLÜK AJANDA | MUHASEBE) */}
+          <div className="flex items-center justify-center pt-1 border-t border-[#f5f5f0]">
+            <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-xs md:max-w-sm justify-center">
+              
+              {/* Agenda Tab Switch Button */}
+              <button
+                id="tab-agenda-main"
+                onClick={() => handleTabClick('agenda')}
+                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                }`}
+              >
+                {activeTab === 'agenda' && (
+                  <motion.div
+                    layoutId="mainHeaderSwitchIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <CalendarIcon className="w-3.5 h-3.5" />
+                <span>Günlük Ajanda</span>
+              </button>
+
+              {/* Stats / Accounting Tab Switch Button */}
+              <button
+                id="tab-stats-main"
+                onClick={() => handleTabClick('stats')}
+                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                }`}
+              >
+                {activeTab === 'stats' && (
+                  <motion.div
+                    layoutId="mainHeaderSwitchIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
+                <span>Muhasebe</span>
+                {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
+              </button>
+
+            </div>
+          </div>
+
         </div>
       </nav>
 
