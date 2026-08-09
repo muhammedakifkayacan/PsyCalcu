@@ -265,7 +265,11 @@ export default function SessionModal({
           {/* Client Name */}
           <div className="space-y-1">
             <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
-              {type === 'rent-income' ? 'ÖDEMEYİ YAPAN / TERAPİST' : 'DANIŞAN ADI SOYADI'}
+              {type === 'rent-income' 
+                ? 'ÖDEMEYİ YAPAN / TERAPİST' 
+                : type === 'non-session' 
+                  ? 'ETKİNLİK / TOPLANTI BAŞLIĞI' 
+                  : 'DANIŞAN ADI SOYADI'}
             </label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
@@ -275,7 +279,13 @@ export default function SessionModal({
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-                placeholder={type === 'rent-income' ? "Örn. Psk. Ahmet Yılmaz" : "Örn. Ahmet Yılmaz"}
+                placeholder={
+                  type === 'rent-income' 
+                    ? "Örn. Psk. Ahmet Yılmaz" 
+                    : type === 'non-session' 
+                      ? "Örn. Ekip Toplantısı, Süpervizyon" 
+                      : "Örn. Ahmet Yılmaz"
+                }
               />
             </div>
           </div>
@@ -284,74 +294,85 @@ export default function SessionModal({
           <div className="space-y-1">
             <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">ETKİNLİK TİPİ</label>
             <div className={`grid ${userRole === 'owner' ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'} gap-2`}>
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.94 }}
                 onClick={() => handleTypeChange('online')}
-                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer select-none touch-manipulation ${
                   type === 'online'
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-2 ring-emerald-100'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-2 ring-emerald-100 font-bold'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <Laptop className="w-3.5 h-3.5" />
                 Online
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.94 }}
                 onClick={() => handleTypeChange('face-to-face')}
-                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer select-none touch-manipulation ${
                   type === 'face-to-face'
-                    ? 'bg-amber-50 border-amber-300 text-amber-800 ring-2 ring-amber-100'
+                    ? 'bg-amber-50 border-amber-300 text-amber-800 ring-2 ring-amber-100 font-bold'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <MapPin className="w-3.5 h-3.5" />
                 Yüzyüze
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.94 }}
                 onClick={() => handleTypeChange('cancelled')}
-                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer select-none touch-manipulation ${
                   type === 'cancelled'
-                    ? 'bg-red-50 border-red-200 text-red-800 ring-2 ring-red-50'
+                    ? 'bg-red-50 border-red-200 text-red-800 ring-2 ring-red-50 font-bold'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <Ban className="w-3.5 h-3.5" />
                 İptal
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.94 }}
                 onClick={() => handleTypeChange('non-session')}
-                className={`py-2 px-1 sm:px-2 rounded-xl border text-[11px] sm:text-[11px] font-semibold flex items-center justify-center gap-1 sm:gap-1 transition-all cursor-pointer ${
+                className={`py-2 px-1 sm:px-2 rounded-xl border text-[11px] sm:text-[11px] font-semibold flex items-center justify-center gap-1 sm:gap-1 transition-all cursor-pointer select-none touch-manipulation ${
                   type === 'non-session'
-                    ? 'bg-slate-100 border-slate-300 text-slate-800 ring-2 ring-slate-200'
+                    ? 'bg-slate-100 border-slate-300 text-slate-800 ring-2 ring-slate-200 font-bold'
                     : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Seans Değil
-              </button>
+              </motion.button>
               {userRole === 'owner' && (
-                <button
+                <motion.button
                   type="button"
+                  whileTap={{ scale: 0.94 }}
                   onClick={() => handleTypeChange('rent-income')}
-                  className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                  className={`py-2 px-2 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer select-none touch-manipulation ${
                     type === 'rent-income'
-                      ? 'bg-teal-50 border-teal-300 text-teal-800 ring-2 ring-teal-100'
+                      ? 'bg-teal-50 border-teal-300 text-teal-800 ring-2 ring-teal-100 font-bold'
                       : 'border-[#e5e1d8] hover:bg-slate-50 text-slate-600'
                   }`}
                 >
                   <Building className="w-3.5 h-3.5" />
                   Kira Geliri
-                </button>
+                </motion.button>
               )}
             </div>
           </div>
 
-          {/* Room Selector (Visible to Owners) */}
-          {userRole === 'owner' && rooms && rooms.length > 0 && (
-            <div className="space-y-1 animate-fade-in" id="modal-room-selector">
+          {/* Room Selector (Sadece Yüz Yüze veya Kira Geliri seçildiğinde görünür) */}
+          {(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-1 overflow-hidden"
+              id="modal-room-selector"
+            >
               <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">KLİNİK ODA SEÇİMİ</label>
               <div className="relative">
                 <Building className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
@@ -368,7 +389,7 @@ export default function SessionModal({
                   ))}
                 </select>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Calendar synced or past session warning */}
@@ -526,20 +547,19 @@ export default function SessionModal({
             </div>
           )}
 
-          {/* Expenses Settings */}
-          {type !== 'rent-income' && (
+          {/* Expenses Settings (Sadece Online ve Yüz Yüze seanslarda gösterilir) */}
+          {(type === 'online' || type === 'face-to-face') && (
             <div className="grid grid-cols-2 gap-3 pt-1">
               {/* Babysitter Fee Switcher */}
               <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı?</span>
+                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={hasBabysitterFee}
                       onChange={(e) => setHasBabysitterFee(e.target.checked)}
                       className="sr-only peer"
-                      disabled={type === 'cancelled' || type === 'non-session'}
                     />
                     <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                   </label>
@@ -563,7 +583,7 @@ export default function SessionModal({
                       />
                       <span className="text-[9px] text-slate-500">₺</span>
                     </div>
-                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
+                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
                       const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
                       if (matchedCosts.babysitterFeeAmount !== defaultBabysitterFee && Number(babysitterFeeAmount) === matchedCosts.babysitterFeeAmount) {
                         return (
@@ -582,14 +602,13 @@ export default function SessionModal({
               {/* Office Rent Fee Switcher */}
               <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira?</span>
+                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={hasOfficeRentFee}
                       onChange={(e) => setHasOfficeRentFee(e.target.checked)}
                       className="sr-only peer"
-                      disabled={type === 'cancelled' || type === 'non-session'}
                     />
                     <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
                   </label>
@@ -613,7 +632,7 @@ export default function SessionModal({
                       />
                       <span className="text-[9px] text-slate-500">₺</span>
                     </div>
-                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && (() => {
+                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
                       const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
                       if (matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee && Number(officeRentFeeAmount) === matchedCosts.officeRentFeeAmount) {
                         return (
@@ -651,8 +670,9 @@ export default function SessionModal({
           {/* Actions */}
           <div className="pt-3 border-t border-[#f5f5f0] flex gap-3 justify-between items-center shrink-0">
             {sessionToEdit && !sessionToEdit.isSyncedFromCalendar ? (
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.95 }}
                 onClick={() => {
                   const currentSessionData: Session = {
                     id: sessionToEdit.id,
@@ -673,29 +693,31 @@ export default function SessionModal({
                   };
                   downloadSessionAsICS(currentSessionData);
                 }}
-                className="px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer select-none touch-manipulation"
                 title="Bu seansı cihazınızın takvimine kaydetmek için .ics dosyası indirin"
               >
                 <CalendarPlus className="w-3.5 h-3.5" />
                 Takvime Ekle (Cihaz)
-              </button>
+              </motion.button>
             ) : (
               <div />
             )}
             <div className="flex gap-3">
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer select-none touch-manipulation"
               >
                 Vazgeç
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="submit"
-                className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold transition-colors cursor-pointer"
+                whileTap={{ scale: 0.95 }}
+                className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold transition-colors cursor-pointer select-none touch-manipulation"
               >
                 Kaydet
-              </button>
+              </motion.button>
             </div>
           </div>
         </form>
