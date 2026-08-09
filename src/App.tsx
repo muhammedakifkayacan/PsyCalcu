@@ -42,6 +42,7 @@ import {
   Filter,
   Calculator,
   CalendarRange,
+  CalendarDays,
   RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1154,8 +1155,169 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [agendaViewMode, setAgendaViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
+
+  // Helper to filter sessions for any specific date using active agenda filters
+  const getFilteredSessionsForDate = useCallback((dateStr: string) => {
+    let daySessions = sessions.filter(s => s.date === dateStr).sort((a, b) => a.time.localeCompare(b.time));
+
+    if (settings.userRole === 'owner') {
+      if (ownerSessionFilter === 'mine') {
+        daySessions = daySessions.filter(s => s.type !== 'rent-income');
+      } else if (ownerSessionFilter === 'tenant') {
+        daySessions = daySessions.filter(s => s.type === 'rent-income');
+      }
+    }
+
+    if (agendaStatusFilter === 'paid') {
+      daySessions = daySessions.filter(s => s.paymentStatus === 'paid' && s.type !== 'cancelled');
+    } else if (agendaStatusFilter === 'unpaid') {
+      daySessions = daySessions.filter(s => s.paymentStatus === 'unpaid' && s.type !== 'cancelled');
+    } else if (agendaStatusFilter === 'cancelled') {
+      daySessions = daySessions.filter(s => s.type === 'cancelled');
+    }
+
+    if (agendaRoomFilter !== 'all') {
+      daySessions = daySessions.filter(s => s.roomId === agendaRoomFilter);
+    }
+
+    return daySessions;
+  }, [sessions, settings.userRole, ownerSessionFilter, agendaStatusFilter, agendaRoomFilter]);
+
+  // 7 days for the week containing selectedDate (Monday to Sunday)
+  const weekDays = useMemo(() => {
+    const selected = new Date(selectedDate);
+    const dayOfWeek = selected.getDay();
+    const diffToMonday = selected.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    const monday = new Date(selected);
+    monday.setDate(diffToMonday);
+
+    const days = [];
+    const turkishDayNames = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+    const shortTurkishDayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      days.push({
+        dateStr,
+        dayName: turkishDayNames[i],
+        shortDayName: shortTurkishDayNames[i],
+        dayNum: d.getDate(),
+        monthShort: d.toLocaleDateString('tr-TR', { month: 'short' }),
+        fullDate: d,
+      });
+    }
+    return days;
+  }, [selectedDate]);
+
+  // Formatted date range string for weekly view header
+  const weekRangeStr = useMemo(() => {
+    if (weekDays.length < 7) return '';
+    const first = weekDays[0].fullDate;
+    const last = weekDays[6].fullDate;
+
+    if (first.getMonth() === last.getMonth()) {
+      return `${first.getDate()} - ${last.getDate()} ${first.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}`;
+    } else if (first.getFullYear() === last.getFullYear()) {
+      return `${first.getDate()} ${first.toLocaleDateString('tr-TR', { month: 'short' })} - ${last.getDate()} ${last.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })}`;
+    } else {
+      return `${first.getDate()} ${first.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })} - ${last.getDate()} ${last.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })}`;
+    }
+  }, [weekDays]);
+
+  // Aggregate weekly statistics
+  const weekStats = useMemo(() => {
+    let totalSessions = 0;
+    let totalIncome = 0;
+    let paidCount = 0;
+
+    weekDays.forEach(day => {
+      const daySessions = getFilteredSessionsForDate(day.dateStr);
+      daySessions.forEach(s => {
+        if (s.type !== 'cancelled' && s.type !== 'non-session') {
+          totalSessions++;
+          totalIncome += s.price;
+          if (s.paymentStatus === 'paid') paidCount++;
+        }
+      });
+    });
+
+    return { totalSessions, totalIncome, paidCount };
+  }, [weekDays, getFilteredSessionsForDate]);
+
+  // Aggregate monthly statistics
+  const monthStats = useMemo(() => {
+    const year = calendarViewDate.getFullYear();
+    const month = calendarViewDate.getMonth();
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+    let totalSessions = 0;
+    let totalIncome = 0;
+    let paidCount = 0;
+
+    sessions.forEach(s => {
+      if (s.date.startsWith(monthPrefix)) {
+        const daySessions = getFilteredSessionsForDate(s.date);
+        if (daySessions.some(ds => ds.id === s.id)) {
+          if (s.type !== 'cancelled' && s.type !== 'non-session') {
+            totalSessions++;
+            totalIncome += s.price;
+            if (s.paymentStatus === 'paid') paidCount++;
+          }
+        }
+      }
+    });
+
+    return { totalSessions, totalIncome, paidCount };
+  }, [calendarViewDate, sessions, getFilteredSessionsForDate]);
+
+  // Navigation handlers for week view
+  const handlePrevWeek = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 7);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleNextWeek = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 7);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleThisWeek = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setSelectedDate(todayStr);
+  };
+
+  // Navigation handlers for month view
+  const handlePrevMonth = () => {
+    const prev = new Date(calendarViewDate);
+    prev.setMonth(prev.getMonth() - 1);
+    setCalendarViewDate(prev);
+    const dateStr = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-01`;
+    setSelectedDate(dateStr);
+  };
+
+  const handleNextMonth = () => {
+    const next = new Date(calendarViewDate);
+    next.setMonth(next.getMonth() + 1);
+    setCalendarViewDate(next);
+    const dateStr = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+    setSelectedDate(dateStr);
+  };
+
+  const handleThisMonth = () => {
+    const now = new Date();
+    setCalendarViewDate(now);
+    setSelectedDate(now.toISOString().split('T')[0]);
+  };
 
   // Keep calendar view month in sync with selectedDate
   useEffect(() => {
@@ -3394,8 +3556,58 @@ export default function App() {
               {/* RIGHT Column: Agenda & Calendar Sync */}
               <div className="lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2" id="daily-agenda-section">
                 
-                {/* Horizontal Date Ribbon Picker */}
-                <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">
+                {/* View Mode Switcher Bar (Günlük / Haftalık / Aylık) */}
+                <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-3 sm:p-4 shadow-sm flex flex-wrap sm:flex-nowrap justify-between items-center gap-3">
+                  <div className="flex items-center gap-1 bg-[#f5f5f0] p-1 rounded-2xl border border-[#e5e1d8]/80 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setAgendaViewMode('day')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                        agendaViewMode === 'day'
+                          ? 'bg-[#6b705c] text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                      }`}
+                    >
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      <span>Günlük</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAgendaViewMode('week')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                        agendaViewMode === 'week'
+                          ? 'bg-[#6b705c] text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                      }`}
+                    >
+                      <CalendarRange className="w-3.5 h-3.5" />
+                      <span>Haftalık</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAgendaViewMode('month')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                        agendaViewMode === 'month'
+                          ? 'bg-[#6b705c] text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                      }`}
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span>Aylık</span>
+                    </button>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500 hidden md:block">
+                    {agendaViewMode === 'day' && `Seçili Gün: ${new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                    {agendaViewMode === 'week' && `Seçili Hafta: ${weekRangeStr}`}
+                    {agendaViewMode === 'month' && `Seçili Ay: ${calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}`}
+                  </div>
+                </div>
+
+                {/* Daily Agenda View */}
+                {agendaViewMode === 'day' && (
+                  <>
+                    {/* Horizontal Date Ribbon Picker (Only in Daily view) */}
+                    <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 shadow-sm">
                   <div className="flex justify-between items-center mb-3 px-2">
                     <span className="text-xs font-bold text-[#a5a58d] tracking-wider">TARİH SEÇİMİ</span>
                     
@@ -4248,6 +4460,418 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              </>
+            )}
+
+            {/* WEEKLY AGENDA VIEW */}
+            {agendaViewMode === 'week' && (
+              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in">
+                {/* Weekly Header & Navigation */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#f5f5f0]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePrevWeek}
+                      className="p-2 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                      title="Önceki Hafta"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleThisWeek}
+                      className="px-3 py-1.5 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-bold text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                    >
+                      Bu Hafta
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextWeek}
+                      className="p-2 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                      title="Sonraki Hafta"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+
+                    <span className="text-sm font-serif font-bold text-slate-800 ml-2">
+                      {weekRangeStr}
+                    </span>
+                  </div>
+
+                  {/* Summary Stats */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="px-3 py-1.5 rounded-xl bg-[#fdfbf7] border border-[#e5e1d8] flex items-center gap-2">
+                      <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
+                      <span className="font-semibold text-slate-700">Haftalık: <strong className="text-[#6b705c]">{weekStats.totalSessions}</strong> Seans</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 font-semibold">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{formatMoney(weekStats.totalIncome)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Filters Alert */}
+                {hasActiveAgendaFilters && (
+                  <div className="px-4 py-2 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex justify-between items-center">
+                    <span>Filtre uygulandı. Gösterilen haftalık seanslar filtrelenmiştir.</span>
+                    <button onClick={resetAgendaFilters} className="font-bold underline cursor-pointer">Filtreleri Sıfırla</button>
+                  </div>
+                )}
+
+                {/* 7 Days Columns Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-3 overflow-x-auto">
+                  {weekDays.map((day) => {
+                    const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                    const isSelected = day.dateStr === selectedDate;
+                    const daySessions = getFilteredSessionsForDate(day.dateStr);
+
+                    const dayRevenue = daySessions.reduce((acc, s) => s.type !== 'cancelled' && s.type !== 'non-session' ? acc + s.price : acc, 0);
+
+                    return (
+                      <div
+                        key={day.dateStr}
+                        className={`flex flex-col rounded-2xl border transition-all min-h-[360px] ${
+                          isToday
+                            ? 'bg-[#fdfbf7] border-[#6b705c] ring-2 ring-[#6b705c]/20 shadow-xs'
+                            : isSelected
+                            ? 'bg-amber-50/20 border-[#cb997e]'
+                            : 'bg-white border-[#e5e1d8]'
+                        }`}
+                      >
+                        {/* Day Header */}
+                        <div
+                          onClick={() => setSelectedDate(day.dateStr)}
+                          className={`p-3 border-b flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                            isToday
+                              ? 'bg-[#6b705c] text-white rounded-t-2xl'
+                              : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] text-slate-800 rounded-t-2xl border-[#e5e1d8]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">
+                              {day.shortDayName}
+                            </span>
+                            {isToday && (
+                              <span className="text-[9px] bg-white text-[#6b705c] font-extrabold px-1.5 py-0.2 rounded-full">
+                                Bugün
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-base font-serif font-bold mt-0.5">
+                            {day.dayNum} {day.monthShort}
+                          </span>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] opacity-90">
+                            <span>{daySessions.length} Seans</span>
+                            {dayRevenue > 0 && <span>• {formatMoney(dayRevenue)}</span>}
+                          </div>
+                        </div>
+
+                        {/* Sessions List */}
+                        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[420px]">
+                          {daySessions.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400">
+                              <span className="text-xs font-medium">Seans yok</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDate(day.dateStr);
+                                  setEditingSession(null);
+                                  setIsSessionModalOpen(true);
+                                }}
+                                className="mt-2 p-1.5 rounded-full bg-slate-100 hover:bg-[#6b705c] hover:text-white text-slate-500 transition-all cursor-pointer"
+                                title="Bu güne seans ekle"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            daySessions.map((session) => {
+                              const isCancelled = session.type === 'cancelled';
+                              const isFaceToFace = session.type === 'face-to-face';
+                              const isTenant = session.type === 'rent-income';
+
+                              return (
+                                <motion.div
+                                  key={session.id}
+                                  whileHover={{ scale: 1.02 }}
+                                  whileTap={{ scale: 0.97 }}
+                                  onClick={() => {
+                                    setEditingSession(session);
+                                    setIsSessionModalOpen(true);
+                                  }}
+                                  className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                                    isCancelled
+                                      ? 'bg-rose-50/40 border-rose-200 text-rose-800 opacity-60 line-through'
+                                      : isTenant
+                                      ? 'bg-indigo-50/60 border-indigo-200 text-indigo-900 hover:border-indigo-400'
+                                      : isFaceToFace
+                                      ? 'bg-amber-50/60 border-amber-200 text-slate-800 hover:border-amber-400'
+                                      : 'bg-white border-slate-200 text-slate-800 hover:border-[#6b705c]'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between font-bold">
+                                    <span className="flex items-center gap-1 text-[11px] text-[#6b705c]">
+                                      <Clock className="w-3 h-3" />
+                                      {session.time || 'Saat yok'}
+                                    </span>
+                                    <span
+                                      className={`w-2 h-2 rounded-full ${
+                                        session.paymentStatus === 'paid'
+                                          ? 'bg-emerald-500'
+                                          : isCancelled
+                                          ? 'bg-rose-400'
+                                          : 'bg-amber-500'
+                                      }`}
+                                    />
+                                  </div>
+                                  <div className="font-bold text-slate-900 mt-1 truncate">
+                                    {session.clientName}
+                                  </div>
+                                  <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
+                                    <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
+                                    <span className="font-semibold text-slate-700">{formatMoney(session.price)}</span>
+                                  </div>
+                                </motion.div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Add Session Footer */}
+                        <div className="p-2 border-t border-slate-100 mt-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDate(day.dateStr);
+                              setEditingSession(null);
+                              setIsSessionModalOpen(true);
+                            }}
+                            className="w-full py-1.5 rounded-xl border border-dashed border-[#e5e1d8] hover:border-[#6b705c] hover:bg-[#6b705c]/5 text-[11px] font-semibold text-slate-600 hover:text-[#6b705c] flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Seans Ekle</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* MONTHLY AGENDA VIEW */}
+            {agendaViewMode === 'month' && (
+              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in">
+                {/* Month Header & Nav */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#f5f5f0]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePrevMonth}
+                      className="p-2 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                      title="Önceki Ay"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleThisMonth}
+                      className="px-3 py-1.5 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-xs font-bold text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                    >
+                      Bu Ay
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextMonth}
+                      className="p-2 rounded-xl bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] border border-[#e5e1d8] transition-all cursor-pointer"
+                      title="Sonraki Ay"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+
+                    <span className="text-base font-serif font-bold text-slate-800 ml-2">
+                      {calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="px-3 py-1.5 rounded-xl bg-[#fdfbf7] border border-[#e5e1d8] flex items-center gap-2">
+                      <CalendarDays className="w-3.5 h-3.5 text-[#6b705c]" />
+                      <span className="font-semibold text-slate-700">Aylık Toplam: <strong className="text-[#6b705c]">{monthStats.totalSessions}</strong> Seans</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 font-semibold">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{formatMoney(monthStats.totalIncome)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Filters Alert */}
+                {hasActiveAgendaFilters && (
+                  <div className="px-4 py-2 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex justify-between items-center">
+                    <span>Filtre uygulandı. Gösterilen aylık seanslar filtrelenmiştir.</span>
+                    <button onClick={resetAgendaFilters} className="font-bold underline cursor-pointer">Filtreleri Sıfırla</button>
+                  </div>
+                )}
+
+                {/* Calendar Grid */}
+                <div className="bg-slate-50 p-2 rounded-2xl border border-[#e5e1d8]/80">
+                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                    {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'].map((day, idx) => (
+                      <span key={idx} className="text-xs font-bold text-[#a5a58d] py-1">
+                        <span className="hidden md:inline">{day}</span>
+                        <span className="md:hidden">{['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'][idx]}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {calendarGrid.map((cell, idx) => {
+                      const isSelected = cell.dateStr === selectedDate;
+                      const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                      const daySessions = getFilteredSessionsForDate(cell.dateStr);
+
+                      const dayRevenue = daySessions.reduce((acc, s) => s.type !== 'cancelled' && s.type !== 'non-session' ? acc + s.price : acc, 0);
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setSelectedDate(cell.dateStr)}
+                          className={`min-h-[90px] md:min-h-[110px] p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            !cell.isCurrentMonth
+                              ? 'bg-slate-100/50 text-slate-300 border-slate-200/50'
+                              : isSelected
+                              ? 'bg-amber-50/80 border-[#cb997e] ring-2 ring-[#cb997e]/30 shadow-xs'
+                              : isToday
+                              ? 'bg-white border-[#6b705c] ring-2 ring-[#6b705c]/20 shadow-xs'
+                              : 'bg-white hover:bg-slate-50 border-[#e5e1d8]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${
+                              isToday 
+                                ? 'bg-[#6b705c] text-white' 
+                                : isSelected 
+                                ? 'bg-[#cb997e] text-white' 
+                                : !cell.isCurrentMonth 
+                                ? 'text-slate-300' 
+                                : 'text-slate-700'
+                            }`}>
+                              {cell.dayNum}
+                            </span>
+
+                            {daySessions.length > 0 && (
+                              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded-full">
+                                {daySessions.length}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="my-1 space-y-1 overflow-hidden max-h-[52px]">
+                            {daySessions.slice(0, 2).map((s) => (
+                              <div
+                                key={s.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingSession(s);
+                                  setIsSessionModalOpen(true);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold truncate flex items-center justify-between border ${
+                                  s.type === 'cancelled'
+                                    ? 'bg-rose-50 border-rose-200 text-rose-700 line-through'
+                                    : s.type === 'rent-income'
+                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                                    : s.type === 'face-to-face'
+                                    ? 'bg-amber-50 border-amber-200 text-slate-800'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                }`}
+                                title={`${s.time} - ${s.clientName}`}
+                              >
+                                <span className="truncate">{s.time} {s.clientName}</span>
+                              </div>
+                            ))}
+                            {daySessions.length > 2 && (
+                              <span className="text-[9px] text-[#6b705c] font-extrabold block text-center">
+                                +{daySessions.length - 2} daha
+                              </span>
+                            )}
+                          </div>
+
+                          {dayRevenue > 0 && (
+                            <div className="text-[9px] font-bold text-emerald-700 text-right truncate border-t border-slate-100 pt-0.5">
+                              {formatMoney(dayRevenue)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Selected Day Details Box */}
+                <div className="bg-[#fdfbf7] p-4 sm:p-5 rounded-2xl border border-[#e5e1d8]">
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-4 pb-3 border-b border-[#e5e1d8]">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4 text-[#6b705c]" />
+                      <h4 className="text-sm font-serif font-bold text-slate-800">
+                        Seçilen Gün: {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSession(null);
+                        setIsSessionModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Bu Güne Seans Ekle</span>
+                    </button>
+                  </div>
+
+                  {getFilteredSessionsForDate(selectedDate).length === 0 ? (
+                    <p className="text-xs text-slate-500 italic text-center py-4">Bu seçili günde kayıtlı seans bulunmuyor.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {getFilteredSessionsForDate(selectedDate).map((session) => (
+                        <div
+                          key={session.id}
+                          onClick={() => {
+                            setEditingSession(session);
+                            setIsSessionModalOpen(true);
+                          }}
+                          className="p-3 bg-white rounded-xl border border-[#e5e1d8] hover:border-[#6b705c] cursor-pointer transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> {session.time}
+                              </span>
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                                session.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {session.paymentStatus === 'paid' ? 'Ödenmiş' : 'Ödeme Bekliyor'}
+                              </span>
+                            </div>
+                            <h5 className="font-bold text-slate-900 text-xs mt-1.5">{session.clientName}</h5>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                            <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
+                            <span className="font-bold text-slate-800">{formatMoney(session.price)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
               </div>
             </motion.div>
