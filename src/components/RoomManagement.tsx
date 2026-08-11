@@ -20,7 +20,8 @@ import {
   Unlock,
   Share2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  RotateCcw
 } from 'lucide-react';
 import { Room, Session, SessionType, BlockedSlot } from '../types';
 import { motion } from 'motion/react';
@@ -342,133 +343,158 @@ export default function RoomManagement({
 
       {/* Main Room Occupancy Screen (Oda Doluluk Ekranı) */}
       <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-100">
-          <div className="space-y-1 w-full md:w-auto">
-            <div className="flex items-center justify-between md:justify-start gap-2">
-              <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
-                ODA DOLULUK PLANLAYICI
-                {!showExplanations && (
-                  <div className="relative group inline-block">
-                    <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
-                      <p className="font-semibold text-[#ffe8d6] mb-1">💡 Oda Doluluk Rehberi:</p>
-                      <p>• Tarih değiştiricileri kullanarak yarın, gelecek hafta veya gelecek ayın doluluk durumuna bakabilirsiniz.</p>
-                      <p>• Doluluk matrisinde boş saatlere tıklayarak o saat ve odaya hızlı seans/rezervasyon ekleyebilirsiniz.</p>
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
-                    </div>
-                  </div>
-                )}
-              </h3>
-              
-              {/* On mobile, place the lock button right next to the title or in a very prominent place to save row height */}
-              <button
-                type="button"
-                onClick={() => setShowBlockingPanel(!showBlockingPanel)}
-                className="md:hidden px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 border shadow-2xs bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
-              >
-                {showBlockingPanel ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3 text-amber-600" />}
-                <span>{showBlockingPanel ? 'Kapat' : 'Kapat 🔒'}</span>
-              </button>
-            </div>
+        {(() => {
+          const todayStr = new Date().toISOString().split('T')[0];
+          const isTodaySelected = selectedDate === todayStr;
+          const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
 
-            {/* Selected Date Indicator (Clean & compact) */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">Seçili Tarih:</span>
-              <span className="text-xs font-semibold text-[#6b705c] bg-[#6b705c]/10 px-2.5 py-0.5 rounded-lg">
-                {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}
-              </span>
-            </div>
-          </div>
-
-          {/* Right Block: Navigation and View Modes */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-            {/* View Selectors & Desktop Lock Button */}
-            <div className="flex items-center gap-2 justify-between sm:justify-start">
-              <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] flex-1 sm:flex-initial gap-0.5 relative z-10">
-                {(['daily', 'weekly', 'monthly'] as const).map((view) => (
-                  <button
-                    key={view}
-                    type="button"
-                    onClick={() => setOccupancyView(view)}
-                    className={`relative flex-1 sm:flex-none text-center px-3.5 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                      occupancyView === view
-                        ? 'text-white'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    {occupancyView === view && (
-                      <motion.div
-                        layoutId="roomOccupancyViewTabIndicator"
-                        className="absolute inset-0 bg-[#6b705c] rounded-lg -z-10 shadow-xs"
-                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                      />
+          return (
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-4 border-b border-slate-100">
+              {/* Title & Today Status Badge */}
+              <div className="space-y-1.5 w-full lg:w-auto">
+                <div className="flex items-center justify-between lg:justify-start gap-2">
+                  <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] uppercase flex items-center gap-1.5">
+                    ODA DOLULUK PLANLAYICI
+                    {!showExplanations && (
+                      <div className="relative group inline-block">
+                        <HelpCircle className="w-3.5 h-3.5 text-[#a5a58d] hover:text-[#6b705c] cursor-help transition-colors normal-case" />
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-800 text-white text-xs p-3 rounded-xl shadow-xl z-50 leading-relaxed font-normal normal-case tracking-normal">
+                          <p className="font-semibold text-[#ffe8d6] mb-1">💡 Oda Doluluk Rehberi:</p>
+                          <p>• Tarih değiştiricileri kullanarak yarın, gelecek hafta veya gelecek ayın doluluk durumuna bakabilirsiniz.</p>
+                          <p>• Doluluk matrisinde boş saatlere tıklayarak o saat ve odaya hızlı seans/rezervasyon ekleyebilirsiniz.</p>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
+                        </div>
+                      </div>
                     )}
-                    {view === 'daily' && 'Günlük'}
-                    {view === 'weekly' && 'Haftalık'}
-                    {view === 'monthly' && 'Aylık'}
+                  </h3>
+                  
+                  {/* On mobile, place the lock button right next to the title */}
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockingPanel(!showBlockingPanel)}
+                    className="lg:hidden px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 border shadow-2xs bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+                  >
+                    {showBlockingPanel ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3 text-amber-600" />}
+                    <span>{showBlockingPanel ? 'Kapat' : 'Kapat 🔒'}</span>
                   </button>
-                ))}
+                </div>
+
+                {/* Clear Date Indicator & Today Action */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isTodaySelected ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-bold shadow-3xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      <span>Bugün ({formattedSelectedDate})</span>
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-900 border border-amber-200/80 rounded-xl text-xs font-bold shadow-3xs">
+                        <Calendar className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>{formattedSelectedDate}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleToday}
+                        disabled={!onDateChange}
+                        className="px-3 py-1 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs active:scale-95"
+                        title="Bugünün tarihine hızlıca geri dön"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Bugüne Dön</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Desktop/Tablet-only Lock Button */}
-              <button
-                type="button"
-                onClick={() => setShowBlockingPanel(!showBlockingPanel)}
-                className={`hidden md:flex px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer items-center gap-1.5 border shadow-2xs ${
-                  showBlockingPanel
-                    ? 'bg-amber-600 border-amber-600 text-white hover:bg-amber-700'
-                    : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/80'
-                }`}
-                id="toggle-blocking-panel-btn-desktop"
-              >
-                {showBlockingPanel ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5 animate-pulse" />}
-                <span>{showBlockingPanel ? 'Kapatma Panelini Gizle' : '🔒 Saat/Gün Kapat'}</span>
-              </button>
+              {/* Right Block: View Switcher and Independent Date Navigators */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                {/* View Selectors & Desktop Lock Button */}
+                <div className="flex items-center gap-2 justify-between sm:justify-start">
+                  <div className="flex bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8] flex-1 sm:flex-initial gap-0.5 relative z-10">
+                    {(['daily', 'weekly', 'monthly'] as const).map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => setOccupancyView(view)}
+                        className={`relative flex-1 sm:flex-none text-center px-3.5 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                          occupancyView === view
+                            ? 'text-white'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {occupancyView === view && (
+                          <motion.div
+                            layoutId="roomOccupancyViewTabIndicator"
+                            className="absolute inset-0 bg-[#6b705c] rounded-lg -z-10 shadow-xs"
+                            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                          />
+                        )}
+                        {view === 'daily' && 'Günlük'}
+                        {view === 'weekly' && 'Haftalık'}
+                        {view === 'monthly' && 'Aylık'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Desktop/Tablet-only Lock Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockingPanel(!showBlockingPanel)}
+                    className={`hidden lg:flex px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer items-center gap-1.5 border shadow-2xs ${
+                      showBlockingPanel
+                        ? 'bg-amber-600 border-amber-600 text-white hover:bg-amber-700'
+                        : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/80'
+                    }`}
+                    id="toggle-blocking-panel-btn-desktop"
+                  >
+                    {showBlockingPanel ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5 animate-pulse" />}
+                    <span>{showBlockingPanel ? 'Kapatma Panelini Gizle' : '🔒 Saat/Gün Kapat'}</span>
+                  </button>
+                </div>
+
+                {/* Independent Date Navigators and Picker */}
+                <div className="flex items-center gap-2 justify-between sm:justify-start">
+                  {/* Prev / Next Day Step Arrows */}
+                  <div className="flex items-center bg-slate-50 border border-[#e5e1d8] rounded-xl p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={handlePrevDay}
+                      disabled={!onDateChange}
+                      className="px-2.5 py-1.5 rounded-lg hover:bg-white text-slate-700 disabled:opacity-40 transition-all cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                      title="Önceki Gün"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span className="hidden sm:inline text-[11px]">Önceki</span>
+                    </button>
+                    <div className="w-px h-4 bg-slate-200 my-auto" />
+                    <button
+                      type="button"
+                      onClick={handleNextDay}
+                      disabled={!onDateChange}
+                      className="px-2.5 py-1.5 rounded-lg hover:bg-white text-slate-700 disabled:opacity-40 transition-all cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                      title="Sonraki Gün"
+                    >
+                      <span className="hidden sm:inline text-[11px]">Sonraki</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Standalone Date Picker */}
+                  <div className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100/80 border border-[#e5e1d8] rounded-xl px-3 py-1.5 shadow-2xs transition-all">
+                    <input 
+                      type="date" 
+                      value={selectedDate} 
+                      onChange={(e) => onDateChange?.(e.target.value)}
+                      className="text-xs bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-slate-700 font-bold cursor-pointer"
+                      title="Tarih Seçin"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-
-            {/* Date Navigators and Picker */}
-            <div className="flex items-center gap-2 justify-between sm:justify-start">
-              <div className="flex items-center bg-slate-50 border border-[#e5e1d8] rounded-xl p-0.5 shadow-2xs flex-1 sm:flex-initial justify-between sm:justify-start">
-                <button
-                  type="button"
-                  onClick={handlePrevDay}
-                  disabled={!onDateChange}
-                  className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
-                  title="Önceki Gün"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleToday}
-                  disabled={!onDateChange}
-                  className="px-3 py-1 text-xs font-bold rounded-lg hover:bg-white text-[#6b705c] disabled:opacity-40 transition-all cursor-pointer"
-                >
-                  Bugün
-                </button>
-                <button
-                  type="button"
-                  onClick={handleNextDay}
-                  disabled={!onDateChange}
-                  className="p-1.5 rounded-lg hover:bg-white text-slate-600 disabled:opacity-40 transition-all cursor-pointer"
-                  title="Sonraki Gün"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 bg-slate-50 border border-[#e5e1d8] rounded-xl px-3 py-1.5 shadow-2xs">
-                <Calendar className="w-3.5 h-3.5 text-[#cb997e] shrink-0" />
-                <input 
-                  type="date" 
-                  value={selectedDate} 
-                  onChange={(e) => onDateChange?.(e.target.value)}
-                  className="text-xs bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-slate-700 font-bold cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {showBlockingPanel && (
           <motion.div
