@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles } from 'lucide-react';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle } from 'lucide-react';
 import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
+
+// Helper time converters
+const timeToMinutes = (timeStr: string): number => {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':');
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+};
+
+const minutesToTime = (totalMinutes: number): string => {
+  const h = Math.floor(totalMinutes / 60) % 24;
+  const m = totalMinutes % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -79,6 +94,24 @@ export default function SessionModal({
   const isDateTimeLocked = sessionToEdit 
     ? (sessionToEdit.isSyncedFromCalendar || isOlderThan7Days(sessionToEdit.date)) 
     : false;
+
+  // Session time conflict calculation
+  const currentStart = timeToMinutes(time);
+  const currentDuration = Number(duration) || 50;
+  const currentEnd = currentStart + currentDuration;
+
+  const conflictingSessions = (sessions || []).filter(s => {
+    if (type === 'cancelled') return false;
+    if (s.type === 'cancelled') return false;
+    if (sessionToEdit && s.id === sessionToEdit.id) return false;
+    if (s.date !== date) return false;
+
+    const sStart = timeToMinutes(s.time);
+    const sDuration = s.duration || 50;
+    const sEnd = sStart + sDuration;
+
+    return currentStart < sEnd && currentEnd > sStart;
+  });
 
   // Smart client price and costs lookup effect
   useEffect(() => {
@@ -410,6 +443,48 @@ export default function SessionModal({
                 </span>
               )}
             </div>
+          )}
+
+          {/* Session Time Conflict Detection Warning Banner */}
+          {conflictingSessions.length > 0 && type !== 'cancelled' && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              className="bg-amber-50/90 border-2 border-amber-300 text-amber-950 rounded-2xl p-3.5 space-y-2 text-xs shadow-sm overflow-hidden"
+              id="session-conflict-alert"
+            >
+              <div className="flex items-center gap-2 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Çakışma Tespit Edildi</span>
+              </div>
+              <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                Seçilen saat diliminde ({time} - {minutesToTime(currentEnd)}) mevcut {conflictingSessions.length} seans ile zaman çakışması tespit edildi:
+              </p>
+              <div className="space-y-1.5 pt-0.5">
+                {conflictingSessions.map(cs => {
+                  const csStart = timeToMinutes(cs.time);
+                  const csEnd = csStart + (cs.duration || 50);
+                  const roomObj = rooms.find(r => r.id === cs.roomId);
+                  return (
+                    <div key={cs.id} className="bg-white/95 border border-amber-200/80 rounded-xl px-3 py-2 flex items-center justify-between text-[11px] shadow-3xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                        <span className="font-bold text-slate-800 truncate">{cs.clientName || 'İsimsiz Seans'}</span>
+                        {roomObj && (
+                          <span className="text-[10px] text-amber-800 bg-amber-100/60 px-1.5 py-0.5 rounded font-medium shrink-0">
+                            🛋️ {roomObj.name}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md font-bold text-[10px] shrink-0 ml-2">
+                        {cs.time} - {minutesToTime(csEnd)} ({cs.duration || 50} dk)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
           )}
 
           {/* Core Fields Grid: 2 rows x 2 columns (Date, Time, Duration, Price) */}
