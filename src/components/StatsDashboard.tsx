@@ -161,6 +161,7 @@ export default function StatsDashboard({
     let grossIncome = 0;
     let babysitterFees = 0;
     let officeRentExpenses = 0;
+    let kdvExpenses = 0;
     let onlineCount = 0;
     let faceToFaceCount = 0;
     let cancelledCount = 0;
@@ -175,6 +176,7 @@ export default function StatsDashboard({
       const sPrice = Number(s.price) || 0;
       const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
       const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
+      const sKdvCut = s.hasKDV ? (s.kdvAmount ?? Math.round((sPrice * (s.kdvRate ?? settings.defaultKdvRate ?? 20)) / 100)) : 0;
 
       if (s.type === 'cancelled') {
         cancelledCount++;
@@ -189,7 +191,8 @@ export default function StatsDashboard({
           grossIncome += sPrice;
           babysitterFees += sBabyFee;
           officeRentExpenses += sOfficeFee;
-          if (sBabyFee > 0 || sOfficeFee > 0) {
+          kdvExpenses += sKdvCut;
+          if (sBabyFee > 0 || sOfficeFee > 0 || sKdvCut > 0) {
             sessionExpensesCount++;
           }
         } else if (s.date <= todayStr) {
@@ -207,7 +210,7 @@ export default function StatsDashboard({
 
       if (s.type !== 'cancelled' && s.paymentStatus === 'paid') {
         dateGroups[dLabel].gross += sPrice;
-        dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee);
+        dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee + sKdvCut);
       }
     });
 
@@ -223,7 +226,7 @@ export default function StatsDashboard({
       dateGroups[dLabel].expenses += Number(e.amount) || 0;
     });
 
-    const sessionExpensesTotal = babysitterFees + officeRentExpenses;
+    const sessionExpensesTotal = babysitterFees + officeRentExpenses + kdvExpenses;
     const totalExpenses = sessionExpensesTotal + customExpensesTotal;
     const netIncome = Math.max(0, grossIncome - totalExpenses);
 
@@ -253,6 +256,7 @@ export default function StatsDashboard({
       grossIncome,
       babysitterFees,
       officeRentExpenses,
+      kdvExpenses,
       sessionExpensesTotal,
       customExpensesTotal,
       totalExpenses,
@@ -266,7 +270,7 @@ export default function StatsDashboard({
       chartData,
       typeData
     };
-  }, [filteredSessions, filteredCustomExpenses]);
+  }, [filteredSessions, filteredCustomExpenses, settings.defaultKdvRate]);
 
   // Filter detailed list of sessions
   const detailedFilteredSessions = useMemo(() => {
@@ -939,7 +943,8 @@ export default function StatsDashboard({
                   const sPrice = Number(s.price) || 0;
                   const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
                   const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
-                  const totalSExp = sBabyFee + sOfficeFee;
+                  const sKdvCut = s.hasKDV ? (s.kdvAmount ?? Math.round((sPrice * (s.kdvRate ?? settings.defaultKdvRate ?? 20)) / 100)) : 0;
+                  const totalSExp = sBabyFee + sOfficeFee + sKdvCut;
                   
                   const isOnline = s.type === 'online';
                   const isCancelled = s.type === 'cancelled';
@@ -950,6 +955,11 @@ export default function StatsDashboard({
                     const dObj = new Date(s.date);
                     displayDate = dObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
                   } catch (e) {}
+
+                  const expParts: string[] = [];
+                  if (sBabyFee > 0) expParts.push(`${formatMoney(sBabyFee)} bakıcı`);
+                  if (sOfficeFee > 0) expParts.push(`${formatMoney(sOfficeFee)} ofis`);
+                  if (sKdvCut > 0) expParts.push(`${formatMoney(sKdvCut)} KDV`);
 
                   return (
                     <div 
@@ -994,14 +1004,16 @@ export default function StatsDashboard({
                           <span className="text-sm font-bold text-slate-800">{formatMoney(sPrice, { decimals: 2 })}</span>
                         </div>
                         
-                        {(sBabyFee > 0 || sOfficeFee > 0) && (
+                        {totalSExp > 0 && (
                           <div className="text-right bg-orange-50/40 px-2.5 py-1 rounded-xl border border-orange-100/50">
-                            <span className="text-[9px] text-orange-600 block font-bold tracking-wider uppercase">Seans Gideri</span>
+                            <span className="text-[9px] text-orange-600 block font-bold tracking-wider uppercase">Seans Gideri / Kesintisi</span>
                             <span className="text-[11px] font-semibold text-slate-600">
                               {formatMoney(totalSExp)} 
-                              <span className="text-[9px] text-slate-400 font-normal ml-1">
-                                ({sBabyFee > 0 ? `${formatMoney(sBabyFee)} bakıcı` : ''}{sBabyFee > 0 && sOfficeFee > 0 ? ' + ' : ''}{sOfficeFee > 0 ? `${formatMoney(sOfficeFee)} ofis` : ''})
-                              </span>
+                              {expParts.length > 0 && (
+                                <span className="text-[9px] text-slate-400 font-normal ml-1">
+                                  ({expParts.join(' + ')})
+                                </span>
+                              )}
                             </span>
                           </div>
                         )}

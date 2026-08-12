@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle } from 'lucide-react';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt } from 'lucide-react';
 import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -35,6 +35,8 @@ interface SessionModalProps {
   rooms?: Room[];
   prefilledRoomId?: string;
   prefilledTime?: string;
+  enableKDV?: boolean;
+  defaultKdvRate?: number;
 }
 
 export default function SessionModal({
@@ -51,7 +53,9 @@ export default function SessionModal({
   userRole = 'tenant',
   rooms = [],
   prefilledRoomId = '',
-  prefilledTime = ''
+  prefilledTime = '',
+  enableKDV = false,
+  defaultKdvRate = 20
 }: SessionModalProps) {
   const { formatMoney } = usePrivacy();
   const [clientName, setClientName] = useState('');
@@ -64,6 +68,8 @@ export default function SessionModal({
   const [babysitterFeeAmount, setBabysitterFeeAmount] = useState<number | string>(defaultBabysitterFee);
   const [hasOfficeRentFee, setHasOfficeRentFee] = useState(false);
   const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState<number | string>(defaultOfficeRentFee);
+  const [hasKDV, setHasKDV] = useState(enableKDV);
+  const [kdvRate, setKdvRate] = useState<number | string>(defaultKdvRate);
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
@@ -166,6 +172,8 @@ export default function SessionModal({
         setBabysitterFeeAmount(sessionToEdit.babysitterFeeAmount);
         setHasOfficeRentFee(sessionToEdit.hasOfficeRentFee ?? (sessionToEdit.type === 'face-to-face'));
         setOfficeRentFeeAmount(sessionToEdit.officeRentFeeAmount ?? defaultOfficeRentFee);
+        setHasKDV(sessionToEdit.hasKDV ?? enableKDV);
+        setKdvRate(sessionToEdit.kdvRate ?? defaultKdvRate);
         setNotes(sessionToEdit.notes || '');
         setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
         setRoomId(sessionToEdit.roomId || '');
@@ -181,12 +189,14 @@ export default function SessionModal({
         setBabysitterFeeAmount(defaultBabysitterFee);
         setHasOfficeRentFee(false);
         setOfficeRentFeeAmount(defaultOfficeRentFee);
+        setHasKDV(enableKDV);
+        setKdvRate(defaultKdvRate);
         setNotes('');
         setPaymentStatus('unpaid');
         setRoomId(prefilledRoomId || '');
       }
     }
-  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime]);
+  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime, enableKDV, defaultKdvRate]);
 
   const handleTypeChange = (newType: SessionType) => {
     setType(newType);
@@ -195,28 +205,33 @@ export default function SessionModal({
       setPrice(0);
       setHasBabysitterFee(false);
       setHasOfficeRentFee(false);
+      setHasKDV(false);
     } else if (newType === 'non-session') {
       // Non-session entries are not billable, so 0 price and no expenses
       setPrice(0);
       setHasBabysitterFee(false);
       setHasOfficeRentFee(false);
+      setHasKDV(false);
       setPaymentStatus('unpaid');
     } else if (newType === 'rent-income') {
       // Rent income: clear therapeutic expenses, default to custom price or previous
       setHasBabysitterFee(false);
       setHasOfficeRentFee(false);
+      setHasKDV(false);
     } else if (newType === 'face-to-face') {
       if (price === 0) {
         setPrice(defaultPrice);
       }
       setHasBabysitterFee(true);
       setHasOfficeRentFee(true);
+      setHasKDV(enableKDV);
     } else { // online
       if (price === 0) {
         setPrice(defaultPrice);
       }
       setHasBabysitterFee(true);
       setHasOfficeRentFee(false);
+      setHasKDV(enableKDV);
     }
   };
 
@@ -231,6 +246,9 @@ export default function SessionModal({
     const babyAmt = (isNonSession || isRentIncome) ? 0 : (hasBaby ? Number(babysitterFeeAmount) : 0);
     const hasOffice = (isNonSession || isRentIncome) ? false : hasOfficeRentFee;
     const officeAmt = (isNonSession || isRentIncome) ? 0 : (hasOffice ? Number(officeRentFeeAmount) : 0);
+    const hasTax = (isNonSession || isRentIncome) ? false : hasKDV;
+    const taxRate = hasTax ? (Number(kdvRate) || 0) : 0;
+    const taxAmt = hasTax ? Math.round((sessionPrice * taxRate) / 100) : 0;
 
     const sessionData: Session = {
       id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
@@ -244,6 +262,9 @@ export default function SessionModal({
       babysitterFeeAmount: babyAmt,
       hasOfficeRentFee: hasOffice,
       officeRentFeeAmount: officeAmt,
+      hasKDV: hasTax,
+      kdvRate: taxRate,
+      kdvAmount: taxAmt,
       notes: notes.trim(),
       isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
       syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
@@ -624,104 +645,197 @@ export default function SessionModal({
 
           {/* Expenses Settings (Sadece Online ve Yüz Yüze seanslarda gösterilir) */}
           {(type === 'online' || type === 'face-to-face') && (
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              {/* Babysitter Fee Switcher */}
-              <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasBabysitterFee}
-                      onChange={(e) => setHasBabysitterFee(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
-                  </label>
+            <div className="space-y-3 pt-1">
+              <div className={`grid grid-cols-1 ${enableKDV ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+                {/* Babysitter Fee Switcher */}
+                <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasBabysitterFee}
+                        onChange={(e) => setHasBabysitterFee(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                    </label>
+                  </div>
+
+                  {hasBabysitterFee && (
+                    <div className="mt-1 flex flex-col gap-1 w-full">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBabysitterFeeAmount(val === '' ? '' : Number(val));
+                            setIsBabysitterFeeManuallyEdited(true);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                        />
+                        <span className="text-[9px] text-slate-500">₺</span>
+                      </div>
+                      {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
+                        const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+                        if (matchedCosts.babysitterFeeAmount !== defaultBabysitterFee && Number(babysitterFeeAmount) === matchedCosts.babysitterFeeAmount) {
+                          return (
+                            <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-babysitter-badge">
+                              <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
+                              Akıllı ücret ({formatMoney(matchedCosts.babysitterFeeAmount)})
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
                 </div>
 
-                {hasBabysitterFee && (
-                  <div className="mt-1 flex flex-col gap-1 w-full">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                {/* Office Rent Fee Switcher */}
+                <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
                       <input
-                        type="number"
-                        min="0"
-                        value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setBabysitterFeeAmount(val === '' ? '' : Number(val));
-                          setIsBabysitterFeeManuallyEdited(true);
-                        }}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                        type="checkbox"
+                        checked={hasOfficeRentFee}
+                        onChange={(e) => setHasOfficeRentFee(e.target.checked)}
+                        className="sr-only peer"
                       />
-                      <span className="text-[9px] text-slate-500">₺</span>
+                      <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                    </label>
+                  </div>
+
+                  {hasOfficeRentFee && (
+                    <div className="mt-1 flex flex-col gap-1 w-full">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setOfficeRentFeeAmount(val === '' ? '' : Number(val));
+                            setIsOfficeRentFeeManuallyEdited(true);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                        />
+                        <span className="text-[9px] text-slate-500">₺</span>
+                      </div>
+                      {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
+                        const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+                        if (matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee && Number(officeRentFeeAmount) === matchedCosts.officeRentFeeAmount) {
+                          return (
+                            <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-officerent-badge">
+                              <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
+                              Akıllı ücret ({formatMoney(matchedCosts.officeRentFeeAmount)})
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
-                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
-                      const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
-                      if (matchedCosts.babysitterFeeAmount !== defaultBabysitterFee && Number(babysitterFeeAmount) === matchedCosts.babysitterFeeAmount) {
-                        return (
-                          <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-babysitter-badge">
-                            <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
-                            Akıllı ücret ({formatMoney(matchedCosts.babysitterFeeAmount)})
+                  )}
+                </div>
+
+                {/* KDV Switcher (Görünür KDV ayarı açıksa veya seans verisinde varsa) */}
+                {(enableKDV || sessionToEdit?.hasKDV) && (
+                  <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-700 flex items-center gap-1">
+                        <Receipt className="w-3.5 h-3.5 text-[#6b705c]" />
+                        KDV Kesintisi?
+                      </span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasKDV}
+                          onChange={(e) => setHasKDV(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
+                      </label>
+                    </div>
+
+                    {hasKDV && (
+                      <div className="mt-1 flex flex-col gap-1 w-full">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-slate-500 shrink-0">Oran:</span>
+                          <div className="relative flex-1">
+                            <span className="absolute left-1.5 top-1 text-[9px] font-bold text-slate-400">%</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={kdvRate === 0 ? '' : kdvRate}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setKdvRate(val === '' ? '' : Number(val));
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-full pl-4 pr-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        {Number(price) > 0 && (
+                          <p className="text-[8px] text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
+                            Kesinti: -{formatMoney(Math.round((Number(price) * (Number(kdvRate) || 0)) / 100))}
                           </p>
-                        );
-                      }
-                      return null;
-                    })()}
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Office Rent Fee Switcher */}
-              <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasOfficeRentFee}
-                      onChange={(e) => setHasOfficeRentFee(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#6b705c] peer-disabled:opacity-50"></div>
-                  </label>
-                </div>
-
-                {hasOfficeRentFee && (
-                  <div className="mt-1 flex flex-col gap-1 w-full">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setOfficeRentFeeAmount(val === '' ? '' : Number(val));
-                          setIsOfficeRentFeeManuallyEdited(true);
-                        }}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full px-1.5 py-1 text-base sm:text-[10px] bg-white border border-[#e5e1d8] rounded focus:outline-none"
-                      />
-                      <span className="text-[9px] text-slate-500">₺</span>
-                    </div>
-                    {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
-                      const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
-                      if (matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee && Number(officeRentFeeAmount) === matchedCosts.officeRentFeeAmount) {
-                        return (
-                          <p className="text-[8px] text-[#cb997e] font-sans font-bold flex items-center gap-0.5 animate-fade-in" id="smart-officerent-badge">
-                            <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
-                            Akıllı ücret ({formatMoney(matchedCosts.officeRentFeeAmount)})
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
+              {/* Net Income Live Calculation Box */}
+              {Number(price) > 0 && (
+                <div className="bg-[#f8f7f2] p-2.5 rounded-xl border border-[#e5e1d8] text-xs space-y-1">
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
+                    <span>Brüt Ücret:</span>
+                    <span className="font-semibold text-slate-700">{formatMoney(Number(price))}</span>
                   </div>
-                )}
-              </div>
+                  {hasKDV && (
+                    <div className="flex justify-between items-center text-[10px] text-rose-600">
+                      <span>KDV Kesintisi (%{Number(kdvRate) || 0}):</span>
+                      <span>-{formatMoney(Math.round((Number(price) * (Number(kdvRate) || 0)) / 100))}</span>
+                    </div>
+                  )}
+                  {hasBabysitterFee && Number(babysitterFeeAmount) > 0 && (
+                    <div className="flex justify-between items-center text-[10px] text-orange-600">
+                      <span>Bakıcı Gideri:</span>
+                      <span>-{formatMoney(Number(babysitterFeeAmount))}</span>
+                    </div>
+                  )}
+                  {hasOfficeRentFee && Number(officeRentFeeAmount) > 0 && (
+                    <div className="flex justify-between items-center text-[10px] text-amber-700">
+                      <span>Ofis Kirası:</span>
+                      <span>-{formatMoney(Number(officeRentFeeAmount))}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-[#e5e1d8] pt-1 flex justify-between items-center font-bold text-[#6b705c] text-xs">
+                    <span>Net Ele Geçen Tutar:</span>
+                    <span>
+                      {formatMoney(
+                        Math.max(
+                          0,
+                          Number(price) -
+                            (hasKDV ? Math.round((Number(price) * (Number(kdvRate) || 0)) / 100) : 0) -
+                            (hasBabysitterFee ? Number(babysitterFeeAmount) || 0 : 0) -
+                            (hasOfficeRentFee ? Number(officeRentFeeAmount) || 0 : 0)
+                        )
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

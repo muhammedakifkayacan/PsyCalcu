@@ -124,6 +124,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultSessionPrice: 1200,
   defaultBabysitterFee: 250,
   defaultOfficeRentFee: 200,
+  enableKDV: false,
+  defaultKdvRate: 20,
   therapistName: 'Dr. Melis Kaya',
   therapistPhone: '',
   calendarSyncEnabled: true,
@@ -143,14 +145,17 @@ export default function App() {
   const { formatMoney } = usePrivacy();
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('psycalcu_settings');
-    if (saved) {
+    const saved = localStorage.getItem('psycalcu_sessions'); // note: settings key below
+    const savedSettings = localStorage.getItem('psycalcu_settings');
+    if (savedSettings) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(savedSettings);
         return {
           defaultSessionPrice: parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultSessionPrice,
           defaultBabysitterFee: parsed.defaultBabysitterFee ?? DEFAULT_SETTINGS.defaultBabysitterFee,
           defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
+          enableKDV: parsed.enableKDV ?? DEFAULT_SETTINGS.enableKDV,
+          defaultKdvRate: parsed.defaultKdvRate ?? DEFAULT_SETTINGS.defaultKdvRate,
           therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
           therapistPhone: parsed.therapistPhone ?? DEFAULT_SETTINGS.therapistPhone,
           calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
@@ -5793,6 +5798,8 @@ export default function App() {
         rooms={settings.rooms || []}
         prefilledRoomId={prefilledRoomId}
         prefilledTime={prefilledTime}
+        enableKDV={settings.enableKDV}
+        defaultKdvRate={settings.defaultKdvRate}
       />
 
       {/* FAQ Modal Component */}

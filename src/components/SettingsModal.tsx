@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -31,6 +31,8 @@ export default function SettingsModal({
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
+  const [enableKDV, setEnableKDV] = useState(settings.enableKDV ?? false);
+  const [defaultKdvRate, setDefaultKdvRate] = useState<number | string>(settings.defaultKdvRate ?? 20);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
   const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
@@ -58,6 +60,8 @@ export default function SettingsModal({
       setDefaultSessionPrice(settings.defaultSessionPrice);
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
+      setEnableKDV(settings.enableKDV ?? false);
+      setDefaultKdvRate(settings.defaultKdvRate ?? 20);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
       setAutoMarkShortEventsAsNonSession(settings.autoMarkShortEventsAsNonSession ?? true);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
@@ -75,6 +79,8 @@ export default function SettingsModal({
       defaultSessionPrice: Number(defaultSessionPrice),
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
+      enableKDV,
+      defaultKdvRate: Number(defaultKdvRate) || 0,
       enableSmartClientPriceMatching,
       autoMarkShortEventsAsNonSession,
       defaultLandingPage,
@@ -299,6 +305,73 @@ export default function SettingsModal({
             </div>
             {showExplanations && (
               <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            )}
+          </div>
+
+          {/* KDV (Katma Değer Vergisi) Toggle & Default Percentage */}
+          <div className="space-y-2 pt-1 border-t border-[#f5f5f0]">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
+              <div className="space-y-0.5 max-w-[75%]">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Percent className="w-3.5 h-3.5 text-[#cb997e]" />
+                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">KDV (Vergi) Kesintisini Aktif Et</label>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#6b705c]/10 text-[#6b705c] font-semibold">
+                    {enableKDV ? 'AÇIK' : 'KAPALI'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Açıldığında seans ekleme/düzenleme ekranında KDV seçeneği belirir ve net muhasebe hesaplamasına KDV kesintisi eklenir.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnableKDV(!enableKDV)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  enableKDV ? 'bg-[#6b705c]' : 'bg-slate-200'
+                }`}
+                role="switch"
+                aria-checked={enableKDV}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    enableKDV ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {enableKDV && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-1 pl-1 pt-1"
+              >
+                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan KDV Oranı (%)</label>
+                <div className="relative">
+                  <Percent className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={defaultKdvRate === 0 ? '' : defaultKdvRate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDefaultKdvRate(val === '' ? '' : Number(val));
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                    placeholder="Örn. 20"
+                  />
+                </div>
+                {showExplanations && (
+                  <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
+                    Yeni seanslarda varsayılan olarak uygulanacak KDV yüzdesi (örn: %20, %10).
+                  </p>
+                )}
+              </motion.div>
             )}
           </div>
 
