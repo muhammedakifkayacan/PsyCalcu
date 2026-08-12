@@ -47,6 +47,18 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
     const handleTouchStart = (e: TouchEvent) => {
       if (isRefreshingRef.current || isClearingCacheRef.current) return;
 
+      const target = e.target as HTMLElement | null;
+      const isInsideModal = target && Boolean(
+        target.closest('[role="dialog"], [id*="modal"], [id*="overlay"], [data-modal], .fixed.inset-0, .modal-open')
+      );
+      const isModalActive = document.body.classList.contains('modal-open') || 
+        (document.body.dataset.modalCount && document.body.dataset.modalCount !== '0');
+
+      if (isInsideModal || isModalActive) {
+        isPulling.current = false;
+        return;
+      }
+
       const scrollTop = getScrollTop();
       if (scrollTop <= 5 && e.touches.length === 1) {
         touchStartY.current = e.touches[0].clientY;
@@ -60,6 +72,15 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!isPulling.current || isRefreshingRef.current || isClearingCacheRef.current) return;
+
+      const isModalActive = document.body.classList.contains('modal-open') || 
+        (document.body.dataset.modalCount && document.body.dataset.modalCount !== '0');
+      if (isModalActive) {
+        isPulling.current = false;
+        setPullDistance(0);
+        setPullPercent(0);
+        return;
+      }
 
       const currentY = e.touches[0].clientY;
       const diffY = currentY - touchStartY.current;

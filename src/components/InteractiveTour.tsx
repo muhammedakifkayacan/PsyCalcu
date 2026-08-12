@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   X, 
   ChevronRight, 
@@ -35,6 +36,7 @@ interface InteractiveTourProps {
 }
 
 export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToast, userId }: InteractiveTourProps) {
+  useBodyScrollLock(isOpen);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number; placement: string }>({ top: 0, left: 0, placement: 'center' });

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, X, Check } from 'lucide-react';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface DebtPaymentConfirmationModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export default function DebtPaymentConfirmationModal({
   clientName,
   totalAmount,
 }: DebtPaymentConfirmationModalProps) {
+  useBodyScrollLock(isOpen);
   const { formatMoney } = usePrivacy();
   const [countdown, setCountdown] = useState(5);
 
@@ -48,14 +50,14 @@ export default function DebtPaymentConfirmationModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" role="dialog" aria-modal="true">
           {/* Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-md"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md touch-none"
           />
 
           {/* Modal Content */}
@@ -64,7 +66,7 @@ export default function DebtPaymentConfirmationModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative bg-white w-full max-w-md overflow-hidden rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl z-50 p-6 md:p-8 flex flex-col gap-6"
+            className="relative bg-white w-full max-w-md overflow-hidden rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl z-50 p-6 md:p-8 flex flex-col gap-6 overscroll-contain touch-pan-y"
             id="debt-payment-confirm-modal"
           >
             {/* Header / Warning Icon */}

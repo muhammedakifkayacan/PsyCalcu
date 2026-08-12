@@ -13,6 +13,7 @@ import {
   DollarSign, 
   ArrowRight 
 } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface FAQModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ interface FAQItem {
 }
 
 export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps) {
+  useBodyScrollLock(isOpen);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
@@ -237,14 +239,14 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="faq-modal-overlay">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" id="faq-modal-overlay" role="dialog" aria-modal="true">
           {/* Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md touch-none"
           />
 
           {/* Modal Container */}
@@ -253,7 +255,7 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative bg-white w-full max-w-2xl rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] z-10"
+            className="relative bg-white w-full max-w-2xl rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] z-10 overscroll-contain touch-pan-y"
             id="faq-modal-container"
           >
             {/* Header */}

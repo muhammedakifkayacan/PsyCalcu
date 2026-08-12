@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent } from 'lucide-react';
 import { AppSettings } from '../types';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export default function SettingsModal({
   requestedRole = null,
   onRequestRoleChange
 }: SettingsModalProps) {
+  useBodyScrollLock(isOpen);
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [therapistPhone, setTherapistPhone] = useState(settings.therapistPhone || '');
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
@@ -95,14 +97,14 @@ export default function SettingsModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="settings-modal-overlay">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" id="settings-modal-overlay" role="dialog" aria-modal="true">
           {/* Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-md"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md touch-none"
           />
 
           {/* Modal Content */}
@@ -111,7 +113,7 @@ export default function SettingsModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative w-full max-w-md bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10"
+            className="relative w-full max-w-md bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10 overscroll-contain touch-pan-y"
             id="settings-modal-content"
           >
         {/* Header */}

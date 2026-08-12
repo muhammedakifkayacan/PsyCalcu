@@ -4,6 +4,7 @@ import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPi
 import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 // Helper time converters
 const timeToMinutes = (timeStr: string): number => {
@@ -59,6 +60,7 @@ export default function SessionModal({
   defaultKdvRate = 20,
   defaultIsKdvInclusive = true
 }: SessionModalProps) {
+  useBodyScrollLock(isOpen);
   const { formatMoney } = usePrivacy();
   const [clientName, setClientName] = useState('');
   const [type, setType] = useState<SessionType>('online');
@@ -289,14 +291,14 @@ export default function SessionModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="session-modal-overlay">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" id="session-modal-overlay" role="dialog" aria-modal="true">
           {/* Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-md"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md touch-none"
           />
 
           {/* Modal Content */}
@@ -305,7 +307,7 @@ export default function SessionModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10"
+            className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10 overscroll-contain touch-pan-y"
             id="session-modal-content"
           >
         {/* Header */}

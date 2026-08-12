@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Video, MapPin, User, AlertCircle, ArrowRight, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface SyncedSessionInfo {
   id: string;
@@ -21,6 +22,7 @@ interface SyncDetailsModalProps {
 }
 
 export default function SyncDetailsModal({ isOpen, onClose, syncDetails }: SyncDetailsModalProps) {
+  useBodyScrollLock(isOpen);
   if (!syncDetails) return null;
 
   const totalChanges = syncDetails.added.length + syncDetails.updated.length + (syncDetails.deleted?.length || 0);
@@ -48,14 +50,14 @@ export default function SyncDetailsModal({ isOpen, onClose, syncDetails }: SyncD
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" role="dialog" aria-modal="true">
           {/* Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-md"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md touch-none"
           />
 
           {/* Modal Container */}
@@ -64,7 +66,7 @@ export default function SyncDetailsModal({ isOpen, onClose, syncDetails }: SyncD
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="bg-white rounded-[2rem] w-full max-w-xl max-h-[85vh] overflow-hidden border border-[#e5e1d8] shadow-2xl flex flex-col z-10"
+            className="bg-white rounded-[2rem] w-full max-w-xl max-h-[85vh] overflow-hidden border border-[#e5e1d8] shadow-2xl flex flex-col z-10 overscroll-contain touch-pan-y"
             id="sync-details-modal-box"
           >
             {/* Header */}

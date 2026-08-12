@@ -50,6 +50,7 @@ import ReactMarkdown from 'react-markdown';
 import { Session, SessionType, Room, AppSettings, Expense, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
+import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import CalendarSyncGuide from './components/CalendarSyncGuide';
 import RoomManagement from './components/RoomManagement';
 import PublicAvailability from './components/PublicAvailability';
@@ -527,6 +528,7 @@ export default function App() {
     onConfirm: () => void;
     hasCountdown?: boolean;
   } | null>(null);
+  useBodyScrollLock(Boolean(confirmState?.isOpen));
   const [confirmCountdown, setConfirmCountdown] = useState(5);
 
   const triggerConfirm = (title: string, message: string, onConfirm: () => void, hasCountdown = false) => {
@@ -5862,14 +5864,14 @@ export default function App() {
       {/* Custom Confirmation Dialog Overlay */}
       <AnimatePresence>
         {confirmState && confirmState.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" id="confirm-dialog-overlay">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain touch-none" id="confirm-dialog-overlay" role="dialog" aria-modal="true">
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setConfirmState(null)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-md"
+              className="fixed inset-0 bg-black/40 backdrop-blur-md touch-none"
             />
             
             {/* Content */}
@@ -5878,7 +5880,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 16 }}
               transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-              className="relative bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl border border-slate-100 flex flex-col gap-4 z-10"
+              className="relative bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl border border-slate-100 flex flex-col gap-4 z-10 overscroll-contain touch-pan-y"
               id="confirm-dialog-container"
             >
               <div className="flex gap-3 items-start">
