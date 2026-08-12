@@ -33,6 +33,7 @@ export default function SettingsModal({
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableKDV, setEnableKDV] = useState(settings.enableKDV ?? false);
   const [defaultKdvRate, setDefaultKdvRate] = useState<number | string>(settings.defaultKdvRate ?? 20);
+  const [defaultIsKdvInclusive, setDefaultIsKdvInclusive] = useState(settings.defaultIsKdvInclusive ?? true);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
   const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
@@ -62,6 +63,7 @@ export default function SettingsModal({
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableKDV(settings.enableKDV ?? false);
       setDefaultKdvRate(settings.defaultKdvRate ?? 20);
+      setDefaultIsKdvInclusive(settings.defaultIsKdvInclusive ?? true);
       setEnableSmartClientPriceMatching(settings.enableSmartClientPriceMatching ?? false);
       setAutoMarkShortEventsAsNonSession(settings.autoMarkShortEventsAsNonSession ?? true);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
@@ -81,6 +83,7 @@ export default function SettingsModal({
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
       enableKDV,
       defaultKdvRate: Number(defaultKdvRate) || 0,
+      defaultIsKdvInclusive,
       enableSmartClientPriceMatching,
       autoMarkShortEventsAsNonSession,
       defaultLandingPage,
@@ -371,6 +374,41 @@ export default function SettingsModal({
                     Yeni seanslarda varsayılan olarak uygulanacak KDV yüzdesi (örn: %20, %10).
                   </p>
                 )}
+
+                <div className="space-y-1.5 pt-2">
+                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan KDV Tipi</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDefaultIsKdvInclusive(true)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                        defaultIsKdvInclusive
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                          : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                      }`}
+                    >
+                      KDV Dahil (Fiyata Dahil)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDefaultIsKdvInclusive(false)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                        !defaultIsKdvInclusive
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                          : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                      }`}
+                    >
+                      KDV Hariç (+KDV Eklensin)
+                    </button>
+                  </div>
+                  {showExplanations && (
+                    <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
+                      {defaultIsKdvInclusive
+                        ? 'Girilen seans ücretinin içinden KDV hesaplanır.'
+                        : 'Girilen seans ücretinin üzerine % KDV eklenerek toplam fatura/ciro hesaplanır.'}
+                    </p>
+                  )}
+                </div>
               </motion.div>
             )}
           </div>

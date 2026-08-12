@@ -37,6 +37,7 @@ interface SessionModalProps {
   prefilledTime?: string;
   enableKDV?: boolean;
   defaultKdvRate?: number;
+  defaultIsKdvInclusive?: boolean;
 }
 
 export default function SessionModal({
@@ -55,7 +56,8 @@ export default function SessionModal({
   prefilledRoomId = '',
   prefilledTime = '',
   enableKDV = false,
-  defaultKdvRate = 20
+  defaultKdvRate = 20,
+  defaultIsKdvInclusive = true
 }: SessionModalProps) {
   const { formatMoney } = usePrivacy();
   const [clientName, setClientName] = useState('');
@@ -70,6 +72,7 @@ export default function SessionModal({
   const [officeRentFeeAmount, setOfficeRentFeeAmount] = useState<number | string>(defaultOfficeRentFee);
   const [hasKDV, setHasKDV] = useState(enableKDV);
   const [kdvRate, setKdvRate] = useState<number | string>(defaultKdvRate);
+  const [isKdvInclusive, setIsKdvInclusive] = useState(defaultIsKdvInclusive);
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
@@ -173,6 +176,7 @@ export default function SessionModal({
         setHasOfficeRentFee(sessionToEdit.hasOfficeRentFee ?? (sessionToEdit.type === 'face-to-face'));
         setOfficeRentFeeAmount(sessionToEdit.officeRentFeeAmount ?? defaultOfficeRentFee);
         setHasKDV(sessionToEdit.hasKDV ?? enableKDV);
+        setIsKdvInclusive(sessionToEdit.isKdvInclusive ?? defaultIsKdvInclusive);
         setKdvRate(sessionToEdit.kdvRate ?? defaultKdvRate);
         setNotes(sessionToEdit.notes || '');
         setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
@@ -190,13 +194,14 @@ export default function SessionModal({
         setHasOfficeRentFee(false);
         setOfficeRentFeeAmount(defaultOfficeRentFee);
         setHasKDV(enableKDV);
+        setIsKdvInclusive(defaultIsKdvInclusive);
         setKdvRate(defaultKdvRate);
         setNotes('');
         setPaymentStatus('unpaid');
         setRoomId(prefilledRoomId || '');
       }
     }
-  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime, enableKDV, defaultKdvRate]);
+  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime, enableKDV, defaultKdvRate, defaultIsKdvInclusive]);
 
   const handleTypeChange = (newType: SessionType) => {
     setType(newType);
@@ -248,7 +253,11 @@ export default function SessionModal({
     const officeAmt = (isNonSession || isRentIncome) ? 0 : (hasOffice ? Number(officeRentFeeAmount) : 0);
     const hasTax = (isNonSession || isRentIncome) ? false : hasKDV;
     const taxRate = hasTax ? (Number(kdvRate) || 0) : 0;
-    const taxAmt = hasTax ? Math.round((sessionPrice * taxRate) / 100) : 0;
+    const taxAmt = hasTax 
+      ? (isKdvInclusive 
+          ? Math.round((sessionPrice * taxRate) / (100 + taxRate))
+          : Math.round((sessionPrice * taxRate) / 100))
+      : 0;
 
     const sessionData: Session = {
       id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
@@ -263,6 +272,7 @@ export default function SessionModal({
       hasOfficeRentFee: hasOffice,
       officeRentFeeAmount: officeAmt,
       hasKDV: hasTax,
+      isKdvInclusive: isKdvInclusive,
       kdvRate: taxRate,
       kdvAmount: taxAmt,
       notes: notes.trim(),
@@ -765,7 +775,33 @@ export default function SessionModal({
                     </div>
 
                     {hasKDV && (
-                      <div className="mt-1 flex flex-col gap-1 w-full">
+                      <div className="mt-1.5 flex flex-col gap-1.5 w-full">
+                        {/* KDV Type Selector Buttons */}
+                        <div className="grid grid-cols-2 gap-1 bg-white p-0.5 rounded-lg border border-[#e5e1d8]">
+                          <button
+                            type="button"
+                            onClick={() => setIsKdvInclusive(true)}
+                            className={`py-1 px-1 text-[9px] font-bold rounded cursor-pointer transition-all ${
+                              isKdvInclusive
+                                ? 'bg-[#6b705c] text-white shadow-xs'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            KDV Dahil
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsKdvInclusive(false)}
+                            className={`py-1 px-1 text-[9px] font-bold rounded cursor-pointer transition-all ${
+                              !isKdvInclusive
+                                ? 'bg-[#6b705c] text-white shadow-xs'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            KDV Hariç
+                          </button>
+                        </div>
+
                         <div className="flex items-center gap-1">
                           <span className="text-[9px] text-slate-500 shrink-0">Oran:</span>
                           <div className="relative flex-1">
@@ -784,11 +820,19 @@ export default function SessionModal({
                             />
                           </div>
                         </div>
-                        {Number(price) > 0 && (
-                          <p className="text-[8px] text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
-                            Kesinti: -{formatMoney(Math.round((Number(price) * (Number(kdvRate) || 0)) / 100))}
-                          </p>
-                        )}
+
+                        {Number(price) > 0 && (() => {
+                          const rateVal = Number(kdvRate) || 0;
+                          const priceVal = Number(price);
+                          const kCut = isKdvInclusive 
+                            ? Math.round((priceVal * rateVal) / (100 + rateVal))
+                            : Math.round((priceVal * rateVal) / 100);
+                          return (
+                            <p className="text-[8px] text-rose-600 font-bold flex items-center gap-0.5">
+                              {isKdvInclusive ? 'Fiyata dahil KDV:' : 'Fiyata eklenecek KDV:'} {formatMoney(kCut)}
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -796,46 +840,65 @@ export default function SessionModal({
               </div>
 
               {/* Net Income Live Calculation Box */}
-              {Number(price) > 0 && (
-                <div className="bg-[#f8f7f2] p-2.5 rounded-xl border border-[#e5e1d8] text-xs space-y-1">
-                  <div className="flex justify-between items-center text-[10px] text-slate-500">
-                    <span>Brüt Ücret:</span>
-                    <span className="font-semibold text-slate-700">{formatMoney(Number(price))}</span>
+              {Number(price) > 0 && (() => {
+                const p = Number(price);
+                const r = Number(kdvRate) || 0;
+                const kdvCut = hasKDV ? (isKdvInclusive ? Math.round((p * r) / (100 + r)) : Math.round((p * r) / 100)) : 0;
+                const baby = hasBabysitterFee ? Number(babysitterFeeAmount) || 0 : 0;
+                const office = hasOfficeRentFee ? Number(officeRentFeeAmount) || 0 : 0;
+
+                const grossCollected = hasKDV && !isKdvInclusive ? (p + kdvCut) : p;
+                const netEarnings = Math.max(0, grossCollected - kdvCut - baby - office);
+
+                return (
+                  <div className="bg-[#f8f7f2] p-2.5 rounded-xl border border-[#e5e1d8] text-xs space-y-1">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500">
+                      <span>{hasKDV && !isKdvInclusive ? 'Yalın Seans Ücreti (Matrah):' : 'Brüt Seans Ücreti:'}</span>
+                      <span className="font-semibold text-slate-700">{formatMoney(p)}</span>
+                    </div>
+
+                    {hasKDV && !isKdvInclusive && (
+                      <div className="flex justify-between items-center text-[10px] text-emerald-700 font-medium">
+                        <span>+ KDV (%{r}):</span>
+                        <span>+{formatMoney(kdvCut)}</span>
+                      </div>
+                    )}
+
+                    {hasKDV && !isKdvInclusive && (
+                      <div className="flex justify-between items-center text-[10px] text-slate-700 font-bold border-t border-dashed border-[#e5e1d8] pt-0.5">
+                        <span>Müşteriden Alınan Toplam (Brüt):</span>
+                        <span>{formatMoney(grossCollected)}</span>
+                      </div>
+                    )}
+
+                    {hasKDV && (
+                      <div className="flex justify-between items-center text-[10px] text-rose-600">
+                        <span>KDV Kesintisi/Vergi (%{r} {isKdvInclusive ? 'Dahil' : 'Hariç'}):</span>
+                        <span>-{formatMoney(kdvCut)}</span>
+                      </div>
+                    )}
+
+                    {hasBabysitterFee && baby > 0 && (
+                      <div className="flex justify-between items-center text-[10px] text-orange-600">
+                        <span>Bakıcı Gideri:</span>
+                        <span>-{formatMoney(baby)}</span>
+                      </div>
+                    )}
+
+                    {hasOfficeRentFee && office > 0 && (
+                      <div className="flex justify-between items-center text-[10px] text-amber-700">
+                        <span>Ofis Kirası:</span>
+                        <span>-{formatMoney(office)}</span>
+                      </div>
+                    )}
+
+                    <div className="border-t border-[#e5e1d8] pt-1 flex justify-between items-center font-bold text-[#6b705c] text-xs">
+                      <span>Net Ele Geçen Tutar:</span>
+                      <span>{formatMoney(netEarnings)}</span>
+                    </div>
                   </div>
-                  {hasKDV && (
-                    <div className="flex justify-between items-center text-[10px] text-rose-600">
-                      <span>KDV Kesintisi (%{Number(kdvRate) || 0}):</span>
-                      <span>-{formatMoney(Math.round((Number(price) * (Number(kdvRate) || 0)) / 100))}</span>
-                    </div>
-                  )}
-                  {hasBabysitterFee && Number(babysitterFeeAmount) > 0 && (
-                    <div className="flex justify-between items-center text-[10px] text-orange-600">
-                      <span>Bakıcı Gideri:</span>
-                      <span>-{formatMoney(Number(babysitterFeeAmount))}</span>
-                    </div>
-                  )}
-                  {hasOfficeRentFee && Number(officeRentFeeAmount) > 0 && (
-                    <div className="flex justify-between items-center text-[10px] text-amber-700">
-                      <span>Ofis Kirası:</span>
-                      <span>-{formatMoney(Number(officeRentFeeAmount))}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-[#e5e1d8] pt-1 flex justify-between items-center font-bold text-[#6b705c] text-xs">
-                    <span>Net Ele Geçen Tutar:</span>
-                    <span>
-                      {formatMoney(
-                        Math.max(
-                          0,
-                          Number(price) -
-                            (hasKDV ? Math.round((Number(price) * (Number(kdvRate) || 0)) / 100) : 0) -
-                            (hasBabysitterFee ? Number(babysitterFeeAmount) || 0 : 0) -
-                            (hasOfficeRentFee ? Number(officeRentFeeAmount) || 0 : 0)
-                        )
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 

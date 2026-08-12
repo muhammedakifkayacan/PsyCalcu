@@ -13,6 +13,7 @@ export interface Session {
   hasOfficeRentFee: boolean; // whether per-session office rent is paid for this session (usually true for face-to-face)
   officeRentFeeAmount: number; // ₺
   hasKDV?: boolean; // whether KDV (VAT) deduction applies for this session
+  isKdvInclusive?: boolean; // true = KDV Dahil (VAT Included), false = KDV Hariç (VAT Excluded)
   kdvRate?: number; // KDV percentage rate (e.g. 20 = %20)
   kdvAmount?: number; // calculated KDV amount (₺)
   notes?: string;
@@ -80,6 +81,7 @@ export interface AppSettings {
   defaultOfficeRentFee: number; // per face-to-face session office rent
   enableKDV?: boolean; // whether KDV (VAT) tax feature is enabled (default false)
   defaultKdvRate?: number; // default KDV percentage rate (default 20 = %20)
+  defaultIsKdvInclusive?: boolean; // default KDV type (true = Dahil, false = Hariç)
   therapistName: string;
   therapistPhone?: string;
   calendarSyncEnabled: boolean;

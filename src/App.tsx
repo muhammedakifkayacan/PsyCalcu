@@ -126,6 +126,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultOfficeRentFee: 200,
   enableKDV: false,
   defaultKdvRate: 20,
+  defaultIsKdvInclusive: true,
   therapistName: 'Dr. Melis Kaya',
   therapistPhone: '',
   calendarSyncEnabled: true,
@@ -156,6 +157,7 @@ export default function App() {
           defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
           enableKDV: parsed.enableKDV ?? DEFAULT_SETTINGS.enableKDV,
           defaultKdvRate: parsed.defaultKdvRate ?? DEFAULT_SETTINGS.defaultKdvRate,
+          defaultIsKdvInclusive: parsed.defaultIsKdvInclusive ?? DEFAULT_SETTINGS.defaultIsKdvInclusive,
           therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
           therapistPhone: parsed.therapistPhone ?? DEFAULT_SETTINGS.therapistPhone,
           calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
@@ -5800,6 +5802,7 @@ export default function App() {
         prefilledTime={prefilledTime}
         enableKDV={settings.enableKDV}
         defaultKdvRate={settings.defaultKdvRate}
+        defaultIsKdvInclusive={settings.defaultIsKdvInclusive}
       />
 
       {/* FAQ Modal Component */}

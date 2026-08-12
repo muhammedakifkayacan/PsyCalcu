@@ -176,7 +176,12 @@ export default function StatsDashboard({
       const sPrice = Number(s.price) || 0;
       const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
       const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
-      const sKdvCut = s.hasKDV ? (s.kdvAmount ?? Math.round((sPrice * (s.kdvRate ?? settings.defaultKdvRate ?? 20)) / 100)) : 0;
+      const isInclusive = s.isKdvInclusive !== false;
+      const kRate = s.kdvRate ?? settings.defaultKdvRate ?? 20;
+      const sKdvCut = s.hasKDV 
+        ? (s.kdvAmount ?? (isInclusive ? Math.round((sPrice * kRate) / (100 + kRate)) : Math.round((sPrice * kRate) / 100)))
+        : 0;
+      const sGross = s.hasKDV && !isInclusive ? (sPrice + sKdvCut) : sPrice;
 
       if (s.type === 'cancelled') {
         cancelledCount++;
@@ -188,7 +193,7 @@ export default function StatsDashboard({
         }
 
         if (s.paymentStatus === 'paid') {
-          grossIncome += sPrice;
+          grossIncome += sGross;
           babysitterFees += sBabyFee;
           officeRentExpenses += sOfficeFee;
           kdvExpenses += sKdvCut;
@@ -196,9 +201,9 @@ export default function StatsDashboard({
             sessionExpensesCount++;
           }
         } else if (s.date <= todayStr) {
-          pendingReceivables += sPrice;
+          pendingReceivables += sGross;
         } else {
-          futureUnpaidIncome += sPrice;
+          futureUnpaidIncome += sGross;
         }
       }
 
@@ -209,7 +214,7 @@ export default function StatsDashboard({
       }
 
       if (s.type !== 'cancelled' && s.paymentStatus === 'paid') {
-        dateGroups[dLabel].gross += sPrice;
+        dateGroups[dLabel].gross += sGross;
         dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee + sKdvCut);
       }
     });
@@ -943,7 +948,12 @@ export default function StatsDashboard({
                   const sPrice = Number(s.price) || 0;
                   const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
                   const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
-                  const sKdvCut = s.hasKDV ? (s.kdvAmount ?? Math.round((sPrice * (s.kdvRate ?? settings.defaultKdvRate ?? 20)) / 100)) : 0;
+                  const isInclusive = s.isKdvInclusive !== false;
+                  const kRate = s.kdvRate ?? settings.defaultKdvRate ?? 20;
+                  const sKdvCut = s.hasKDV 
+                    ? (s.kdvAmount ?? (isInclusive ? Math.round((sPrice * kRate) / (100 + kRate)) : Math.round((sPrice * kRate) / 100)))
+                    : 0;
+                  const sGross = s.hasKDV && !isInclusive ? (sPrice + sKdvCut) : sPrice;
                   const totalSExp = sBabyFee + sOfficeFee + sKdvCut;
                   
                   const isOnline = s.type === 'online';
@@ -959,7 +969,7 @@ export default function StatsDashboard({
                   const expParts: string[] = [];
                   if (sBabyFee > 0) expParts.push(`${formatMoney(sBabyFee)} bakıcı`);
                   if (sOfficeFee > 0) expParts.push(`${formatMoney(sOfficeFee)} ofis`);
-                  if (sKdvCut > 0) expParts.push(`${formatMoney(sKdvCut)} KDV`);
+                  if (sKdvCut > 0) expParts.push(`${formatMoney(sKdvCut)} KDV (${isInclusive ? 'Dahil' : 'Hariç'})`);
 
                   return (
                     <div 
@@ -1000,8 +1010,15 @@ export default function StatsDashboard({
 
                       <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100">
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-medium">Seans Ücreti</span>
-                          <span className="text-sm font-bold text-slate-800">{formatMoney(sPrice, { decimals: 2 })}</span>
+                          <span className="text-[10px] text-slate-400 block font-medium">
+                            {s.hasKDV && !isInclusive ? 'Tahsilat (KDV Dahil)' : 'Seans Ücreti'}
+                          </span>
+                          <span className="text-sm font-bold text-slate-800">{formatMoney(sGross, { decimals: 2 })}</span>
+                          {s.hasKDV && !isInclusive && (
+                            <span className="text-[9px] text-slate-400 block font-normal">
+                              ({formatMoney(sPrice)} + KDV)
+                            </span>
+                          )}
                         </div>
                         
                         {totalSExp > 0 && (
