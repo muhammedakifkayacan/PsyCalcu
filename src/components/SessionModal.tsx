@@ -521,19 +521,19 @@ export default function SessionModal({
           )}
 
           {/* Core Fields Grid: 2 rows x 2 columns (Date, Time, Duration, Price) */}
-          <div className="grid grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 min-w-0 w-full">
             {/* Row 1, Col 1: Tarih */}
-            <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">TARİH</label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
+            <div className="space-y-1 min-w-0 w-full">
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">TARİH</label>
+              <div className="relative min-w-0 w-full">
+                <Calendar className="absolute left-2 top-2.5 w-3.5 h-3.5 text-[#a5a58d] pointer-events-none z-10 shrink-0" />
                 <input
                   type="date"
                   required
                   disabled={isDateTimeLocked}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className={`w-full pl-8 pr-2 py-2 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                  className={`w-full min-w-0 pl-7 pr-1 py-1.5 text-xs sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] [color-scheme:light] [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:opacity-60 ${
                     isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
@@ -543,17 +543,17 @@ export default function SessionModal({
             </div>
 
             {/* Row 1, Col 2: Saat */}
-            <div className="space-y-1">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SAAT</label>
-              <div className="relative">
-                <Clock className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
+            <div className="space-y-1 min-w-0 w-full">
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">SAAT</label>
+              <div className="relative min-w-0 w-full">
+                <Clock className="absolute left-2 top-2.5 w-3.5 h-3.5 text-[#a5a58d] pointer-events-none z-10 shrink-0" />
                 <input
                   type="time"
                   required
                   disabled={isDateTimeLocked}
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className={`w-full pl-8 pr-2 py-2 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                  className={`w-full min-w-0 pl-7 pr-1 py-1.5 text-xs sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] [color-scheme:light] [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:opacity-60 ${
                     isDateTimeLocked 
                       ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
@@ -564,12 +564,12 @@ export default function SessionModal({
 
             {/* Row 2, Col 1: Süre */}
             {type !== 'rent-income' && (
-              <div className="space-y-1">
-                <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">SÜRE</label>
+              <div className="space-y-1 min-w-0 w-full">
+                <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">SÜRE</label>
                 <select
                   value={duration}
                   onChange={(e) => setDuration(Number(e.target.value))}
-                  className="w-full px-2.5 py-2 text-base sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] h-[34px]"
+                  className="w-full min-w-0 px-2 py-1.5 text-xs sm:text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] h-[34px]"
                 >
                   <option value="30">30 Dakika</option>
                   <option value="45">45 Dakika</option>
@@ -581,12 +581,12 @@ export default function SessionModal({
             )}
 
             {/* Row 2, Col 2: Seans Ücreti */}
-            <div className={`space-y-1 ${type === 'rent-income' ? 'col-span-2' : ''}`}>
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
+            <div className={`space-y-1 min-w-0 w-full ${type === 'rent-income' ? 'col-span-2' : ''}`}>
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">
                 {type === 'rent-income' ? 'KİRA TUTARI (₺)' : 'SEANS ÜCRETİ (₺)'}
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-2 text-xs font-bold text-[#a5a58d]">₺</span>
+              <div className="relative min-w-0 w-full">
+                <span className="absolute left-2.5 top-2 text-xs font-bold text-[#a5a58d] pointer-events-none z-10">₺</span>
                 <input
                   type="number"
                   required
@@ -599,7 +599,7 @@ export default function SessionModal({
                     setIsPriceManuallyEdited(true);
                   }}
                   onFocus={(e) => e.target.select()}
-                  className={`w-full pl-7 pr-2 py-1.5 text-base sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
+                  className={`w-full min-w-0 pl-6 pr-2 py-1.5 text-xs sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
                     (type === 'cancelled' || type === 'non-session')
                       ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed font-medium'
                       : 'bg-[#fdfbf7] border-[#e5e1d8]'
