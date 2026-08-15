@@ -213,7 +213,7 @@ export default function CalendarSyncGuide({
           showToast(`Online Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
         }
       } else {
-        showToast('Online takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen geçerli bir takvim linki (webcal veya ics) girdiğinizden emin olun.', 'error');
+        showToast('Online takvim adresinden iCal/seans verisi alınamadı. Google Takvim kullanıyorsanız lütfen "Takvimi Entegre Et" altındaki "iCal biçimindeki gizli adres" linkini kopyaladığınızdan emin olun.', 'error');
       }
     } catch (err: any) {
       console.error(err);
@@ -253,7 +253,7 @@ export default function CalendarSyncGuide({
           showToast(`Yüzyüze Seanslar Takvimi kontrol edildi: Yeni bir seans veya değişiklik bulunamadı.`, 'info');
         }
       } else {
-        showToast('Yüzyüze takvim linkinden seans/etkinlik bilgisi alınamadı. Lütfen geçerli bir takvim linki (webcal veya ics) girdiğinizden emin olun.', 'error');
+        showToast('Yüzyüze takvim adresinden iCal/seans verisi alınamadı. Google Takvim kullanıyorsanız lütfen "Takvimi Entegre Et" altındaki "iCal biçimindeki gizli adres" linkini kopyaladığınızdan emin olun.', 'error');
       }
     } catch (err: any) {
       console.error(err);
@@ -593,7 +593,7 @@ export default function CalendarSyncGuide({
                   <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isOnlineLocked ? 'text-slate-400' : 'text-emerald-600'}`} />
                   <input
                     type="text"
-                    placeholder="webcal://calendar.google.com/... veya icloud.com/..."
+                    placeholder="https://calendar.google.com/... veya webcal://p...icloud.com/..."
                     value={onlineUrl}
                     onChange={(e) => setOnlineUrl(e.target.value)}
                     readOnly={isOnlineLocked}
@@ -674,7 +674,7 @@ export default function CalendarSyncGuide({
                   <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isFaceToFaceLocked ? 'text-slate-400' : 'text-amber-600'}`} />
                   <input
                     type="text"
-                    placeholder="webcal://calendar.google.com/... veya icloud.com/..."
+                    placeholder="https://calendar.google.com/... veya webcal://p...icloud.com/..."
                     value={faceToFaceUrl}
                     onChange={(e) => setFaceToFaceUrl(e.target.value)}
                     readOnly={isFaceToFaceLocked}

@@ -445,25 +445,47 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         normalizedUrl = "https://" + normalizedUrl.substring(9);
       } else if (normalizedUrl.startsWith("webcal:")) {
         normalizedUrl = "https:" + normalizedUrl.substring(7);
+      } else if (normalizedUrl.startsWith("http://")) {
+        // Upgrade http:// to https:// for safety
+        normalizedUrl = "https://" + normalizedUrl.substring(7);
       }
 
-      // Safe URL parsing & encoding for Turkish/Unicode/special characters in paths
-      try {
-        normalizedUrl = encodeURI(decodeURI(normalizedUrl));
-      } catch (urlErr) {
-        console.error("URL encoding error, using original normalizedUrl:", urlErr);
+      // If it is Google Calendar, Google strictly requires %40 instead of @ in the calendar ID path
+      if (normalizedUrl.includes("calendar.google.com")) {
+        normalizedUrl = normalizedUrl.replace(/@/g, "%40");
+        normalizedUrl = normalizedUrl.replace(/%2540/g, "%40");
+      } else {
+        // Safe encoding for iCloud / other calendars with Unicode or Turkish characters
+        try {
+          normalizedUrl = encodeURI(decodeURI(normalizedUrl));
+        } catch (urlErr) {
+          console.error("URL encoding error, using original normalizedUrl:", urlErr);
+        }
       }
 
       console.log(`Fetching calendar from: ${normalizedUrl}`);
       const fetchResponse = await fetch(normalizedUrl, {
         headers: {
-          "User-Agent": "iCal/1.0 (Macintosh; Intel Mac OS X 10.15; compatible;)",
-          "Accept": "text/calendar, text/plain, */*"
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
+          "Accept": "text/calendar, text/plain, application/octet-stream, */*"
         }
       });
 
       if (!fetchResponse.ok) {
-        throw new Error(`Takvim sunucusu hata döndürdü: ${fetchResponse.status} ${fetchResponse.statusText}`);
+        let serverErrorDetails = "";
+        try {
+          const bodySnippet = await fetchResponse.text();
+          if (bodySnippet && bodySnippet.length < 300) {
+            serverErrorDetails = ` - ${bodySnippet}`;
+          }
+        } catch (e) {}
+
+        if (fetchResponse.status === 404) {
+          throw new Error(`Takvim bulunamadı (404). Google Takvim kullanıyorsanız 'Genel adres' yerine 'iCal biçimindeki gizli adres' bağlantısını girdiğinizden ve adresin eksiksiz kopyalandığından emin olun.`);
+        } else if (fetchResponse.status === 403 || fetchResponse.status === 401) {
+          throw new Error(`Takvim erişim yetkisi reddedildi (${fetchResponse.status}). Google Takvim'de 'iCal biçimindeki gizli adres'i kullandığınızdan veya takvimin herkese açık/paylaşılmış olduğundan emin olun.`);
+        }
+        throw new Error(`Takvim sunucusu hata döndürdü: HTTP ${fetchResponse.status} ${fetchResponse.statusText}${serverErrorDetails}`);
       }
 
       const icsData = await fetchResponse.text();
@@ -492,11 +514,19 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       }
 
       // Check if the returned content is HTML instead of a valid iCalendar file
-      if (icsData.trim().startsWith("<html") || icsData.trim().startsWith("<!DOCTYPE") || icsData.trim().startsWith("<!doctype")) {
-        throw new Error("Apple sunucusu takvim dosyası yerine bir web sayfası (HTML) döndürdü. Lütfen iCloud takviminizi herkese açık (Public) paylaştığınızdan ve linki eksiksiz kopyaladığınızdan emin olun. Ayrıca takvim isminin Türkçe karakter içermediğini kontrol edin.");
+      const trimmed = icsData.trim();
+      const isHtml = trimmed.startsWith("<html") || trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<!doctype") || trimmed.startsWith("<HTML");
+      const hasCalendarHeaders = trimmed.toUpperCase().includes("BEGIN:VCALENDAR") || trimmed.toUpperCase().includes("BEGIN:VEVENT");
+
+      if (isHtml && !hasCalendarHeaders) {
+        if (calendarUrl.includes("google.com")) {
+          throw new Error("Google sunucusu takvim verisi yerine web sayfası (HTML) döndürdü. Lütfen Google Takvim Ayarları > 'Takvimi Entegre Et' bölümündeki 'iCal biçimindeki gizli adres' bağlantısını eksiksiz kopyaladığınızdan emin olun.");
+        } else {
+          throw new Error("Takvim sunucusu takvim dosyası yerine bir web sayfası (HTML) döndürdü. Lütfen takviminizi herkese açık (Public) paylaştığınızdan ve gizli iCal/WebCal linkini eksiksiz kopyaladığınızdan emin olun.");
+        }
       }
 
-      res.setHeader("Content-Type", "text/calendar");
+      res.setHeader("Content-Type", "text/calendar; charset=utf-8");
       res.send(icsData);
     } catch (err: any) {
       console.error("Calendar fetch error:", err);
@@ -513,7 +543,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
           "utf-8"
         );
       } catch (logErr) {}
-      res.status(500).json({ error: `Takvim verisi çekilemedi: ${err?.message || err}` });
+      res.status(500).json({ error: `${err?.message || err}` });
     }
   });
 
