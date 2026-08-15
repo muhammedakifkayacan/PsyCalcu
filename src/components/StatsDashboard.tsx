@@ -192,18 +192,29 @@ export default function StatsDashboard({
           faceToFaceCount++;
         }
 
-        if (s.paymentStatus === 'paid') {
-          grossIncome += sGross;
+        const paidPart = s.paymentStatus === 'paid'
+          ? sGross
+          : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
+        const unpaidPart = s.paymentStatus === 'paid'
+          ? 0
+          : (s.paymentStatus === 'partial' ? Math.max(0, sGross - (Number(s.paidAmount) || 0)) : sGross);
+
+        if (paidPart > 0) {
+          grossIncome += paidPart;
           babysitterFees += sBabyFee;
           officeRentExpenses += sOfficeFee;
           kdvExpenses += sKdvCut;
           if (sBabyFee > 0 || sOfficeFee > 0 || sKdvCut > 0) {
             sessionExpensesCount++;
           }
-        } else if (s.date <= todayStr) {
-          pendingReceivables += sGross;
-        } else {
-          futureUnpaidIncome += sGross;
+        }
+        
+        if (unpaidPart > 0) {
+          if (s.date <= todayStr) {
+            pendingReceivables += unpaidPart;
+          } else {
+            futureUnpaidIncome += unpaidPart;
+          }
         }
       }
 
@@ -213,8 +224,12 @@ export default function StatsDashboard({
         dateGroups[dLabel] = { date: dLabel, gross: 0, expenses: 0, net: 0 };
       }
 
-      if (s.type !== 'cancelled' && s.paymentStatus === 'paid') {
-        dateGroups[dLabel].gross += sGross;
+      const paidPartForGroup = s.paymentStatus === 'paid'
+        ? sGross
+        : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
+
+      if (s.type !== 'cancelled' && paidPartForGroup > 0) {
+        dateGroups[dLabel].gross += paidPartForGroup;
         dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee + sKdvCut);
       }
     });
@@ -283,13 +298,13 @@ export default function StatsDashboard({
     let list = filteredSessions;
 
     if (selectedCard === 'gross') {
-      list = list.filter(s => s.type !== 'cancelled' && s.paymentStatus === 'paid');
+      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || (s.paymentStatus === 'partial' && (s.paidAmount || 0) > 0)));
     } else if (selectedCard === 'pending') {
       list = list.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid' && s.date <= todayStr);
     } else if (selectedCard === 'expenses') {
-      list = list.filter(s => s.type !== 'cancelled' && s.paymentStatus === 'paid' && (s.hasBabysitterFee || s.hasOfficeRentFee));
+      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || s.paymentStatus === 'partial') && (s.hasBabysitterFee || s.hasOfficeRentFee));
     } else if (selectedCard === 'net') {
-      list = list.filter(s => s.type !== 'cancelled' && s.paymentStatus === 'paid');
+      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || (s.paymentStatus === 'partial' && (s.paidAmount || 0) > 0)));
     }
 
     if (detailSearchQuery.trim()) {
@@ -995,11 +1010,17 @@ export default function StatsDashboard({
                               {isCancelled ? 'İPTAL' : isOnline ? 'ONLINE' : 'YÜZYÜZE'}
                             </span>
                             <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wider ${
-                              isPaid 
+                              s.paymentStatus === 'paid' 
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                                : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                : s.paymentStatus === 'partial'
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : 'bg-red-50 text-red-700 border border-red-100'
                             }`}>
-                              {isPaid ? 'ÖDENDİ' : 'ÖDENMEDİ'}
+                              {s.paymentStatus === 'paid' 
+                                ? 'ÖDENDİ' 
+                                : s.paymentStatus === 'partial'
+                                  ? `◐ KISMİ (₺${(s.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
+                                  : 'ÖDENMEDİ'}
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-400 mt-0.5">

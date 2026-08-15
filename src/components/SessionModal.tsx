@@ -76,7 +76,8 @@ export default function SessionModal({
   const [kdvRate, setKdvRate] = useState<number | string>(defaultKdvRate);
   const [isKdvInclusive, setIsKdvInclusive] = useState(defaultIsKdvInclusive);
   const [notes, setNotes] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>('unpaid');
+  const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
   const [isBabysitterFeeManuallyEdited, setIsBabysitterFeeManuallyEdited] = useState(false);
   const [isOfficeRentFeeManuallyEdited, setIsOfficeRentFeeManuallyEdited] = useState(false);
@@ -182,6 +183,7 @@ export default function SessionModal({
         setKdvRate(sessionToEdit.kdvRate ?? defaultKdvRate);
         setNotes(sessionToEdit.notes || '');
         setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
+        setPaidAmount(sessionToEdit.paidAmount !== undefined ? sessionToEdit.paidAmount : '');
         setRoomId(sessionToEdit.roomId || '');
       } else {
         // New session
@@ -200,6 +202,7 @@ export default function SessionModal({
         setKdvRate(defaultKdvRate);
         setNotes('');
         setPaymentStatus('unpaid');
+        setPaidAmount('');
         setRoomId(prefilledRoomId || '');
       }
     }
@@ -261,6 +264,13 @@ export default function SessionModal({
           : Math.round((sessionPrice * taxRate) / 100))
       : 0;
 
+    const isCancelledOrNonSession = type === 'cancelled' || type === 'non-session';
+    const calcPaidAmount = isCancelledOrNonSession
+      ? 0
+      : (paymentStatus === 'paid' 
+          ? sessionPrice 
+          : (paymentStatus === 'partial' ? Math.min(sessionPrice, Math.max(0, Number(paidAmount) || 0)) : 0));
+
     const sessionData: Session = {
       id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
       clientName: clientName.trim(),
@@ -280,7 +290,8 @@ export default function SessionModal({
       notes: notes.trim(),
       isSyncedFromCalendar: sessionToEdit ? sessionToEdit.isSyncedFromCalendar : false,
       syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
-      paymentStatus: (type === 'cancelled' || type === 'non-session') ? 'unpaid' : paymentStatus,
+      paymentStatus: isCancelledOrNonSession ? 'unpaid' : paymentStatus,
+      paidAmount: calcPaidAmount,
       roomId: roomId || undefined,
     };
 
@@ -623,35 +634,91 @@ export default function SessionModal({
 
           {/* Payment Status Selector */}
           {type !== 'cancelled' && type !== 'non-session' && (
-            <div className="space-y-1 bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] flex items-center justify-between animate-fade-in">
-              <div>
-                <span className="text-xs font-bold text-[#6b705c] block">Ödeme Durumu</span>
-                <span className="text-[10px] text-slate-600 font-medium">Ücret tahsil edildi mi?</span>
+            <div className="space-y-3 bg-[#fdfbf7] p-3.5 rounded-xl border border-[#e5e1d8] animate-fade-in">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-[#6b705c] block">Ödeme Durumu</span>
+                  <span className="text-[10px] text-slate-600 font-medium">Ücret tahsil edildi mi?</span>
+                </div>
+                <div className="flex gap-1 bg-[#f5f5f0] p-0.5 rounded-lg border border-[#e5e1d8]/50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatus('unpaid');
+                      setPaidAmount('');
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                      paymentStatus === 'unpaid'
+                        ? 'bg-red-500 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Ödenmedi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatus('partial');
+                      if (!paidAmount && price) {
+                        setPaidAmount('');
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                      paymentStatus === 'partial'
+                        ? 'bg-amber-500 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    ◐ Kısmi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatus('paid');
+                      setPaidAmount(price);
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                      paymentStatus === 'paid'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Ödendi
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-1 bg-[#f5f5f0] p-0.5 rounded-lg border border-[#e5e1d8]/50">
-                <button
-                  type="button"
-                  onClick={() => setPaymentStatus('unpaid')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    paymentStatus === 'unpaid'
-                      ? 'bg-red-500 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Ödenmedi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentStatus('paid')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    paymentStatus === 'paid'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Ödendi
-                </button>
-              </div>
+
+              {paymentStatus === 'partial' && (
+                <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-2 animate-fade-in">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-bold text-amber-900 flex items-center gap-1.5 shrink-0">
+                      <span>Alınan Tutar (₺):</span>
+                    </label>
+                    <div className="relative w-36">
+                      <input
+                        type="number"
+                        min="0"
+                        max={Number(price) || 0}
+                        step="50"
+                        value={paidAmount}
+                        onChange={(e) => setPaidAmount(e.target.value)}
+                        placeholder="Örn: 1500"
+                        className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
+                      />
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₺</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-[11px] bg-amber-50/90 px-3 py-1.5 rounded-lg border border-amber-200/80">
+                    <span className="text-amber-900 font-medium">
+                      Alınan: <strong className="font-bold text-emerald-700">₺{(Number(paidAmount) || 0).toLocaleString('tr-TR')}</strong>
+                    </span>
+                    <span className="text-amber-900 font-medium">
+                      Kalan Borç: <strong className="font-bold text-red-600">₺{Math.max(0, (Number(price) || 0) - (Number(paidAmount) || 0)).toLocaleString('tr-TR')}</strong>
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

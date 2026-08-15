@@ -1921,8 +1921,16 @@ export default function App() {
       return sessionDateTime <= nowStr;
     });
     
+    const getRemainingDebt = (s: Session) => {
+      if (s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return 0;
+      if (s.paymentStatus === 'partial') {
+        return Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0));
+      }
+      return Number(s.price) || 0;
+    };
+
     // Total unpaid amount
-    const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+    const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
     
     // Group by client using normalized name
     const clientGroups: Record<string, Session[]> = {};
@@ -1942,7 +1950,7 @@ export default function App() {
         return a.time.localeCompare(b.time);
       });
       
-      const totalAmount = sortedSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+      const totalAmount = sortedSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
       
       return {
         clientName,
@@ -2183,13 +2191,16 @@ export default function App() {
     if (!found) return;
 
     const prevStatus = found.paymentStatus;
+    const prevPaidAmount = found.paidAmount;
     const nextStatus = prevStatus === 'paid' ? 'unpaid' : 'paid';
+    const priceVal = Number(found.price) || 0;
 
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
         return {
           ...s,
           paymentStatus: nextStatus,
+          paidAmount: nextStatus === 'paid' ? priceVal : 0,
           updatedAt: Date.now(),
           isManuallyEdited: true
         };
@@ -2203,6 +2214,7 @@ export default function App() {
           return {
             ...s,
             paymentStatus: prevStatus,
+            paidAmount: prevPaidAmount,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -2212,7 +2224,6 @@ export default function App() {
       showToast('İşlem geri alındı.', 'info');
     };
 
-    const priceVal = Number(found.price) || 0;
     if (nextStatus === 'paid') {
       showToast(
         `${found.clientName} adlı danışandan ${formatMoney(priceVal)} tahsil edildi!`, 
@@ -2242,12 +2253,15 @@ export default function App() {
     if (!found) return;
 
     const prevStatus = found.paymentStatus;
+    const prevPaidAmount = found.paidAmount;
+    const priceVal = Number(found.price) || 0;
 
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
         return {
           ...s,
           paymentStatus: 'paid',
+          paidAmount: priceVal,
           updatedAt: Date.now(),
           isManuallyEdited: true
         };
@@ -2261,6 +2275,7 @@ export default function App() {
           return {
             ...s,
             paymentStatus: prevStatus,
+            paidAmount: prevPaidAmount,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -2270,7 +2285,6 @@ export default function App() {
       showToast('Tahsilat geri alındı.', 'info');
     };
 
-    const priceVal = Number(found.price) || 0;
     showToast(
       `${found.clientName} ödemesi başarıyla tahsil edildi!`, 
       'success',
@@ -2285,13 +2299,14 @@ export default function App() {
   const handleMarkAllClientSessionsAsPaid = (clientName: string) => {
     let totalAmount = 0;
     let sessionCount = 0;
-    const modifiedPreviousStates: Record<string, 'paid' | 'unpaid'> = {};
+    const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; paidAmount?: number }> = {};
 
     sessions.forEach(s => {
       if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
-        totalAmount += Number(s.price) || 0;
+        const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
+        totalAmount += remainingDebt;
         sessionCount++;
-        modifiedPreviousStates[s.id] = s.paymentStatus;
+        modifiedPreviousStates[s.id] = { status: s.paymentStatus || 'unpaid', paidAmount: s.paidAmount };
       }
     });
 
@@ -2301,6 +2316,7 @@ export default function App() {
           return {
             ...s,
             paymentStatus: 'paid',
+            paidAmount: Number(s.price) || 0,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -2314,7 +2330,8 @@ export default function App() {
         if (modifiedPreviousStates[s.id]) {
           return {
             ...s,
-            paymentStatus: modifiedPreviousStates[s.id],
+            paymentStatus: modifiedPreviousStates[s.id].status,
+            paidAmount: modifiedPreviousStates[s.id].paidAmount,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -4323,11 +4340,23 @@ export default function App() {
                                     className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
                                       session.paymentStatus === 'paid'
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                        : session.paymentStatus === 'partial'
+                                          ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                          : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                                     }`}
-                                    title={session.paymentStatus === 'paid' ? 'Ödenmedi olarak işaretle' : 'Ödendi olarak işaretle'}
+                                    title={
+                                      session.paymentStatus === 'paid'
+                                        ? 'Ödenmedi olarak işaretle'
+                                        : session.paymentStatus === 'partial'
+                                          ? 'Tamamı Ödendi olarak işaretle'
+                                          : 'Ödendi olarak işaretle'
+                                    }
                                   >
-                                    {session.paymentStatus === 'paid' ? '● ÖDENDİ' : '○ ÖDENMEDİ'}
+                                    {session.paymentStatus === 'paid'
+                                      ? '● ÖDENDİ'
+                                      : session.paymentStatus === 'partial'
+                                        ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
+                                        : '○ ÖDENMEDİ'}
                                   </button>
                                 )}
                               </div>
@@ -4853,9 +4882,17 @@ export default function App() {
                                 <Clock className="w-3 h-3" /> {session.time}
                               </span>
                               <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                                session.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                session.paymentStatus === 'paid' 
+                                  ? 'bg-emerald-100 text-emerald-800' 
+                                  : session.paymentStatus === 'partial'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                    : 'bg-red-100 text-red-800'
                               }`}>
-                                {session.paymentStatus === 'paid' ? 'Ödenmiş' : 'Ödeme Bekliyor'}
+                                {session.paymentStatus === 'paid' 
+                                  ? 'Ödenmiş' 
+                                  : session.paymentStatus === 'partial'
+                                    ? `◐ Kısmi (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
+                                    : 'Ödeme Bekliyor'}
                               </span>
                             </div>
                             <h5 className="font-bold text-slate-900 text-xs mt-1.5">{session.clientName}</h5>
@@ -5053,10 +5090,19 @@ export default function App() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-800 text-xs">{formatMoney(s.price)}</span>
+                                    <div className="text-right">
+                                      <span className="font-bold text-slate-800 text-xs block">
+                                        {formatMoney(s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0))}
+                                      </span>
+                                      {s.paymentStatus === 'partial' && (
+                                        <span className="text-[9px] text-amber-700 font-bold block">
+                                          ({formatMoney(s.paidAmount)} alındı)
+                                        </span>
+                                      )}
+                                    </div>
                                     <button
                                       onClick={() => handleMarkSessionAsPaid(s.id)}
-                                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 cursor-pointer transition-all"
+                                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 cursor-pointer transition-all shrink-0"
                                       title="Ödendi Olarak İşaretle"
                                     >
                                       ✓ Ödendi Yap
@@ -5628,9 +5674,17 @@ export default function App() {
                                     {session.type === 'online' ? 'Çevrimiçi' : isFaceToFace ? 'Yüz Yüze' : 'İptal'}
                                   </span>
                                   <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
-                                    isPaid ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                    isPaid 
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                                      : session.paymentStatus === 'partial'
+                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                        : 'bg-red-50 text-red-700 border border-red-100'
                                   }`}>
-                                    {isPaid ? 'ÖDENDİ' : 'ÖDENMEDİ'}
+                                    {isPaid 
+                                      ? 'ÖDENDİ' 
+                                      : session.paymentStatus === 'partial'
+                                        ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
+                                        : 'ÖDENMEDİ'}
                                   </span>
                                 </div>
 

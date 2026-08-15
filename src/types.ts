@@ -20,7 +20,8 @@ export interface Session {
   isSyncedFromCalendar?: boolean;
   isFromMultiCalendar?: boolean;
   syncedCalendarType?: 'online' | 'face-to-face' | 'rent-income'; // which calendar it came from
-  paymentStatus?: 'paid' | 'unpaid';
+  paymentStatus?: 'paid' | 'unpaid' | 'partial';
+  paidAmount?: number; // ₺ amount actually received if partial or paid
   updatedAt?: number; // timestamp in ms for conflict-free sync
   isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
   roomId?: string; // Room association for property owners
