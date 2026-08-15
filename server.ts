@@ -439,27 +439,33 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       // Trim leading/trailing whitespaces
       calendarUrl = calendarUrl.trim();
 
-      // Handle webcal:// protocol by switching to https://
-      let normalizedUrl = calendarUrl;
+      // Handle webcal:// protocol and trim spaces
+      let normalizedUrl = calendarUrl.trim();
       if (normalizedUrl.startsWith("webcal://")) {
         normalizedUrl = "https://" + normalizedUrl.substring(9);
       } else if (normalizedUrl.startsWith("webcal:")) {
         normalizedUrl = "https:" + normalizedUrl.substring(7);
       } else if (normalizedUrl.startsWith("http://")) {
-        // Upgrade http:// to https:// for safety
         normalizedUrl = "https://" + normalizedUrl.substring(7);
       }
 
-      // If it is Google Calendar, Google strictly requires %40 instead of @ in the calendar ID path
+      // Safe decodeURIComponent in case URL was double-encoded or passed with %2540
+      try {
+        normalizedUrl = decodeURIComponent(normalizedUrl);
+      } catch (e) {
+        // Ignore decode error if malformed
+      }
+
+      // Google Calendar path requirement: Replace @ with %40 in URL path
       if (normalizedUrl.includes("google.com")) {
+        // Convert any @ to %40 for google calendar URLs
         normalizedUrl = normalizedUrl.replace(/@/g, "%40");
-        normalizedUrl = normalizedUrl.replace(/%2540/g, "%40");
       } else {
-        // Safe encoding for iCloud / other calendars with Unicode or Turkish characters
+        // Safe encoding for non-Google calendars (iCloud, Outlook, custom)
         try {
-          normalizedUrl = encodeURI(decodeURI(normalizedUrl));
+          normalizedUrl = encodeURI(normalizedUrl);
         } catch (urlErr) {
-          console.error("URL encoding error, using original normalizedUrl:", urlErr);
+          console.error("URL encoding error:", urlErr);
         }
       }
 

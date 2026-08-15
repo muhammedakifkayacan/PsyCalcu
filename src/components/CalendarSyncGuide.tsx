@@ -109,10 +109,26 @@ export default function CalendarSyncGuide({
     }));
 
     try {
-      let cleanUrl = url;
-      if (cleanUrl.includes('google.com')) {
-        cleanUrl = cleanUrl.replace(/@/g, '%40');
-        cleanUrl = cleanUrl.replace(/%2540/g, '%40');
+      let cleanUrl = url.trim();
+      if (cleanUrl.startsWith('webcal://')) {
+        cleanUrl = 'https://' + cleanUrl.substring(9);
+      } else if (cleanUrl.startsWith('webcal:')) {
+        cleanUrl = 'https:' + cleanUrl.substring(7);
+      }
+
+      // Check Google Calendar Embed or Web View URL pitfall
+      if (cleanUrl.includes('google.com') && (cleanUrl.includes('/embed') || cleanUrl.includes('cid=') || cleanUrl.includes('/calendar/u/'))) {
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'invalid',
+            message: 'Geçersiz Link Tipi (Google Takvim Web Görünümü)',
+            details: 'Girdiğiniz bağlantı Google Takvim\'in web arayüzü bağlantısıdır. Seansların otomatik çekilmesi için "Takvimi Entegre Et" bölümündeki "iCal biçimindeki gizli adres" (.ics) bağlantısını kullanmalısınız.'
+          }
+        }));
+        showToast('Lütfen Google Takvim web linki yerine "iCal biçimindeki gizli adres" (.ics) bağlantısını girin.', 'error');
+        return false;
       }
 
       // Check Google Calendar public URL pitfall
@@ -123,7 +139,7 @@ export default function CalendarSyncGuide({
             loading: false,
             status: 'invalid',
             message: 'Google Takvim Genel Adres Hatası (404)',
-            details: 'Google Takvim bu genel adrese 404 hatası döndürür. Lütfen Google Takvim Ayarları > "Takvimi Entegre Et" altındaki "iCal biçimindeki gizli adres" linkini kopyalayıp yapıştırın.'
+            details: 'Google Takvim "Genel Adres" bağlantılarına erişim engeli (404) koymaktadır. Lütfen Google Takvim Ayarları > "Takvimi Entegre Et" altındaki "iCal biçimindeki gizli adres" linkini kopyalayıp yapıştırın.'
           }
         }));
         showToast('Google Takvim "Genel Adres" yerine "iCal biçimindeki gizli adres" linkini girmelisiniz.', 'error');
