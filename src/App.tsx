@@ -2678,9 +2678,13 @@ export default function App() {
             totalNewSessions = [...totalNewSessions, ...parsed];
             hasFetchedOnline = true;
           }
+        } else {
+          const errJson = await response.json().catch(() => ({}));
+          showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Online calendar sync failed:", err);
+        showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
       }
     }
 
@@ -2696,9 +2700,13 @@ export default function App() {
             totalNewSessions = [...totalNewSessions, ...parsed];
             hasFetchedFaceToFace = true;
           }
+        } else {
+          const errJson = await response.json().catch(() => ({}));
+          showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Face-to-face calendar sync failed:", err);
+        showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
       }
     }
 

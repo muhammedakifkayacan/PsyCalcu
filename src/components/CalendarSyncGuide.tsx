@@ -82,6 +82,61 @@ export default function CalendarSyncGuide({
     };
   }>({});
 
+  const RenderValidationStatus = ({ stateKey }: { stateKey: string }) => {
+    const state = urlValidationState[stateKey];
+    if (!state) return null;
+
+    const is404OrGoogleError = state.status === 'invalid' && (
+      state.message?.includes('404') || 
+      state.details?.includes('404') || 
+      state.details?.includes('Google') ||
+      state.details?.includes('Genel')
+    );
+
+    return (
+      <div className={`p-3.5 rounded-xl text-xs space-y-2 border animate-fade-in ${
+        state.status === 'valid'
+          ? 'bg-emerald-100/70 border-emerald-300 text-emerald-950'
+          : state.status === 'invalid'
+          ? 'bg-rose-50 border-rose-200 text-rose-900'
+          : 'bg-slate-50 border-slate-200 text-slate-700'
+      }`}>
+        <div className="flex items-center gap-1.5 font-bold">
+          {state.loading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />}
+          {state.status === 'valid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+          {state.status === 'invalid' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+          <span>{state.message}</span>
+        </div>
+        {state.details && (
+          <p className="text-[11px] leading-relaxed opacity-95 pl-5 whitespace-pre-line">{state.details}</p>
+        )}
+
+        {is404OrGoogleError && (
+          <div className="mt-2 pt-2.5 border-t border-rose-200/80 space-y-2 bg-white/90 p-3 rounded-xl text-slate-800 shadow-2xs">
+            <div className="flex items-center gap-1.5 font-bold text-amber-900 text-[11px]">
+              <HelpCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Google Takvim 404 Hatası Çözüm Rehberi:</span>
+            </div>
+            <ol className="list-decimal pl-4 text-[11px] space-y-1.5 text-slate-700 font-medium">
+              <li>
+                <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold hover:underline inline-flex items-center gap-0.5">
+                  Google Takvim'i Açın <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
+              <li>Sol tarafta ilgili takvimin yanındaki <strong>üç noktaya (...)</strong> tıklayıp <strong>"Ayarlar ve Paylaşım"</strong>a girin.</li>
+              <li>Sol menüden <strong>"Takvimi Entegre Et"</strong> başlığına tıklayın.</li>
+              <li>
+                <span className="text-rose-700 font-bold">❌ Yanlış:</span> "Genel adres" başlığı altındaki link Google tarafından engellenir (404 hatası verir).
+                <br/>
+                <span className="text-emerald-700 font-bold">✅ Doğru:</span> En alttaki <strong>"iCal biçimindeki GİZLİ ADRES"</strong> kutusundaki adresi kopyalayıp buraya yapıştırın.
+              </li>
+            </ol>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const validateCalendarUrl = async (rawUrl: string, key: string) => {
     const url = rawUrl.trim();
     if (!url) {
@@ -784,25 +839,7 @@ export default function CalendarSyncGuide({
                 </div>
 
                 {/* Inline Validation Status Box */}
-                {urlValidationState['online'] && (
-                  <div className={`p-3 rounded-xl text-xs space-y-1 border animate-fade-in ${
-                    urlValidationState['online'].status === 'valid'
-                      ? 'bg-emerald-100/70 border-emerald-300 text-emerald-950'
-                      : urlValidationState['online'].status === 'invalid'
-                      ? 'bg-rose-50 border-rose-200 text-rose-900'
-                      : 'bg-slate-50 border-slate-200 text-slate-700'
-                  }`}>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      {urlValidationState['online'].loading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600 shrink-0" />}
-                      {urlValidationState['online'].status === 'valid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                      {urlValidationState['online'].status === 'invalid' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-                      <span>{urlValidationState['online'].message}</span>
-                    </div>
-                    {urlValidationState['online'].details && (
-                      <p className="text-[11px] leading-relaxed opacity-90 pl-5">{urlValidationState['online'].details}</p>
-                    )}
-                  </div>
-                )}
+                <RenderValidationStatus stateKey="online" />
 
                 {onlineShowConfirm && (
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">
@@ -902,25 +939,7 @@ export default function CalendarSyncGuide({
                 </div>
 
                 {/* Inline Validation Status Box */}
-                {urlValidationState['faceToFace'] && (
-                  <div className={`p-3 rounded-xl text-xs space-y-1 border animate-fade-in ${
-                    urlValidationState['faceToFace'].status === 'valid'
-                      ? 'bg-emerald-100/70 border-emerald-300 text-emerald-950'
-                      : urlValidationState['faceToFace'].status === 'invalid'
-                      ? 'bg-rose-50 border-rose-200 text-rose-900'
-                      : 'bg-slate-50 border-slate-200 text-slate-700'
-                  }`}>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      {urlValidationState['faceToFace'].loading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />}
-                      {urlValidationState['faceToFace'].status === 'valid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                      {urlValidationState['faceToFace'].status === 'invalid' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-                      <span>{urlValidationState['faceToFace'].message}</span>
-                    </div>
-                    {urlValidationState['faceToFace'].details && (
-                      <p className="text-[11px] leading-relaxed opacity-90 pl-5">{urlValidationState['faceToFace'].details}</p>
-                    )}
-                  </div>
-                )}
+                <RenderValidationStatus stateKey="faceToFace" />
 
                 {faceToFaceShowConfirm && (
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">

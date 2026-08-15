@@ -458,6 +458,18 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
       // Google Calendar path requirement: Replace @ with %40 in URL path
       if (normalizedUrl.includes("google.com")) {
+        if (normalizedUrl.includes("/public/basic.ics")) {
+          return res.status(400).json({
+            error: "Google Takvim 'Genel adres' (.ics) bağlantılarına erişim engeli (404) koymaktadır. Lütfen Google Takvim Ayarları > 'Takvimi Entegre Et' altındaki 'iCal biçimindeki GİZLİ ADRES' bağlantısını kopyalayıp girin."
+          });
+        }
+
+        if (normalizedUrl.includes("/embed") || normalizedUrl.includes("cid=") || normalizedUrl.includes("/calendar/u/") || normalizedUrl.includes("/calendar/r")) {
+          return res.status(400).json({
+            error: "Girdiğiniz bağlantı Google Takvim web arayüzü bağlantısıdır. Seansların otomatik çekilmesi için 'Takvimi Entegre Et' bölümündeki 'iCal biçimindeki gizli adres' (.ics) bağlantısını kullanmalısınız."
+          });
+        }
+
         // Convert any @ to %40 for google calendar URLs
         normalizedUrl = normalizedUrl.replace(/@/g, "%40");
       } else {
