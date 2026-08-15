@@ -4340,20 +4340,6 @@ export default function App() {
 
                             {/* Quick Actions (Hover visible on desktop, always visible on mobile) */}
                             <div className="flex items-center gap-2 border-l border-[#e5e1d8]/40 pl-3 shrink-0 flex-wrap">
-                              {/* Jump to Session in Agenda */}
-                              <button
-                                onClick={() => {
-                                  setSelectedDate(session.date);
-                                  setActiveTab('agenda');
-                                  showToast(`${session.date} tarihli ajandaya gidildi.`, 'info');
-                                }}
-                                className="p-2 md:px-2.5 md:py-1 rounded-xl md:rounded-lg bg-emerald-50/90 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100/90 transition-all cursor-pointer font-bold flex items-center gap-1.5 text-xs shadow-3xs"
-                                title="Ajandada Göster / Seansa Git"
-                              >
-                                <CalendarIcon className="w-3.5 h-3.5 text-emerald-700" />
-                                <span className="text-[11px] font-semibold">Seansa Git</span>
-                              </button>
-
                               {/* Toggle Type */}
                               <button
                                 onClick={() => {
