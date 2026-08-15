@@ -3839,20 +3839,6 @@ export default function App() {
                         )}
                       </AnimatePresence>
                     </div>
-
-                    {/* Primary Add Session Button */}
-                    <button 
-                      id="add-session-btn"
-                      onClick={() => {
-                        setEditingSession(null);
-                        setIsSessionModalOpen(true);
-                      }}
-                      className="px-3.5 sm:px-5 py-1.5 sm:py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-xl sm:rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="hidden sm:inline">Yeni Seans Ekle</span>
-                      <span className="sm:hidden">Ekle</span>
-                    </button>
                   </div>
                 </div>
 
