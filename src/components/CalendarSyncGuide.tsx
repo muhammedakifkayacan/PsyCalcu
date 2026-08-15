@@ -110,13 +110,13 @@ export default function CalendarSyncGuide({
 
     try {
       let cleanUrl = url;
-      if (cleanUrl.includes('calendar.google.com')) {
+      if (cleanUrl.includes('google.com')) {
         cleanUrl = cleanUrl.replace(/@/g, '%40');
         cleanUrl = cleanUrl.replace(/%2540/g, '%40');
       }
 
       // Check Google Calendar public URL pitfall
-      if (cleanUrl.includes('calendar.google.com') && cleanUrl.includes('/public/basic.ics')) {
+      if (cleanUrl.includes('google.com') && cleanUrl.includes('/public/basic.ics')) {
         setUrlValidationState(prev => ({
           ...prev,
           [key]: {
