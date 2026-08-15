@@ -451,7 +451,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       }
 
       // If it is Google Calendar, Google strictly requires %40 instead of @ in the calendar ID path
-      if (normalizedUrl.includes("calendar.google.com")) {
+      if (normalizedUrl.includes("google.com")) {
         normalizedUrl = normalizedUrl.replace(/@/g, "%40");
         normalizedUrl = normalizedUrl.replace(/%2540/g, "%40");
       } else {

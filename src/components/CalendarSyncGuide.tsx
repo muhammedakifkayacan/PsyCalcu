@@ -72,6 +72,144 @@ export default function CalendarSyncGuide({
   const [activeGuideTab, setActiveGuideTab] = useState<'google' | 'apple' | 'outlook'>('google');
   const [showHowToGuide, setShowHowToGuide] = useState(false);
 
+  // URL Validation state
+  const [urlValidationState, setUrlValidationState] = useState<{
+    [key: string]: {
+      loading: boolean;
+      status: 'idle' | 'valid' | 'invalid';
+      message: string;
+      details?: string;
+    };
+  }>({});
+
+  const validateCalendarUrl = async (rawUrl: string, key: string) => {
+    const url = rawUrl.trim();
+    if (!url) {
+      setUrlValidationState(prev => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          status: 'invalid',
+          message: 'URL Girilmedi',
+          details: 'Lütfen doğrulanacak bir takvim URL adresi girin.'
+        }
+      }));
+      showToast('Lütfen geçerli bir takvim URL adresi girin.', 'error');
+      return false;
+    }
+
+    setUrlValidationState(prev => ({
+      ...prev,
+      [key]: {
+        loading: true,
+        status: 'idle',
+        message: 'Kontrol ediliyor...',
+        details: 'Takvim sunucusundan erişilebilirlik ve iCal başlığı (BEGIN:VCALENDAR) doğrulanıyor.'
+      }
+    }));
+
+    try {
+      let cleanUrl = url;
+      if (cleanUrl.includes('calendar.google.com')) {
+        cleanUrl = cleanUrl.replace(/@/g, '%40');
+        cleanUrl = cleanUrl.replace(/%2540/g, '%40');
+      }
+
+      // Check Google Calendar public URL pitfall
+      if (cleanUrl.includes('calendar.google.com') && cleanUrl.includes('/public/basic.ics')) {
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'invalid',
+            message: 'Google Takvim Genel Adres Hatası (404)',
+            details: 'Google Takvim bu genel adrese 404 hatası döndürür. Lütfen Google Takvim Ayarları > "Takvimi Entegre Et" altındaki "iCal biçimindeki gizli adres" linkini kopyalayıp yapıştırın.'
+          }
+        }));
+        showToast('Google Takvim "Genel Adres" yerine "iCal biçimindeki gizli adres" linkini girmelisiniz.', 'error');
+        return false;
+      }
+
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(cleanUrl)}`);
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson.error || `Sunucu Hatası: ${response.status} ${response.statusText}`;
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'invalid',
+            message: `Doğrulama Başarısız (${response.status})`,
+            details: errMsg
+          }
+        }));
+        showToast(`URL Doğrulama Hatası: ${errMsg}`, 'error');
+        return false;
+      }
+
+      const icsText = await response.text();
+      const upper = icsText.toUpperCase();
+
+      if (upper.includes('BEGIN:VCALENDAR') || upper.includes('BEGIN:VEVENT')) {
+        const eventCount = (upper.match(/BEGIN:VEVENT/g) || []).length;
+        let calName = '';
+        const calNameMatch = icsText.match(/X-WR-CALNAME:(.*)/i);
+        if (calNameMatch && calNameMatch[1]) {
+          calName = calNameMatch[1].trim();
+        }
+
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'valid',
+            message: '✓ URL Geçerli ve Erişilebilir Takvim!',
+            details: `Format doğrulandı. ${eventCount} adet seans/etkinlik tespit edildi.${calName ? ` Takvim Adı: "${calName}"` : ''}`
+          }
+        }));
+        showToast(`URL Başarıyla Doğrulandı! ${eventCount} seans/etkinlik tespit edildi.`, 'success');
+        return true;
+      } else if (icsText.trim().startsWith('<html') || icsText.trim().startsWith('<!DOCTYPE') || icsText.trim().startsWith('<!doctype')) {
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'invalid',
+            message: 'Geçersiz İçerik (HTML Web Sayfası)',
+            details: 'Girdiğiniz adres bir iCal/webcal dosyası yerine bir web sayfası döndürdü. Lütfen .ics veya webcal abonelik bağlantısını kullandığınızdan emin olun.'
+          }
+        }));
+        showToast('Girdiğiniz link takvim dosyası yerine bir web sayfası döndürdü.', 'error');
+        return false;
+      } else {
+        setUrlValidationState(prev => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            status: 'invalid',
+            message: 'Geçersiz Takvim Formatı',
+            details: 'Dosyada "BEGIN:VCALENDAR" takvim başlığı bulunamadı.'
+          }
+        }));
+        showToast('Geçersiz takvim formatı.', 'error');
+        return false;
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || 'Sunucuya erişilemedi.';
+      setUrlValidationState(prev => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          status: 'invalid',
+          message: 'Bağlantı Hatası',
+          details: errMsg
+        }
+      }));
+      showToast(`URL Doğrulama Hatası: ${errMsg}`, 'error');
+      return false;
+    }
+  };
+
   React.useEffect(() => {
     let timer: any;
     if (deleteCountdown > 0) {
@@ -584,11 +722,26 @@ export default function CalendarSyncGuide({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Online Calendar Input & Sync */}
             <div className="bg-emerald-50/30 p-4 rounded-2xl border border-emerald-100 flex flex-col justify-between space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                  <Laptop className="w-3.5 h-3.5" />
-                  Online Seanslar Takvim Linki
-                </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                    <Laptop className="w-3.5 h-3.5" />
+                    Online Seanslar Takvim Linki
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => validateCalendarUrl(onlineUrl, 'online')}
+                    disabled={urlValidationState['online']?.loading}
+                    className="px-2.5 py-1 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-emerald-200/80"
+                  >
+                    {urlValidationState['online']?.loading ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    )}
+                    URL Doğrula
+                  </button>
+                </div>
                 <div className="relative">
                   <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isOnlineLocked ? 'text-slate-400' : 'text-emerald-600'}`} />
                   <input
@@ -613,6 +766,28 @@ export default function CalendarSyncGuide({
                     </button>
                   )}
                 </div>
+
+                {/* Inline Validation Status Box */}
+                {urlValidationState['online'] && (
+                  <div className={`p-3 rounded-xl text-xs space-y-1 border animate-fade-in ${
+                    urlValidationState['online'].status === 'valid'
+                      ? 'bg-emerald-100/70 border-emerald-300 text-emerald-950'
+                      : urlValidationState['online'].status === 'invalid'
+                      ? 'bg-rose-50 border-rose-200 text-rose-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {urlValidationState['online'].loading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600 shrink-0" />}
+                      {urlValidationState['online'].status === 'valid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+                      {urlValidationState['online'].status === 'invalid' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                      <span>{urlValidationState['online'].message}</span>
+                    </div>
+                    {urlValidationState['online'].details && (
+                      <p className="text-[11px] leading-relaxed opacity-90 pl-5">{urlValidationState['online'].details}</p>
+                    )}
+                  </div>
+                )}
+
                 {onlineShowConfirm && (
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">
                     <div className="flex items-start gap-2 text-xs text-amber-800 leading-normal">
@@ -665,11 +840,26 @@ export default function CalendarSyncGuide({
 
             {/* Face-to-Face Calendar Input & Sync */}
             <div className="bg-amber-50/30 p-4 rounded-2xl border border-amber-100 flex flex-col justify-between space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  Yüzyüze Seanslar Takvim Linki
-                </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    Yüzyüze Seanslar Takvim Linki
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => validateCalendarUrl(faceToFaceUrl, 'faceToFace')}
+                    disabled={urlValidationState['faceToFace']?.loading}
+                    className="px-2.5 py-1 bg-amber-600/10 hover:bg-amber-600/20 text-amber-900 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-amber-200/80"
+                  >
+                    {urlValidationState['faceToFace']?.loading ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 text-amber-600" />
+                    )}
+                    URL Doğrula
+                  </button>
+                </div>
                 <div className="relative">
                   <Link2 className={`absolute left-3 top-2.5 w-4 h-4 ${isFaceToFaceLocked ? 'text-slate-400' : 'text-amber-600'}`} />
                   <input
@@ -694,6 +884,28 @@ export default function CalendarSyncGuide({
                     </button>
                   )}
                 </div>
+
+                {/* Inline Validation Status Box */}
+                {urlValidationState['faceToFace'] && (
+                  <div className={`p-3 rounded-xl text-xs space-y-1 border animate-fade-in ${
+                    urlValidationState['faceToFace'].status === 'valid'
+                      ? 'bg-emerald-100/70 border-emerald-300 text-emerald-950'
+                      : urlValidationState['faceToFace'].status === 'invalid'
+                      ? 'bg-rose-50 border-rose-200 text-rose-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {urlValidationState['faceToFace'].loading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />}
+                      {urlValidationState['faceToFace'].status === 'valid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+                      {urlValidationState['faceToFace'].status === 'invalid' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                      <span>{urlValidationState['faceToFace'].message}</span>
+                    </div>
+                    {urlValidationState['faceToFace'].details && (
+                      <p className="text-[11px] leading-relaxed opacity-90 pl-5">{urlValidationState['faceToFace'].details}</p>
+                    )}
+                  </div>
+                )}
+
                 {faceToFaceShowConfirm && (
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mt-1.5 animate-fade-in">
                     <div className="flex items-start gap-2 text-xs text-amber-800 leading-normal">
@@ -904,6 +1116,19 @@ export default function CalendarSyncGuide({
                 <div className="flex items-center gap-1.5 justify-end">
                   <button
                     type="button"
+                    onClick={() => validateCalendarUrl(item.url, `multi_${index}`)}
+                    disabled={urlValidationState[`multi_${index}`]?.loading}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-full transition-all cursor-pointer flex items-center gap-1 border border-slate-200"
+                  >
+                    {urlValidationState[`multi_${index}`]?.loading ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-slate-600" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 text-slate-600" />
+                    )}
+                    URL Doğrula
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleSyncSingleMultiCalendar(index)}
                     disabled={isMultiCalendarSyncing[index]}
                     className="px-3.5 py-1.5 bg-[#6b705c]/10 hover:bg-[#6b705c]/20 text-[#6b705c] text-[10px] font-bold rounded-full transition-all cursor-pointer flex items-center gap-1"
@@ -945,7 +1170,25 @@ export default function CalendarSyncGuide({
                     </div>
                   </div>
                   <div className="space-y-1 col-span-1">
-                    <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI TAKVİM LİNKİ</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-[#555a4a] tracking-wider block">KİRACI TAKVİM LİNKİ</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const inputEl = document.getElementById('new-multi-calendar-url') as HTMLInputElement;
+                          validateCalendarUrl(inputEl?.value || '', 'multi_new');
+                        }}
+                        disabled={urlValidationState['multi_new']?.loading}
+                        className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[9px] font-bold rounded-md transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        {urlValidationState['multi_new']?.loading ? (
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-2.5 h-2.5 text-slate-600" />
+                        )}
+                        URL Doğrula
+                      </button>
+                    </div>
                     <div className="relative">
                       <Link2 className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
                       <input

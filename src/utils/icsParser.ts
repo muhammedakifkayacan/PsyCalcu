@@ -1,5 +1,13 @@
 import { Session, SessionType } from '../types';
 
+interface ParsedRrule {
+  freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  interval: number;
+  until?: string; // YYYY-MM-DD
+  count?: number;
+  byDay?: string[]; // ['MO', 'TU', ...]
+}
+
 function parseISO8601Duration(durationStr: string): number | null {
   const regex = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
   const match = durationStr.trim().match(regex);
@@ -11,16 +19,25 @@ function parseISO8601Duration(durationStr: string): number | null {
   return total > 0 ? total : null;
 }
 
-function parseIcsDateTimeToUtcMs(rawLine: string): number | null {
-  const firstColon = rawLine.indexOf(':');
-  if (firstColon === -1) return null;
-  const rawValue = rawLine.substring(firstColon + 1).trim();
-  const cleanValue = rawValue.replace(/[-:]/g, '');
+/**
+ * Converts any ICS date/time string into a local YYYY-MM-DD and HH:mm object,
+ * properly converting UTC (Z) or TZID times into local Turkey / target timezone time!
+ */
+function parseIcsDateTimeToLocal(
+  rawLine: string,
+  targetTimezone: string = 'Europe/Istanbul'
+): { dateStr: string; timeStr: string; utcMs: number } | null {
+  if (!rawLine) return null;
+
+  const colonIdx = rawLine.indexOf(':');
+  const rawValue = colonIdx !== -1 ? rawLine.substring(colonIdx + 1).trim() : rawLine.trim();
+  const cleanValue = rawValue.replace(/[-:]/g, ''); // e.g. 20260815T110000Z or 20260815T140000 or 20260815
 
   if (cleanValue.length < 8) return null;
 
+  const isUtc = cleanValue.endsWith('Z') || rawLine.includes('Z');
   const year = parseInt(cleanValue.substring(0, 4), 10);
-  const month = parseInt(cleanValue.substring(4, 6), 10) - 1;
+  const month = parseInt(cleanValue.substring(4, 6), 10);
   const day = parseInt(cleanValue.substring(6, 8), 10);
 
   if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
@@ -38,13 +55,52 @@ function parseIcsDateTimeToUtcMs(rawLine: string): number | null {
     }
   }
 
-  return Date.UTC(year, month, day, hour, minute, second);
+  if (isUtc) {
+    const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+    const dateObj = new Date(utcMs);
+
+    try {
+      // Format to target local timezone (Europe/Istanbul UTC+3)
+      const formatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: targetTimezone || 'Europe/Istanbul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      // Output format in 'sv-SE': "YYYY-MM-DD HH:mm"
+      const formatted = formatter.format(dateObj);
+      const parts = formatted.split(' ');
+      if (parts.length === 2) {
+        return {
+          dateStr: parts[0],
+          timeStr: parts[1],
+          utcMs
+        };
+      }
+    } catch (e) {
+      // Fallback if timezone conversion fails
+    }
+
+    const utcDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const utcTimeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return { dateStr: utcDateStr, timeStr: utcTimeStr, utcMs };
+  } else {
+    // Local time string
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+    return { dateStr, timeStr, utcMs };
+  }
 }
 
 function calculateEventDuration(
   dtStartRaw?: string,
   dtEndRaw?: string,
-  durationRaw?: string
+  durationRaw?: string,
+  targetTimezone: string = 'Europe/Istanbul'
 ): number {
   if (durationRaw) {
     const parsed = parseISO8601Duration(durationRaw);
@@ -52,10 +108,10 @@ function calculateEventDuration(
   }
 
   if (dtStartRaw && dtEndRaw) {
-    const startMs = parseIcsDateTimeToUtcMs(dtStartRaw);
-    const endMs = parseIcsDateTimeToUtcMs(dtEndRaw);
-    if (startMs !== null && endMs !== null && endMs > startMs) {
-      const diffMins = Math.round((endMs - startMs) / (1000 * 60));
+    const startObj = parseIcsDateTimeToLocal(dtStartRaw, targetTimezone);
+    const endObj = parseIcsDateTimeToLocal(dtEndRaw, targetTimezone);
+    if (startObj && endObj && endObj.utcMs > startObj.utcMs) {
+      const diffMins = Math.round((endObj.utcMs - startObj.utcMs) / (1000 * 60));
       if (diffMins > 0) return diffMins;
     }
   }
@@ -63,9 +119,111 @@ function calculateEventDuration(
   return 50; // Default fallback duration in minutes
 }
 
+function parseRruleString(rruleStr: string, calTimezone: string): ParsedRrule | null {
+  const cleanStr = rruleStr.replace(/^RRULE:/i, '').trim();
+  if (!cleanStr) return null;
+
+  const parts = cleanStr.split(';');
+  let freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | null = null;
+  let interval = 1;
+  let until: string | undefined;
+  let count: number | undefined;
+  let byDay: string[] | undefined;
+
+  for (const part of parts) {
+    const [key, val] = part.split('=');
+    if (!key || !val) continue;
+    const uKey = key.toUpperCase();
+    const uVal = val.toUpperCase();
+
+    if (uKey === 'FREQ') {
+      if (['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(uVal)) {
+        freq = uVal as any;
+      }
+    } else if (uKey === 'INTERVAL') {
+      interval = parseInt(uVal, 10) || 1;
+    } else if (uKey === 'COUNT') {
+      count = parseInt(uVal, 10);
+    } else if (uKey === 'UNTIL') {
+      const parsedUntil = parseIcsDateTimeToLocal(uVal, calTimezone);
+      if (parsedUntil) {
+        until = parsedUntil.dateStr;
+      }
+    } else if (uKey === 'BYDAY') {
+      byDay = uVal.split(',').map(d => d.trim().substring(d.length - 2)); // e.g. '2TU' -> 'TU'
+    }
+  }
+
+  if (!freq) return null;
+  return { freq, interval, until, count, byDay };
+}
+
+function generateOccurrences(
+  startParsed: { dateStr: string; timeStr: string },
+  rrule: ParsedRrule,
+  exdates: Set<string>,
+  windowStart: string,
+  windowEnd: string
+): { dateStr: string; timeStr: string }[] {
+  const occurrences: { dateStr: string; timeStr: string }[] = [];
+  const dayMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+
+  const [sY, sM, sD] = startParsed.dateStr.split('-').map(Number);
+  let currDate = new Date(sY, sM - 1, sD);
+  let countProcessed = 0;
+  const maxSafety = 350; // Safety guard for infinite loop prevention
+
+  while (countProcessed < maxSafety) {
+    const currYear = currDate.getFullYear();
+    const currMonth = String(currDate.getMonth() + 1).padStart(2, '0');
+    const currDay = String(currDate.getDate()).padStart(2, '0');
+    const currDateStr = `${currYear}-${currMonth}-${currDay}`;
+
+    // Stop if past UNTIL or past windowEnd
+    if (rrule.until && currDateStr > rrule.until) break;
+    if (currDateStr > windowEnd) break;
+
+    // Check count limit
+    if (rrule.count !== undefined && countProcessed >= rrule.count) break;
+
+    let isMatch = true;
+    if (rrule.freq === 'WEEKLY' && rrule.byDay && rrule.byDay.length > 0) {
+      const dayNum = currDate.getDay();
+      const matchDay = rrule.byDay.some(d => dayMap[d] === dayNum);
+      if (!matchDay) isMatch = false;
+    }
+
+    if (isMatch) {
+      countProcessed++;
+      if (currDateStr >= windowStart && !exdates.has(currDateStr)) {
+        occurrences.push({ dateStr: currDateStr, timeStr: startParsed.timeStr });
+      }
+    }
+
+    // Step to next candidate date
+    if (rrule.freq === 'DAILY') {
+      currDate.setDate(currDate.getDate() + rrule.interval);
+    } else if (rrule.freq === 'WEEKLY') {
+      if (rrule.byDay && rrule.byDay.length > 1) {
+        currDate.setDate(currDate.getDate() + 1);
+      } else {
+        currDate.setDate(currDate.getDate() + (7 * rrule.interval));
+      }
+    } else if (rrule.freq === 'MONTHLY') {
+      currDate.setMonth(currDate.getMonth() + rrule.interval);
+    } else if (rrule.freq === 'YEARLY') {
+      currDate.setFullYear(currDate.getFullYear() + rrule.interval);
+    } else {
+      break;
+    }
+  }
+
+  return occurrences;
+}
+
 /**
  * Parses iCalendar (.ics) text format into structured Session objects.
- * This supports real Apple Calendar exports!
+ * Supports Google Calendar, Apple Calendar, Outlook, and all standard RFC 5545 iCal feeds!
  */
 export function parseICS(
   icsText: string,
@@ -77,212 +235,225 @@ export function parseICS(
   autoMarkShortEvents: boolean = true
 ): Session[] {
   const sessions: Session[] = [];
-  
-  // Remove Byte Order Mark (BOM) if present
-  const cleanText = icsText.replace(/^\uFEFF/, '').replace(/^\uFFFE/, '');
 
-  // Normalize all newlines to standard \n to support CRLF (\r\n), LF (\n) and old Mac CR (\r) line endings.
+  // Remove Byte Order Mark (BOM)
+  const cleanText = icsText.replace(/^\uFEFF/, '').replace(/^\uFFFE/, '');
   const normalizedText = cleanText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  
-  // RFC 5545 Unfolding: Combine lines split by a newline followed by a space or horizontal tab
   const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
   const lines = unfoldedText.split('\n');
-  
-  let currentEvent: Partial<Session> & { 
-    dtStartRaw?: string; 
-    dtEndRaw?: string; 
-    durationRaw?: string; 
-    descriptionRaw?: string; 
-    locationRaw?: string; 
-    noteRaw?: string; 
-  } | null = null;
-  
+
+  // Detect calendar-wide timezone if available
+  let calTimezone = 'Europe/Istanbul';
+  for (const l of lines) {
+    if (l.toUpperCase().startsWith('X-WR-TIMEZONE:')) {
+      const tzVal = l.substring(14).trim();
+      if (tzVal) calTimezone = tzVal;
+      break;
+    }
+  }
+
+  // Define date window: 60 days in past up to 180 days in future
+  const todayObj = new Date();
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(todayObj.getDate() - 60);
+
+  let windowStart = sixtyDaysAgo.toISOString().split('T')[0];
+  if (membershipDate) {
+    windowStart = membershipDate.split('T')[0];
+  }
+
+  const future180Days = new Date();
+  future180Days.setDate(todayObj.getDate() + 180);
+  const windowEnd = future180Days.toISOString().split('T')[0];
+
+  interface RawEvent {
+    uid: string;
+    summary: string;
+    dtStartRaw?: string;
+    dtEndRaw?: string;
+    durationRaw?: string;
+    descriptionRaw?: string;
+    locationRaw?: string;
+    noteRaw?: string;
+    rruleRaw?: string;
+    exdates: Set<string>;
+    statusRaw?: string;
+  }
+
+  let currentRaw: RawEvent | null = null;
+  const rawEvents: RawEvent[] = [];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    
+
     const upperLine = line.toUpperCase();
     if (upperLine === 'BEGIN:VEVENT' || upperLine.startsWith('BEGIN:VEVENT')) {
-      currentEvent = {
-        id: 'ics_' + Math.random().toString(36).substr(2, 9),
-        clientName: 'İsimsiz Seans',
-        type: forcedType || 'online',
-        date: new Date().toISOString().split('T')[0],
-        time: '09:00',
-        duration: 50,
-        price: defaultPrice,
-        hasBabysitterFee: true,
-        babysitterFeeAmount: defaultBabysitterFee,
-        hasOfficeRentFee: forcedType === 'face-to-face',
-        officeRentFeeAmount: forcedType === 'face-to-face' ? defaultOfficeRentFee : 0,
-        isSyncedFromCalendar: true,
-        syncedCalendarType: forcedType
+      currentRaw = {
+        uid: 'ics_' + Math.random().toString(36).substring(2, 11),
+        summary: 'İsimsiz Seans',
+        exdates: new Set<string>()
       };
-    } else if ((upperLine === 'END:VEVENT' || upperLine.startsWith('END:VEVENT')) && currentEvent) {
-      // Process date and time from dtStartRaw
-      if (currentEvent.dtStartRaw) {
-        // Find everything after the first colon to get the raw date-time value
-        const firstColonIndex = currentEvent.dtStartRaw.indexOf(':');
-        const rawValue = firstColonIndex !== -1 ? currentEvent.dtStartRaw.substring(firstColonIndex + 1).trim() : '';
-        
-        // Remove standard formatting symbols like - and : to normalize
-        // e.g. "2026-07-01T18:30:00" -> "20260701T183000"
-        const cleanValue = rawValue.replace(/[-:]/g, ''); 
-        
-        if (cleanValue.length >= 8) {
-          const year = cleanValue.substring(0, 4);
-          const month = cleanValue.substring(4, 6);
-          const day = cleanValue.substring(6, 8);
-          currentEvent.date = `${year}-${month}-${day}`;
-          
-          if (cleanValue.includes('T') && cleanValue.indexOf('T') + 5 <= cleanValue.length) {
-            const tIndex = cleanValue.indexOf('T');
-            const hour = cleanValue.substring(tIndex + 1, tIndex + 3);
-            const minute = cleanValue.substring(tIndex + 3, tIndex + 5);
-            currentEvent.time = `${hour}:${minute}`;
-          }
-        }
-      }
-
-      // Calculate event duration in minutes from DTSTART, DTEND or DURATION
-      currentEvent.duration = calculateEventDuration(
-        currentEvent.dtStartRaw,
-        currentEvent.dtEndRaw,
-        currentEvent.durationRaw
-      );
-      
-      // Determine type (online or face-to-face) from summary, description or location
-      let finalType: SessionType = 'online';
-      if (forcedType) {
-        finalType = forcedType;
-      } else {
-        const searchSource = (
-          (currentEvent.clientName || '') + ' ' + 
-          (currentEvent.descriptionRaw || '') + ' ' + 
-          (currentEvent.locationRaw || '') + ' ' + 
-          (currentEvent.noteRaw || '')
-        ).toLowerCase();
-        if (searchSource.includes('yüzyüze') || searchSource.includes('yüz yüze') || searchSource.includes('ofis') || searchSource.includes('klinik') || searchSource.includes('face')) {
-          finalType = 'face-to-face';
-        } else if (searchSource.includes('iptal') || searchSource.includes('cancel')) {
-          finalType = 'cancelled';
-        }
-      }
-
-      // Duration rule: Events 30 minutes or less from calendar are marked as 'non-session' (seans değil)
-      // so they do not impact accounting or financial calculations when autoMarkShortEvents is true.
-      if (autoMarkShortEvents && currentEvent.duration && currentEvent.duration <= 30) {
-        finalType = 'non-session';
-      }
-
-      currentEvent.type = finalType;
-      
-      // Construct notes from descriptionRaw, noteRaw, locationRaw
-      const notesParts: string[] = [];
-      if (currentEvent.descriptionRaw) notesParts.push(currentEvent.descriptionRaw);
-      if (currentEvent.noteRaw) notesParts.push(currentEvent.noteRaw);
-      if (currentEvent.locationRaw) notesParts.push(`Konum: ${currentEvent.locationRaw}`);
-      if (notesParts.length > 0) {
-        currentEvent.notes = notesParts.join('\n');
-      }
-      
-      // Cutoff check: Only import events from the last 60 days to save on DB writes & performance
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const cutOffDateStr = sixtyDaysAgo.toISOString().split('T')[0];
-
-      if (currentEvent.date && currentEvent.date < cutOffDateStr) {
-        currentEvent = null;
-        continue;
-      }
-      
-      // Determine if this is a session before membership date OR in a past month (if no membership date)
-      let isBeforeMembership = false;
-      if (membershipDate) {
-        const membershipDayStr = membershipDate.split('T')[0];
-        isBeforeMembership = !!(currentEvent.date && currentEvent.date < membershipDayStr);
-      } else {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth(); // 0-indexed
-        const currentMonthStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-        isBeforeMembership = !!(currentEvent.date && currentEvent.date < currentMonthStartStr);
-      }
-
-      if (finalType === 'cancelled' || finalType === 'non-session' || isBeforeMembership) {
-        currentEvent.price = 0;
-        currentEvent.hasBabysitterFee = false;
-        currentEvent.babysitterFeeAmount = 0;
-        currentEvent.hasOfficeRentFee = false;
-        currentEvent.officeRentFeeAmount = 0;
-        currentEvent.paymentStatus = 'unpaid';
-      } else if (finalType === 'rent-income') {
-        currentEvent.price = defaultOfficeRentFee;
-        currentEvent.hasBabysitterFee = false;
-        currentEvent.babysitterFeeAmount = 0;
-        currentEvent.hasOfficeRentFee = false;
-        currentEvent.officeRentFeeAmount = 0;
-        currentEvent.paymentStatus = 'unpaid';
-      } else if (finalType === 'face-to-face') {
-        currentEvent.hasOfficeRentFee = true;
-        currentEvent.officeRentFeeAmount = defaultOfficeRentFee;
-        currentEvent.paymentStatus = 'unpaid';
-      } else {
-        currentEvent.hasOfficeRentFee = false;
-        currentEvent.officeRentFeeAmount = 0;
-        currentEvent.paymentStatus = 'unpaid';
-      }
-      
-      sessions.push(currentEvent as Session);
-      currentEvent = null;
-    } else if (currentEvent) {
+    } else if ((upperLine === 'END:VEVENT' || upperLine.startsWith('END:VEVENT')) && currentRaw) {
+      rawEvents.push(currentRaw);
+      currentRaw = null;
+    } else if (currentRaw) {
       const colonIndex = line.indexOf(':');
       if (colonIndex !== -1) {
         const keyPart = line.substring(0, colonIndex);
         const valPart = line.substring(colonIndex + 1).trim();
-        
-        // Extract base property name (e.g. SUMMARY;CHARSET=UTF-8 -> SUMMARY)
         const key = keyPart.split(';')[0].toUpperCase();
-        
+
         const cleanVal = valPart
           .replace(/\\,/g, ',')
           .replace(/\\;/g, ';')
           .replace(/\\n/gi, '\n');
-        
+
         if (key === 'SUMMARY') {
-          currentEvent.clientName = cleanVal;
+          currentRaw.summary = cleanVal || 'İsimsiz Seans';
         } else if (key === 'UID') {
-          // Use a clean, sanitized UID from the iCal feed as the stable session ID
-          currentEvent.id = 'ics_' + cleanVal.replace(/[^a-zA-Z0-9_\-]/g, '').substring(0, 50);
+          currentRaw.uid = cleanVal.replace(/[^a-zA-Z0-9_\-]/g, '').substring(0, 50) || currentRaw.uid;
         } else if (key === 'DTSTART') {
-          currentEvent.dtStartRaw = line;
+          currentRaw.dtStartRaw = line;
         } else if (key === 'DTEND') {
-          currentEvent.dtEndRaw = line;
+          currentRaw.dtEndRaw = line;
         } else if (key === 'DURATION') {
-          currentEvent.durationRaw = cleanVal;
+          currentRaw.durationRaw = cleanVal;
         } else if (key === 'DESCRIPTION') {
-          currentEvent.descriptionRaw = cleanVal;
+          currentRaw.descriptionRaw = cleanVal;
         } else if (key === 'NOTE' || key === 'COMMENT') {
-          currentEvent.noteRaw = cleanVal;
+          currentRaw.noteRaw = cleanVal;
         } else if (key === 'LOCATION') {
-          currentEvent.locationRaw = cleanVal;
+          currentRaw.locationRaw = cleanVal;
+        } else if (key === 'RRULE') {
+          currentRaw.rruleRaw = line;
+        } else if (key === 'EXDATE') {
+          const exParsed = parseIcsDateTimeToLocal(line, calTimezone);
+          if (exParsed) {
+            currentRaw.exdates.add(exParsed.dateStr);
+          }
+        } else if (key === 'STATUS') {
+          currentRaw.statusRaw = cleanVal.toUpperCase();
         }
       }
     }
   }
-  
+
+  // Process raw events into sessions
+  for (const raw of rawEvents) {
+    if (raw.statusRaw === 'CANCELLED') continue;
+
+    if (!raw.dtStartRaw) continue;
+    const startParsed = parseIcsDateTimeToLocal(raw.dtStartRaw, calTimezone);
+    if (!startParsed) continue;
+
+    const duration = calculateEventDuration(raw.dtStartRaw, raw.dtEndRaw, raw.durationRaw, calTimezone);
+
+    // Determine type (online, face-to-face, or cancelled)
+    let finalType: SessionType = 'online';
+    if (forcedType) {
+      finalType = forcedType;
+    } else {
+      const searchSource = (
+        (raw.summary || '') + ' ' +
+        (raw.descriptionRaw || '') + ' ' +
+        (raw.locationRaw || '') + ' ' +
+        (raw.noteRaw || '')
+      ).toLowerCase();
+
+      if (searchSource.includes('yüzyüze') || searchSource.includes('yüz yüze') || searchSource.includes('ofis') || searchSource.includes('klinik') || searchSource.includes('face')) {
+        finalType = 'face-to-face';
+      } else if (searchSource.includes('iptal') || searchSource.includes('cancel')) {
+        finalType = 'cancelled';
+      }
+    }
+
+    if (autoMarkShortEvents && duration <= 30) {
+      finalType = 'non-session';
+    }
+
+    // Notes
+    const notesParts: string[] = [];
+    if (raw.descriptionRaw) notesParts.push(raw.descriptionRaw);
+    if (raw.noteRaw) notesParts.push(raw.noteRaw);
+    if (raw.locationRaw) notesParts.push(`Konum: ${raw.locationRaw}`);
+    const notesStr = notesParts.length > 0 ? notesParts.join('\n') : undefined;
+
+    // Check if RRULE exists
+    let occurrences: { dateStr: string; timeStr: string }[] = [];
+    if (raw.rruleRaw) {
+      const rruleParsed = parseRruleString(raw.rruleRaw, calTimezone);
+      if (rruleParsed) {
+        occurrences = generateOccurrences(startParsed, rruleParsed, raw.exdates, windowStart, windowEnd);
+      }
+    }
+
+    // If no RRULE or RRULE generated 0 occurrences, fallback to single event occurrence
+    if (occurrences.length === 0) {
+      if (startParsed.dateStr >= windowStart && startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
+        occurrences.push({ dateStr: startParsed.dateStr, timeStr: startParsed.timeStr });
+      }
+    }
+
+    // Create session for each occurrence
+    for (const occ of occurrences) {
+      // Determine financial parameters based on session type
+      let price = defaultPrice;
+      let hasBabysitterFee = true;
+      let babysitterFeeAmount = defaultBabysitterFee;
+      let hasOfficeRentFee = finalType === 'face-to-face';
+      let officeRentFeeAmount = finalType === 'face-to-face' ? defaultOfficeRentFee : 0;
+
+      if (finalType === 'cancelled' || finalType === 'non-session') {
+        price = 0;
+        hasBabysitterFee = false;
+        babysitterFeeAmount = 0;
+        hasOfficeRentFee = false;
+        officeRentFeeAmount = 0;
+      } else if (finalType === 'rent-income') {
+        price = defaultOfficeRentFee;
+        hasBabysitterFee = false;
+        babysitterFeeAmount = 0;
+        hasOfficeRentFee = false;
+        officeRentFeeAmount = 0;
+      }
+
+      // Generate deterministic ID per occurrence to prevent duplicate session accumulation
+      const sessionId = occurrences.length > 1
+        ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
+        : `ics_${raw.uid}`;
+
+      const sessionItem: Session = {
+        id: sessionId,
+        clientName: raw.summary || 'İsimsiz Seans',
+        type: finalType,
+        date: occ.dateStr,
+        time: occ.timeStr,
+        duration: duration,
+        price: price,
+        hasBabysitterFee: hasBabysitterFee,
+        babysitterFeeAmount: babysitterFeeAmount,
+        hasOfficeRentFee: hasOfficeRentFee,
+        officeRentFeeAmount: officeRentFeeAmount,
+        paymentStatus: 'unpaid',
+        notes: notesStr,
+        isSyncedFromCalendar: true,
+        syncedCalendarType: forcedType
+      };
+
+      sessions.push(sessionItem);
+    }
+  }
+
   return sessions;
 }
 
 /**
  * Generates initial mock sessions if the user has no saved data in localStorage.
- * This is perfect to showcase the application beautifully on first boot, pre-populated
- * with the realistic data shown in the prompt's design theme.
  */
 export function getInitialMockSessions(defaultPrice: number, defaultBabysitterFee: number, defaultOfficeRentFee: number = 200): Session[] {
   const today = new Date().toISOString().split('T')[0];
-  
-  // Get date strings for yesterday, today, and tomorrow
+
   const getOffsetDateString = (offsetDays: number) => {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
@@ -357,7 +528,6 @@ export function getInitialMockSessions(defaultPrice: number, defaultBabysitterFe
       isSyncedFromCalendar: true,
       syncedCalendarType: 'online'
     },
-    // Yesterday's sessions for history
     {
       id: 'mock_5',
       clientName: 'Zeynep Kaya',
@@ -400,7 +570,6 @@ export function getInitialMockSessions(defaultPrice: number, defaultBabysitterFe
       officeRentFeeAmount: 0,
       isSyncedFromCalendar: false,
     },
-    // Tomorrow's sessions
     {
       id: 'mock_8',
       clientName: 'Büşra Şen',
