@@ -819,7 +819,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   </motion.button>
                   
                   <p className="text-center text-[10px] text-slate-400 font-medium">
-                    PsyCalcu v2.4 • Terapistler için Sevgiyle Tasarlandı
+                    PsyCalcu v2.5.0 • Terapistler için Sevgiyle Tasarlandı
                   </p>
                 </div>
               )}
