@@ -19,6 +19,7 @@ import {
   Building,
   ShieldCheck,
   UserCheck,
+  UserX,
   Bell,
   Sparkles,
   ChevronRight,
@@ -101,15 +102,30 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   setIsSettingsOpen,
   handleLogout
 }) => {
-  const { isPrivacyMode, togglePrivacyMode, formatMoney } = usePrivacy();
+  const { isPrivacyMode, togglePrivacyMode, isHideClientNames, toggleHideClientNames, formatMoney, formatClientName } = usePrivacy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const handlePrivacyToggle = () => {
+  const handlePrivacyToggle = (closeMenu = false) => {
     togglePrivacyMode();
     if (!isPrivacyMode) {
       showToast('Gizlilik modu açıldı 👁️‍🗨️ (Tüm tutarlar gizlendi)', 'info');
     } else {
       showToast('Gizlilik modu kapatıldı 👁️ (Tutarlar gösteriliyor)', 'info');
+    }
+    if (closeMenu) {
+      setIsMenuOpen(false);
+    }
+  };
+
+  const handleHideClientNamesToggle = (closeMenu = false) => {
+    toggleHideClientNames();
+    if (!isHideClientNames) {
+      showToast('Danışan isimleri gizlendi 👤 (Örn: E*** Y***)', 'info');
+    } else {
+      showToast('Danışan isimleri gösteriliyor 👤', 'info');
+    }
+    if (closeMenu) {
+      setIsMenuOpen(false);
     }
   };
 
@@ -215,7 +231,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         className="p-2 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs"
                       >
                         <div className="truncate pr-2">
-                          <p className="font-bold text-slate-700 truncate">{session.clientName}</p>
+                          <p className="font-bold text-slate-700 truncate">{formatClientName(session.clientName)}</p>
                           <p className="text-[10px] text-slate-400">{session.date} • {session.time}</p>
                         </div>
                         <span className="font-bold text-[#cb997e] shrink-0">{formatMoney(session.price)}</span>
@@ -359,7 +375,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                           className="p-2.5 hover:bg-[#fdfbf7] rounded-xl cursor-pointer transition-colors flex justify-between items-center text-xs touch-manipulation"
                         >
                           <div className="truncate pr-2">
-                            <p className="font-bold text-slate-800 truncate">{session.clientName}</p>
+                            <p className="font-bold text-slate-800 truncate">{formatClientName(session.clientName)}</p>
                             <p className="text-[10px] text-slate-400">{session.date} • {session.time}</p>
                           </div>
                           <span className="font-bold text-[#cb997e] shrink-0">{formatMoney(session.price)}</span>
@@ -722,10 +738,10 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       <p className="text-[9px] text-slate-400">Kullanım rehberi ve sorular</p>
                     </motion.button>
 
-                    {/* Privacy Mode Toggle */}
+                    {/* Privacy Mode Toggle (Money) */}
                     <motion.button
                       whileTap={{ scale: 0.95 }}
-                      onClick={handlePrivacyToggle}
+                      onClick={() => handlePrivacyToggle(true)}
                       className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation ${
                         isPrivacyMode ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-[#e5e1d8]'
                       }`}
@@ -735,16 +751,38 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       }`}>
                         {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </div>
-                      <p className="font-bold text-xs text-slate-800">Gizlilik Modu</p>
+                      <p className="font-bold text-xs text-slate-800">Para Gizliliği</p>
                       <p className="text-[9px] text-slate-500 font-medium">
                         {isPrivacyMode ? '👁️‍🗨️ Paralar Gizli' : '👁️ Paralar Açık'}
+                      </p>
+                    </motion.button>
+
+                    {/* Hide Client Names Toggle */}
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleHideClientNamesToggle(true)}
+                      className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation ${
+                        isHideClientNames ? 'bg-indigo-50 border-indigo-300 text-indigo-900' : 'bg-white border-[#e5e1d8]'
+                      }`}
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                        isHideClientNames ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {isHideClientNames ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      </div>
+                      <p className="font-bold text-xs text-slate-800">İsim Gizliliği</p>
+                      <p className="text-[9px] text-slate-500 font-medium">
+                        {isHideClientNames ? '👤 İsimler Gizli (E***)' : '👤 İsimler Açık'}
                       </p>
                     </motion.button>
 
                     {/* Toggle Explanations */}
                     <motion.button
                       whileTap={{ scale: 0.95 }}
-                      onClick={toggleShowExplanations}
+                      onClick={() => {
+                        toggleShowExplanations();
+                        setIsMenuOpen(false);
+                      }}
                       className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation ${
                         showExplanations ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-white border-[#e5e1d8]'
                       }`}

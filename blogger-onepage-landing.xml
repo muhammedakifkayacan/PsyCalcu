@@ -1641,9 +1641,9 @@
   <section id='pricing' class='py-24 bg-white border-t border-slate-100'>
     <div class='max-w-5xl mx-auto px-6'>
       <div class='text-center max-w-2xl mx-auto mb-16 scroll-reveal'>
-        <span class='text-xs font-bold text-slate-400 tracking-widest block mb-2'>KULLANIM PLANLARI</span>
+        <span class='text-xs font-bold text-slate-400 tracking-widest block mb-2'>KULLANIM PAKETLERİ</span>
         <h2 class='font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900'>
-          Bütçenize En Uygun Üyelik Paketini Seçin
+          İhtiyacınıza En Uygun Çözümü Seçin
         </h2>
       </div>
 
@@ -1654,21 +1654,18 @@
           <div>
             <span class='text-[9px] font-bold text-slate-500 tracking-wider bg-white border border-slate-200 px-3 py-1 rounded-full block w-max mb-4'>BİREYSEL PLAN</span>
             <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Terapist Modülü</h3>
-            <p class='text-xs text-slate-500 mb-6'>Tekil çalışan bağımsız psikologlar için ideal çözüm.</p>
-            <div class='mb-6'>
-              <span class='text-3xl font-extrabold text-slate-900'>₺349</span>
-              <span class='text-xs text-slate-400'> / Aylık</span>
-            </div>
-            <ul class='space-y-3 text-xs text-slate-600 mb-8'>
+            <p class='text-xs text-slate-500 mb-6'>Tekil çalışan bağımsız psikologlar ve psikolojik danışmanlar için özel yönetim paketi.</p>
+            <ul class='space-y-3 text-xs text-slate-600 mb-8 pt-2 border-t border-slate-200/60'>
               <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Sınırsız Seans &amp; Danışan Kaydı</li>
               <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Çift Takvim Entegrasyonu</li>
               <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Otomatik Bakıcı &amp; Ofis Kirası Hesabı</li>
               <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> PDF &amp; Google E-Tablo Raporları</li>
             </ul>
           </div>
-          <button class='w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center transition-colors'>
-            Bireysel Başla
-          </button>
+          <a href='mailto:muhammedakifkayacan@gmail.com?subject=PsyCalcu%20-%20Bireysel%20Plan%20Talebi&amp;body=Merhaba%20Muhammed%20Akif%20Bey%2C%0D%0A%0D%0APsyCalcu%20platformundaki%20%22Bireysel%20Plan%20(Terapist%20Mod%C3%BCl%C3%BC)%22%20hakk%C4%B1nda%20bilgi%20almak%20ve%20kullan%C4%B1ma%20ba%C5%9Flamak%20istiyorum.%0D%0A%0D%0ABilgilerim%3A%0D%0AAd%20Soyad%3A%20%0D%0AUzmanl%C4%B1k%20%2F%20Klinik%3A%20%0D%0ATelefon%3A%20%0D%0A%0D%0ATe%C5%9Fekk%C3%BCrler.' class='w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center transition-all inline-flex items-center justify-center gap-2 shadow-sm'>
+            <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'></path></svg>
+            İletişime Geç
+          </a>
         </div>
 
         <!-- Owner/Multi-Calendar Plan -->
@@ -1680,20 +1677,17 @@
             <span class='text-[9px] font-bold text-accent tracking-wider bg-white/10 px-3 py-1 rounded-full block w-max mb-4'>ÇOKLU YÖNETİM</span>
             <h3 class='font-display text-xl font-bold text-white mb-2'>Ofis Sahibi Modülü</h3>
             <p class='text-xs text-slate-400 mb-6'>Ortak ofis mülk sahipleri ve çok ortaklı klinik yöneticileri için.</p>
-            <div class='mb-6'>
-              <span class='text-3xl font-extrabold text-white'>₺749</span>
-              <span class='text-xs text-slate-400'> / Aylık</span>
-            </div>
-            <ul class='space-y-3 text-xs text-slate-300 mb-8'>
+            <ul class='space-y-3 text-xs text-slate-300 mb-8 pt-2 border-t border-slate-800/80'>
               <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> 10 Adete Kadar Kiracı Takvimi Bağlama</li>
               <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Kiracı Terapist Bazlı Hakediş Yönetimi</li>
               <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Ofis Kira Gelirleri Otomatik Takibi</li>
               <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Gelişmiş Filtreleme &amp; Borç Takip</li>
             </ul>
           </div>
-          <button class='w-full py-3 bg-accent hover:opacity-90 text-slate-950 text-xs font-bold rounded-xl text-center transition-all'>
-            Klinik Hesabı Başlat
-          </button>
+          <a href='mailto:muhammedakifkayacan@gmail.com?subject=PsyCalcu%20-%20Klinik%20ve%20%C3%87oklu%20Y%C3%B6netim%20Mod%C3%BCl%C3%BC%20Talebi&amp;body=Merhaba%20Muhammed%20Akif%20Bey%2C%0D%0A%0D%0APsyCalcu%20platformundaki%20%22Ofis%20Sahibi%20%2F%20Klinik%20%C3%87oklu%20Y%C3%B6netim%20Mod%C3%BCl%C3%BC%22%20hakk%C4%B1nda%20bilgi%20almak%20ve%20klini%C4%9Fimiz%20i%C3%A7in%20g%C3%B6r%C3%BC%C5%9Fmek%20istiyorum.%0D%0A%0D%0ABilgilerim%3A%0D%0AAd%20Soyad%20%2F%20Klinik%20Ad%C4%B1%3A%20%0D%0ATerapist%20%2F%20Oda%20Say%C4%B1s%C4%B1%3A%20%0D%0ATelefon%3A%20%0D%0A%0D%0ATe%C5%9Fekk%C3%BCrler.' class='w-full py-3.5 bg-accent hover:opacity-90 text-slate-950 text-xs font-bold rounded-xl text-center transition-all inline-flex items-center justify-center gap-2 shadow-sm'>
+            <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'></path></svg>
+            İletişime Geç
+          </a>
         </div>
 
       </div>

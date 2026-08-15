@@ -10,20 +10,51 @@ interface PrivacyContextType {
   isPrivacyMode: boolean;
   setIsPrivacyMode: (val: boolean) => void;
   togglePrivacyMode: () => void;
+  isHideClientNames: boolean;
+  setIsHideClientNames: (val: boolean) => void;
+  toggleHideClientNames: () => void;
   formatMoney: (amount: number | string | undefined | null, options?: FormatMoneyOptions) => string;
+  formatClientName: (name: string | undefined | null) => string;
 }
 
 const PrivacyContext = createContext<PrivacyContextType>({
   isPrivacyMode: false,
   setIsPrivacyMode: () => {},
   togglePrivacyMode: () => {},
+  isHideClientNames: false,
+  setIsHideClientNames: () => {},
+  toggleHideClientNames: () => {},
   formatMoney: (val) => String(val || 0),
+  formatClientName: (name) => String(name || ''),
 });
+
+/**
+ * Danışan isimlerini maskeleme fonksiyonu (örn: "Ebru Yılmaz" -> "E*** Y***")
+ */
+export const maskTurkishName = (name: string | undefined | null): string => {
+  if (!name || !name.trim()) return '';
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      if (word.length <= 1) return word;
+      return word.charAt(0) + '***';
+    })
+    .join(' ');
+};
 
 export const PrivacyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isPrivacyMode, setIsPrivacyModeState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('psycalcu_privacy_mode') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [isHideClientNames, setIsHideClientNamesState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('psycalcu_hide_client_names') === 'true';
     } catch (e) {
       return false;
     }
@@ -36,11 +67,28 @@ export const PrivacyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {}
   };
 
+  const setIsHideClientNames = (val: boolean) => {
+    setIsHideClientNamesState(val);
+    try {
+      localStorage.setItem('psycalcu_hide_client_names', String(val));
+    } catch (e) {}
+  };
+
   const togglePrivacyMode = () => {
     setIsPrivacyModeState((prev) => {
       const next = !prev;
       try {
         localStorage.setItem('psycalcu_privacy_mode', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const toggleHideClientNames = () => {
+    setIsHideClientNamesState((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('psycalcu_hide_client_names', String(next));
       } catch (e) {}
       return next;
     });
@@ -66,8 +114,27 @@ export const PrivacyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return `${prefix}${showSymbol ? '₺' : ''}${formatted}`;
   };
 
+  const formatClientName = (name: string | undefined | null): string => {
+    if (!name) return '';
+    if (isHideClientNames) {
+      return maskTurkishName(name);
+    }
+    return name;
+  };
+
   return (
-    <PrivacyContext.Provider value={{ isPrivacyMode, setIsPrivacyMode, togglePrivacyMode, formatMoney }}>
+    <PrivacyContext.Provider
+      value={{
+        isPrivacyMode,
+        setIsPrivacyMode,
+        togglePrivacyMode,
+        isHideClientNames,
+        setIsHideClientNames,
+        toggleHideClientNames,
+        formatMoney,
+        formatClientName,
+      }}
+    >
       {children}
     </PrivacyContext.Provider>
   );
@@ -119,3 +186,12 @@ export const Money: React.FC<MoneyProps> = ({
     </span>
   );
 };
+
+export const MaskedClientName: React.FC<{ name: string | undefined | null; className?: string }> = ({
+  name,
+  className = '',
+}) => {
+  const { formatClientName } = usePrivacy();
+  return <span className={className}>{formatClientName(name)}</span>;
+};
+

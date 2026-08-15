@@ -62,7 +62,7 @@ import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
 import SyncDetailsModal from './components/SyncDetailsModal';
 import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationModal';
-import { usePrivacy, Money } from './context/PrivacyContext';
+import { usePrivacy, Money, MaskedClientName } from './context/PrivacyContext';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
@@ -144,7 +144,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-  const { formatMoney } = usePrivacy();
+  const { formatMoney, formatClientName } = usePrivacy();
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('psycalcu_sessions'); // note: settings key below
@@ -4211,7 +4211,7 @@ export default function App() {
                             <div className="flex-1 w-full">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="text-sm font-bold text-slate-800">
-                                  {isTenantSession ? `Terapist: ${session.clientName}` : session.clientName}
+                                  {isTenantSession ? `Terapist: ${formatClientName(session.clientName)}` : formatClientName(session.clientName)}
                                 </h4>
                                 
                                 {/* Status badge */}
