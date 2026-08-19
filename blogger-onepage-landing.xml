@@ -326,10 +326,28 @@
       text-shadow: 0 0 30px rgba(52, 211, 153, 0.25);
     }
 
-    /* Infinite sliding carousel for related posts (controlled dynamically in JS for manual dragging) */
+    /* Infinite sliding carousel for related posts */
     .carousel-track {
       display: flex;
       width: max-content;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .carousel-track * {
+      user-drag: none;
+      -webkit-user-drag: none;
+    }
+    .carousel-card {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-user-drag: none;
+    }
+    #related-carousel-container {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    #related-carousel-container::-webkit-scrollbar {
+      display: none;
     }
   ]]></b:skin>
 
@@ -553,9 +571,6 @@
         <a href='#features' class='w-full sm:w-auto px-8 py-3.5 bg-slate-950 hover:bg-slate-900 text-white font-semibold rounded-full text-sm transition-all shadow-md flex items-center justify-center gap-2'>
           Özellikleri İncele
           <i data-lucide='arrow-down' class='w-4 h-4'></i>
-        </a>
-        <a href='#isometric-showcase' class='w-full sm:w-auto px-8 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold rounded-full text-sm transition-all shadow-2xs flex items-center justify-center gap-2'>
-          Arayüzü Keşfet
         </a>
       </div>
 
@@ -1077,10 +1092,10 @@
               <div id='scrolly-step-text-4' class='absolute inset-0 transition-all duration-500 transform translate-y-4 opacity-0 pointer-events-none flex flex-col justify-start'>
                 <span class='text-sm font-black text-[#cb997e] tracking-widest block mb-2 uppercase'>İNTERAKTİF DENEYİM ALANI</span>
                 <h3 class='font-display text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-black tracking-tight leading-tight text-slate-900'>
-                  Canlı Kapı &amp; Yetki Simülatörü
+                  Canlı Tahsilat &amp; Kısmi Ödeme Simülatörü
                 </h3>
                 <p class='text-sm sm:text-base lg:text-lg text-slate-600 mt-4 leading-relaxed font-semibold'>
-                  İşte geleceğin ofis yönetimi! Sol panelden Melis Hanım ve Özgür Bey'in odaya giriş yetkilerini dinamik açıp kapatarak takvim rezervasyonlarını simüle edin ve kilitlerin anlık açılma/kapanma durumunu test edin.
+                  Gerçek zamanlı seans tahsilatını deneyimleyin! Danışanların ödeme durumunu (Ödendi, Kısmi Ödeme veya Ödenmedi) değiştirin; kasanızın, bekleyen alacaklarınızın ve terapist hakedişlerinizin anında nasıl hesaplandığını canlı izleyin.
                 </p>
               </div>
             </div>
@@ -1205,111 +1220,128 @@
 
             </div>
 
-            <!-- Visual Panel 2: Interactive Room & Permission Simulator (Step 5) -->
+            <!-- Visual Panel 2: Interactive Partial Payment & Live Finance Simulator (Step 5) -->
             <div id='scrolly-visual-simulator' class='absolute inset-0 w-full max-w-2xl mx-auto flex items-center justify-center transition-all duration-700 transform scale-95 opacity-0 pointer-events-none'>
-              <div class='bg-white text-slate-900 rounded-[2rem] border border-slate-200/80 shadow-premium overflow-hidden p-4 md:p-6 lg:p-8 w-full max-h-[75vh] md:max-h-[85vh] overflow-y-auto'>
+              <div class='bg-white text-slate-900 rounded-[2rem] border border-slate-200/80 shadow-premium overflow-hidden p-4 md:p-6 lg:p-7 w-full max-h-[75vh] md:max-h-[85vh] overflow-y-auto'>
                 <div class='grid grid-cols-1 md:grid-cols-12 gap-6'>
                   
-                  <!-- Matrix Control (Left col-span-5) -->
-                  <div class='md:col-span-5 space-y-4 border-r border-slate-100 pr-0 md:pr-6 text-left'>
-                    <h4 class='text-xs font-black text-slate-900 tracking-wider flex items-center gap-2'>
-                      <i data-lucide='shield-check' class='w-4 h-4 text-[#6b705c]'></i>
-                      ODAYA GİRİŞ İZİNLERİ
-                    </h4>
-                    <p class='text-[10px] sm:text-xs text-slate-500 font-bold leading-normal'>
-                      Aşağıdaki düğmelere tıklayarak terapistlerimizin odaya girip giremeyeceğini (✓ Giriş Serbest / ✗ Yasak) ayarlayın.
+                  <!-- Session Payment Controls (Left col-span-6) -->
+                  <div class='md:col-span-6 space-y-3.5 border-r border-slate-100 pr-0 md:pr-4 text-left'>
+                    <div class='flex items-center justify-between'>
+                      <h4 class='text-xs font-black text-slate-900 tracking-wider flex items-center gap-2'>
+                        <i data-lucide='credit-card' class='w-4 h-4 text-[#cb997e]'></i>
+                        SEANS &amp; ÖDEME DURUMLARI
+                      </h4>
+                      <span class='text-[9px] bg-slate-100 text-slate-600 font-mono px-1.5 py-0.5 rounded font-bold'>GÜNLÜK SEANSLAR</span>
+                    </div>
+                    <p class='text-[10px] text-slate-500 font-bold leading-normal'>
+                      Danışanların ödeme durumuna tıklayarak kasanın ve hakedişin değişimini test edin:
                     </p>
 
-                    <!-- Therapist 1 Toggles -->
-                    <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5'>
+                    <!-- Client 1: Ahmet Bey -->
+                    <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2' id='sim-client-card-ahmet'>
                       <div class='flex items-center justify-between'>
                         <div class='flex items-center gap-2'>
-                          <div class='w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-black'>MD</div>
-                          <span class='text-xs font-black text-slate-900'>Melis Hanım</span>
+                          <div class='w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-black'>AB</div>
+                          <div>
+                            <span class='text-xs font-black text-slate-900 block'>Ahmet Bey</span>
+                            <span class='text-[9px] text-slate-500 font-semibold'>Yüz Yüze • ₺2.000</span>
+                          </div>
                         </div>
-                        <span class='text-[10px] font-bold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded'>Çocuk</span>
+                        <span class='text-[9px] font-bold px-2 py-0.5 rounded-full' id='sim-ahmet-status-badge'>ÖDENDİ</span>
                       </div>
-                      <div class='flex flex-wrap gap-1.5'>
-                        <button id='btn-perm-melis-std' onclick='togglePermission("melis", "std")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                          <span>✓ Standart</span>
+                      <div class='grid grid-cols-3 gap-1 pt-1'>
+                        <button id='btn-pay-ahmet-paid' onclick='setSimPayment("ahmet", "paid")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-emerald-600 text-white border-emerald-600 cursor-pointer shadow-2xs'>
+                          ● Ödendi
                         </button>
-                        <button id='btn-perm-melis-play' onclick='togglePermission("melis", "play")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                          <span>✓ Oyun Ter.</span>
+                        <button id='btn-pay-ahmet-partial' onclick='setSimPayment("ahmet", "partial")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-amber-700 border-amber-300 hover:bg-amber-50 cursor-pointer shadow-2xs'>
+                          ◐ Kısmi (₺1.000)
+                        </button>
+                        <button id='btn-pay-ahmet-unpaid' onclick='setSimPayment("ahmet", "unpaid")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-red-700 border-red-200 hover:bg-red-50 cursor-pointer shadow-2xs'>
+                          ○ Ödenmedi
                         </button>
                       </div>
                     </div>
 
-                    <!-- Therapist 2 Toggles -->
-                    <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5'>
+                    <!-- Client 2: Selin Hanım -->
+                    <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2' id='sim-client-card-selin'>
                       <div class='flex items-center justify-between'>
                         <div class='flex items-center gap-2'>
-                          <div class='w-8 h-8 rounded-full bg-[#6b705c]/15 text-[#6b705c] flex items-center justify-center text-xs font-black'>ÖC</div>
-                          <span class='text-xs font-black text-slate-900'>Özgür Bey</span>
+                          <div class='w-7 h-7 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-black'>SH</div>
+                          <div>
+                            <span class='text-xs font-black text-slate-900 block'>Selin Hanım</span>
+                            <span class='text-[9px] text-slate-500 font-semibold'>Online • ₺1.800</span>
+                          </div>
                         </div>
-                        <span class='text-[10px] font-bold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded'>Yetişkin</span>
+                        <span class='text-[9px] font-bold px-2 py-0.5 rounded-full' id='sim-selin-status-badge'>◐ KISMİ (₺800)</span>
                       </div>
-                      <div class='flex flex-wrap gap-1.5'>
-                        <button id='btn-perm-ozgur-std' onclick='togglePermission("ozgur", "std")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                          <span>✓ Standart</span>
+                      <div class='grid grid-cols-3 gap-1 pt-1'>
+                        <button id='btn-pay-selin-paid' onclick='setSimPayment("selin", "paid")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 cursor-pointer shadow-2xs'>
+                          ● Ödendi
                         </button>
-                        <button id='btn-perm-ozgur-play' onclick='togglePermission("ozgur", "play")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-red-50 text-red-800 border-red-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                          <span>✗ Oyun Ter.</span>
+                        <button id='btn-pay-selin-partial' onclick='setSimPayment("selin", "partial")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-amber-600 text-white border-amber-600 cursor-pointer shadow-2xs'>
+                          ◐ Kısmi (₺800)
+                        </button>
+                        <button id='btn-pay-selin-unpaid' onclick='setSimPayment("selin", "unpaid")' class='px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-red-700 border-red-200 hover:bg-red-50 cursor-pointer shadow-2xs'>
+                          ○ Ödenmedi
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <!-- Simulation Room Visuals (Right col-span-7) -->
-                  <div class='md:col-span-7 space-y-4 flex flex-col justify-between text-left'>
-                    <div class='space-y-3'>
+                  <!-- Live Accounting Summary Visuals (Right col-span-6) -->
+                  <div class='md:col-span-6 space-y-3 flex flex-col justify-between text-left'>
+                    <div class='space-y-2.5'>
                       <h4 class='text-xs font-black text-slate-900 tracking-wider flex items-center justify-between'>
                         <span class='flex items-center gap-2'>
-                          <i data-lucide='door-open' class='w-4 h-4 text-[#cb997e]'></i>
-                          KLİNİK KAPILARI VE SEANS DURUMU
+                          <i data-lucide='pie-chart' class='w-4 h-4 text-emerald-600'></i>
+                          ANLIK KASA &amp; HAKEDİŞ
                         </span>
-                        <span class='px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full animate-pulse'>CANLI</span>
+                        <span class='px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[9px] rounded-full animate-pulse'>CANLI</span>
                       </h4>
 
-                      <!-- Room list -->
-                      <div class='grid grid-cols-1 sm:grid-cols-2 gap-3.5'>
-                        <!-- Room 1 Visual -->
-                        <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[85px] transition-all' id='sim-room-1'>
-                          <div class='flex justify-between items-start'>
-                            <span class='text-xs font-black text-slate-900'>Oda 1 (Standart)</span>
-                            <span class='text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md' id='sim-room-1-badge'>BOŞ</span>
-                          </div>
-                          <span class='text-[10px] text-slate-500 font-bold' id='sim-room-1-desc'>Giriş Yapılabilir</span>
+                      <!-- Metric boxes -->
+                      <div class='grid grid-cols-2 gap-2'>
+                        <div class='p-2.5 bg-emerald-50/60 border border-emerald-200 rounded-xl'>
+                          <span class='text-[9px] text-emerald-800 font-bold block'>TAHSİL EDİLEN (KASA)</span>
+                          <span class='text-lg font-black font-display text-emerald-950 block mt-0.5' id='sim-collected-amt'>₺2.800</span>
                         </div>
+                        <div class='p-2.5 bg-amber-50/60 border border-amber-200 rounded-xl'>
+                          <span class='text-[9px] text-amber-800 font-bold block'>BEKLEYEN ALACAK</span>
+                          <span class='text-lg font-black font-display text-amber-950 block mt-0.5' id='sim-pending-amt'>₺1.000</span>
+                        </div>
+                      </div>
 
-                        <!-- Room 2 Visual -->
-                        <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[85px] transition-all' id='sim-room-2'>
-                          <div class='flex justify-between items-start'>
-                            <span class='text-xs font-black text-slate-900'>Oda 2 (Oyun Odası)</span>
-                            <span class='text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md' id='sim-room-2-badge'>BOŞ</span>
-                          </div>
-                          <span class='text-[10px] text-slate-500 font-bold' id='sim-room-2-desc'>Sadece Yetkililer</span>
+                      <!-- Breakdown -->
+                      <div class='p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[10px]'>
+                        <div class='flex justify-between font-semibold text-slate-600'>
+                          <span>Terapist Hakedişi (%70):</span>
+                          <span class='font-mono font-bold text-slate-900' id='sim-therapist-share'>₺1.960</span>
+                        </div>
+                        <div class='flex justify-between font-semibold text-slate-600'>
+                          <span>Klinik / Oda Payı (%30):</span>
+                          <span class='font-mono font-bold text-slate-900' id='sim-clinic-share'>₺840</span>
                         </div>
                       </div>
                     </div>
 
-                    <!-- Simulation Actions Panel -->
-                    <div class='space-y-2.5 pt-3 border-t border-slate-100'>
-                      <span class='text-[9px] font-black text-slate-400 uppercase tracking-wider block'>TAKVİMDEN REZERVASYON GÖNDER</span>
-                      <div class='grid grid-cols-1 sm:grid-cols-2 gap-2'>
-                        <button onclick='simulateBooking("melis", "play")' class='px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
-                          <i data-lucide='calendar' class='w-3 h-3'></i>
-                          Melis: Oyun Odası'nı Tut
+                    <!-- Quick Actions -->
+                    <div class='space-y-2 pt-2 border-t border-slate-100'>
+                      <div class='grid grid-cols-2 gap-2'>
+                        <button onclick='quickCollectAll()' class='px-2.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
+                          <i data-lucide='check-circle-2' class='w-3 h-3 text-emerald-400'></i>
+                          Tümünü Tahsil Et
                         </button>
-                        <button onclick='simulateBooking("ozgur", "play")' class='px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
-                          <i data-lucide='calendar' class='w-3 h-3'></i>
-                          Özgür: Oyun Odası'nı Tut
+                        <button onclick='quickResetPayments()' class='px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer'>
+                          <i data-lucide='rotate-ccw' class='w-3 h-3'></i>
+                          Sıfırla
                         </button>
                       </div>
                       
                       <!-- Live Console Logger for Simulation -->
-                      <div class='bg-slate-950 p-2.5 rounded-xl text-left border border-slate-800/20 font-mono text-[9px] text-slate-200 min-h-[48px] flex flex-col justify-center' id='sim-console'>
-                        <span class='text-[#cb997e] font-black mb-0.5'>&gt; Sistem Hazır!</span>
-                        <span class='text-slate-400 font-medium'>Yetkileri değiştirdikten sonra, takvim gönderme düğmelerine basın.</span>
+                      <div class='bg-slate-950 p-2.5 rounded-xl text-left border border-slate-800/20 font-mono text-[9px] text-slate-200 min-h-[46px] flex flex-col justify-center' id='sim-console'>
+                        <span class='text-emerald-400 font-bold mb-0.5'>&gt; Tahsilat: ₺2.800 | Bekleyen Alacak: ₺1.000</span>
+                        <span class='text-slate-400 font-medium'>Ahmet Bey (Tam), Selin Hanım (Kısmi ₺800) işlendi.</span>
                       </div>
                     </div>
                   </div>
@@ -1317,9 +1349,7 @@
                 </div>
               </div>
             </div>
-
           </div>
-
         </div>
       </div>
     </div>
@@ -1468,110 +1498,123 @@
           <span class='text-xs font-bold text-slate-400 tracking-wider uppercase'>İNTERAKTİF DENEYİM</span>
         </div>
         <h3 class='font-display text-2xl font-black text-slate-900 leading-snug'>
-          Canlı Kapı &amp; Yetki Simülatörü
+          Canlı Tahsilat &amp; Kısmi Ödeme Simülatörü
         </h3>
         <p class='text-xs sm:text-sm text-slate-600 leading-relaxed font-semibold'>
-          Aşağıdaki panelden terapistlerin odaya giriş yetkilerini açıp kapatarak kilitlerin anlık açılma/kapanma durumunu test edin.
+          Danışanların seans ödeme durumlarını (Ödendi, Kısmi Ödeme veya Ödenmedi) değiştirerek tahsilat, borç ve hakediş hesaplarını anlık test edin.
         </p>
         
-        <div class='bg-white text-slate-900 rounded-[2rem] border border-slate-200/80 shadow-premium p-4 sm:p-6 w-full max-w-[340px] sm:max-w-md mx-auto space-y-6'>
-          <!-- Matrix Control -->
-          <div class='space-y-3.5 text-left'>
-            <h4 class='text-[10px] font-black text-slate-900 tracking-wider flex items-center gap-2'>
-              <i data-lucide='shield-check' class='w-4 h-4 text-[#6b705c]'></i>
-              ODAYA GİRİŞ İZİNLERİ
-            </h4>
-            <p class='text-[10px] text-slate-500 font-bold leading-normal'>
-              Terapistlerimizin odaya giriş yetkilerini ayarlayın.
-            </p>
+        <div class='bg-white text-slate-900 rounded-[2rem] border border-slate-200/80 shadow-premium p-4 sm:p-6 w-full max-w-[340px] sm:max-w-md mx-auto space-y-5'>
+          <!-- Client Controls -->
+          <div class='space-y-3 text-left'>
+            <div class='flex items-center justify-between'>
+              <h4 class='text-[10px] font-black text-slate-900 tracking-wider flex items-center gap-2'>
+                <i data-lucide='credit-card' class='w-4 h-4 text-[#cb997e]'></i>
+                SEANS &amp; ÖDEME DURUMU
+              </h4>
+              <span class='text-[8px] bg-slate-100 text-slate-600 font-mono px-1.5 py-0.5 rounded font-bold'>GÜNLÜK</span>
+            </div>
 
-            <!-- Therapist 1 Toggles -->
-            <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5'>
+            <!-- Client 1: Ahmet Bey -->
+            <div class='p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5' id='sim-client-card-ahmet-mob'>
               <div class='flex items-center justify-between'>
                 <div class='flex items-center gap-2'>
-                  <div class='w-7 h-7 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-black'>MD</div>
-                  <span class='text-xs font-black text-slate-900'>Melis Hanım</span>
+                  <div class='w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[9px] font-black'>AB</div>
+                  <div>
+                    <span class='text-[11px] font-black text-slate-900 block'>Ahmet Bey</span>
+                    <span class='text-[8px] text-slate-500 font-semibold'>Yüz Yüze • ₺2.000</span>
+                  </div>
                 </div>
-                <span class='text-[9px] font-bold text-slate-400 bg-white border border-slate-200 px-1 py-0.5 rounded'>Çocuk</span>
+                <span class='text-[8px] font-bold px-1.5 py-0.5 rounded-full' id='sim-ahmet-status-badge-mob'>ÖDENDİ</span>
               </div>
-              <div class='flex flex-wrap gap-1.5'>
-                <button id='btn-perm-melis-std-mob' onclick='togglePermission("melis", "std")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                  <span>✓ Standart</span>
+              <div class='grid grid-cols-3 gap-1'>
+                <button id='btn-pay-ahmet-paid-mob' onclick='setSimPayment("ahmet", "paid")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-emerald-600 text-white border-emerald-600 cursor-pointer shadow-2xs'>
+                  ● Ödendi
                 </button>
-                <button id='btn-perm-melis-play-mob' onclick='togglePermission("melis", "play")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                  <span>✓ Oyun Ter.</span>
+                <button id='btn-pay-ahmet-partial-mob' onclick='setSimPayment("ahmet", "partial")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-white text-amber-700 border-amber-300 cursor-pointer shadow-2xs'>
+                  ◐ Kısmi
+                </button>
+                <button id='btn-pay-ahmet-unpaid-mob' onclick='setSimPayment("ahmet", "unpaid")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-white text-red-700 border-red-200 cursor-pointer shadow-2xs'>
+                  ○ Ödenmedi
                 </button>
               </div>
             </div>
 
-            <!-- Therapist 2 Toggles -->
-            <div class='p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5'>
+            <!-- Client 2: Selin Hanım -->
+            <div class='p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5' id='sim-client-card-selin-mob'>
               <div class='flex items-center justify-between'>
                 <div class='flex items-center gap-2'>
-                  <div class='w-7 h-7 rounded-full bg-[#6b705c]/15 text-[#6b705c] flex items-center justify-center text-[10px] font-black'>ÖC</div>
-                  <span class='text-xs font-black text-slate-900'>Özgür Bey</span>
+                  <div class='w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[9px] font-black'>SH</div>
+                  <div>
+                    <span class='text-[11px] font-black text-slate-900 block'>Selin Hanım</span>
+                    <span class='text-[8px] text-slate-500 font-semibold'>Online • ₺1.800</span>
+                  </div>
                 </div>
-                <span class='text-[9px] font-bold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded'>Yetişkin</span>
+                <span class='text-[8px] font-bold px-1.5 py-0.5 rounded-full' id='sim-selin-status-badge-mob'>◐ KISMİ (₺800)</span>
               </div>
-              <div class='flex flex-wrap gap-1.5'>
-                <button id='btn-perm-ozgur-std-mob' onclick='togglePermission("ozgur", "std")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                  <span>✓ Standart</span>
+              <div class='grid grid-cols-3 gap-1'>
+                <button id='btn-pay-selin-paid-mob' onclick='setSimPayment("selin", "paid")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-white text-emerald-700 border-emerald-300 cursor-pointer shadow-2xs'>
+                  ● Ödendi
                 </button>
-                <button id='btn-perm-ozgur-play-mob' onclick='togglePermission("ozgur", "play")' class='px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-red-50 text-red-800 border-red-200 flex items-center gap-1 cursor-pointer shadow-2xs'>
-                  <span>✗ Oyun Ter.</span>
+                <button id='btn-pay-selin-partial-mob' onclick='setSimPayment("selin", "partial")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-amber-600 text-white border-amber-600 cursor-pointer shadow-2xs'>
+                  ◐ Kısmi
+                </button>
+                <button id='btn-pay-selin-unpaid-mob' onclick='setSimPayment("selin", "unpaid")' class='px-1 py-1 text-[8px] font-bold rounded border transition-all bg-white text-red-700 border-red-200 cursor-pointer shadow-2xs'>
+                  ○ Ödenmedi
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Room list & actions -->
-          <div class='space-y-4 pt-4 border-t border-slate-100 text-left'>
+          <!-- Live accounting visual for mobile -->
+          <div class='space-y-3 pt-3 border-t border-slate-100 text-left'>
             <h4 class='text-[10px] font-black text-slate-900 tracking-wider flex items-center justify-between'>
               <span class='flex items-center gap-2'>
-                <i data-lucide='door-open' class='w-4 h-4 text-[#cb997e]'></i>
-                KLİNİK KAPILARI VE SEANS DURUMU
+                <i data-lucide='pie-chart' class='w-3.5 h-3.5 text-emerald-600'></i>
+                ANLIK KASA &amp; HAKEDİŞ
               </span>
-              <span class='px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[9px] rounded-full animate-pulse'>CANLI</span>
+              <span class='px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[8px] rounded-full animate-pulse'>CANLI</span>
             </h4>
 
-            <div class='grid grid-cols-2 gap-2.5'>
-              <!-- Room 1 Visual -->
-              <div class='p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[80px]' id='sim-room-1-mob'>
-                <div class='flex justify-between items-start'>
-                  <span class='text-[10px] font-black text-slate-900'>Oda 1</span>
-                  <span class='text-[8px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md' id='sim-room-1-badge-mob'>BOŞ</span>
-                </div>
-                <span class='text-[8px] text-slate-500 font-bold' id='sim-room-1-desc-mob'>Giriş Yapılabilir</span>
+            <div class='grid grid-cols-2 gap-2'>
+              <div class='p-2 bg-emerald-50/60 border border-emerald-200 rounded-xl'>
+                <span class='text-[8px] text-emerald-800 font-bold block'>TAHSİL EDİLEN (KASA)</span>
+                <span class='text-base font-black font-display text-emerald-950 block mt-0.5' id='sim-collected-amt-mob'>₺2.800</span>
               </div>
-
-              <!-- Room 2 Visual -->
-              <div class='p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[80px]' id='sim-room-2-mob'>
-                <div class='flex justify-between items-start'>
-                  <span class='text-[10px] font-black text-slate-900'>Oda 2</span>
-                  <span class='text-[8px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md' id='sim-room-2-badge-mob'>BOŞ</span>
-                </div>
-                <span class='text-[8px] text-slate-500 font-bold' id='sim-room-2-desc-mob'>Sadece Yetkililer</span>
+              <div class='p-2 bg-amber-50/60 border border-amber-200 rounded-xl'>
+                <span class='text-[8px] text-amber-800 font-bold block'>BEKLEYEN ALACAK</span>
+                <span class='text-base font-black font-display text-amber-950 block mt-0.5' id='sim-pending-amt-mob'>₺1.000</span>
               </div>
             </div>
 
-            <!-- Booking buttons -->
-            <div class='space-y-2 pt-3 border-t border-slate-100'>
-              <span class='text-[8px] font-black text-slate-400 uppercase tracking-wider block'>REZERVASYON GÖNDER VE TEST ET</span>
+            <div class='p-2 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-[9px]'>
+              <div class='flex justify-between font-semibold text-slate-600'>
+                <span>Terapist Hakedişi (%70):</span>
+                <span class='font-mono font-bold text-slate-900' id='sim-therapist-share-mob'>₺1.960</span>
+              </div>
+              <div class='flex justify-between font-semibold text-slate-600'>
+                <span>Klinik / Oda Payı (%30):</span>
+                <span class='font-mono font-bold text-slate-900' id='sim-clinic-share-mob'>₺840</span>
+              </div>
+            </div>
+
+            <!-- Action buttons for mobile -->
+            <div class='space-y-2 pt-2 border-t border-slate-100'>
               <div class='grid grid-cols-2 gap-2'>
-                <button onclick='simulateBooking("melis", "play")' class='px-2 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
-                  <i data-lucide='calendar' class='w-3 h-3'></i>
-                  Melis: Oyun Odası
+                <button onclick='quickCollectAll()' class='px-2 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
+                  <i data-lucide='check-circle-2' class='w-3 h-3 text-emerald-400'></i>
+                  Tümünü Tahsil Et
                 </button>
-                <button onclick='simulateBooking("ozgur", "play")' class='px-2 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer'>
-                  <i data-lucide='calendar' class='w-3 h-3'></i>
-                  Özgür: Oyun Odası
+                <button onclick='quickResetPayments()' class='px-2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[9px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer'>
+                  <i data-lucide='rotate-ccw' class='w-3 h-3'></i>
+                  Sıfırla
                 </button>
               </div>
               
               <!-- Console log for mobile -->
               <div class='bg-slate-950 p-2 rounded-xl text-left border border-slate-800/20 font-mono text-[8px] text-slate-200 min-h-[44px] flex flex-col justify-center' id='sim-console-mob'>
-                <span class='text-[#cb997e] font-black'>&gt; Sistem Hazır!</span>
-                <span class='text-slate-400 font-medium'>Yetkileri değiştirip seans gönderin.</span>
+                <span class='text-emerald-400 font-bold'>&gt; Tahsilat: ₺2.800 | Bekleyen Alacak: ₺1.000</span>
+                <span class='text-slate-400 font-medium'>Ahmet Bey (Tam), Selin Hanım (Kısmi ₺800) işlendi.</span>
               </div>
             </div>
           </div>
@@ -2023,33 +2066,33 @@
                 </div>
 
                 <!-- Sliding Carousel Wrapper (Supports Mouse Drag, Swipe, Buttons, and Smooth Auto-Scroll) -->
-                <div class='relative w-full group/carousel-wrapper py-4 overflow-hidden'>
+                <div class='relative w-full group/carousel-wrapper py-6'>
                   <!-- Beautiful Glassmorphic Left/Right Arrow Navigation Buttons -->
-                  <button id='carousel-prev-btn' class='absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/80 flex items-center justify-center text-slate-800 shadow-md hover:bg-white hover:text-[#6b705c] hover:scale-105 active:scale-95 transition-all duration-300 opacity-0 group-hover/carousel-wrapper:opacity-100 focus:opacity-100 z-30 pointer-events-auto cursor-pointer' aria-label='Önceki'>
+                  <button id='carousel-prev-btn' class='absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md border border-slate-200/80 flex items-center justify-center text-slate-800 shadow-lg hover:bg-white hover:text-[#6b705c] hover:scale-105 active:scale-95 transition-all duration-300 opacity-0 group-hover/carousel-wrapper:opacity-100 focus:opacity-100 z-30 pointer-events-auto cursor-pointer' aria-label='Önceki'>
                     <i data-lucide='chevron-left' class='w-5 h-5'></i>
                   </button>
-                  <button id='carousel-next-btn' class='absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/80 flex items-center justify-center text-slate-800 shadow-md hover:bg-white hover:text-[#6b705c] hover:scale-105 active:scale-95 transition-all duration-300 opacity-0 group-hover/carousel-wrapper:opacity-100 focus:opacity-100 z-30 pointer-events-auto cursor-pointer' aria-label='Sonraki'>
+                  <button id='carousel-next-btn' class='absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md border border-slate-200/80 flex items-center justify-center text-slate-800 shadow-lg hover:bg-white hover:text-[#6b705c] hover:scale-105 active:scale-95 transition-all duration-300 opacity-0 group-hover/carousel-wrapper:opacity-100 focus:opacity-100 z-30 pointer-events-auto cursor-pointer' aria-label='Sonraki'>
                     <i data-lucide='chevron-right' class='w-5 h-5'></i>
                   </button>
 
-                  <div id='related-carousel-container' class='overflow-x-auto scroll-smooth scrollbar-none flex select-none cursor-grab active:cursor-grabbing px-1' style='-webkit-overflow-scrolling: touch;'>
-                    <div class='carousel-track flex gap-6'>
+                  <div id='related-carousel-container' class='overflow-x-auto scroll-smooth scrollbar-none flex select-none cursor-grab active:cursor-grabbing px-2 py-4' style='-webkit-overflow-scrolling: touch;'>
+                    <div class='carousel-track flex gap-6 py-2'>
                     <!-- Card 1 -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='landmark' class='w-10 h-10 text-[#6b705c] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>FİNANSAL REHBER</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>15 Temmuz 2026</span>
                             <span>•</span>
                             <span>5 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Terapistler İçin Gelir ve Gider Dengesini Sağlamanın 5 Yolu
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2057,29 +2100,29 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
 
                     <!-- Card 2 -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#cb997e]/20 to-[#6b705c]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#cb997e]/20 to-[#6b705c]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='building' class='w-10 h-10 text-[#cb997e] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>KLİNİK YÖNETİMİ</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>10 Temmuz 2026</span>
                             <span>•</span>
                             <span>7 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Klinik Kiralama Süreçlerinde Gizli Masraflardan Kaçınma Rehberi
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2087,29 +2130,29 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
 
                     <!-- Card 3 -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#1e293b]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#1e293b]/20 to-[#cb997e]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='calendar' class='w-10 h-10 text-[#1e293b] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>TEKNOLOJİ REHBERİ</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>02 Temmuz 2026</span>
                             <span>•</span>
                             <span>4 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Google Takvim Entegrasyonu ile Seans Kaçırma Kabusuna Son
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2117,30 +2160,30 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
 
                     <!-- DUPLICATE SET FOR INFINITE CAROUSEL LOOP -->
                     <!-- Card 1 Duplicate -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='landmark' class='w-10 h-10 text-[#6b705c] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>FİNANSAL REHBER</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>15 Temmuz 2026</span>
                             <span>•</span>
                             <span>5 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Terapistler İçin Gelir ve Gider Dengesini Sağlamanın 5 Yolu
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2148,29 +2191,29 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
 
                     <!-- Card 2 Duplicate -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#cb997e]/20 to-[#6b705c]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#cb997e]/20 to-[#6b705c]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='building' class='w-10 h-10 text-[#cb997e] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>KLİNİK YÖNETİMİ</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>10 Temmuz 2026</span>
                             <span>•</span>
                             <span>7 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Klinik Kiralama Süreçlerinde Gizli Masraflardan Kaçınma Rehberi
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2178,29 +2221,29 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
 
                     <!-- Card 3 Duplicate -->
-                    <article class='bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-xs hover:border-[#6b705c]/30 transition-all group shrink-0 w-[290px] sm:w-[320px]'>
+                    <a expr:href='data:blog.homepageUrl' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
                       <div>
                         <div class='relative h-40 overflow-hidden bg-slate-100'>
-                          <div class='absolute inset-0 bg-gradient-to-br from-[#1e293b]/20 to-[#cb997e]/20 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                          <div class='absolute inset-0 bg-gradient-to-br from-[#1e293b]/20 to-[#cb997e]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
                             <i data-lucide='calendar' class='w-10 h-10 text-[#1e293b] opacity-60'></i>
                           </div>
                           <span class='absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm'>TEKNOLOJİ REHBERİ</span>
                         </div>
-                        <div class='p-5 space-y-2'>
+                        <div class='p-5 space-y-2 text-left'>
                           <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
                             <span>02 Temmuz 2026</span>
                             <span>•</span>
                             <span>4 Dk Okuma</span>
                           </div>
-                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover:text-[#6b705c] transition-colors line-clamp-2'>
+                          <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
                             Google Takvim Entegrasyonu ile Seans Kaçırma Kabusuna Son
                           </h4>
                           <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
@@ -2208,12 +2251,12 @@
                           </p>
                         </div>
                       </div>
-                      <div class='px-5 pb-5 pt-1'>
-                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover:text-[#cb997e] transition-colors cursor-pointer'>
+                      <div class='px-5 pb-5 pt-1 text-left'>
+                        <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
                           Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
                         </span>
                       </div>
-                    </article>
+                    </a>
                   </div>
                 </div>
               </div>
@@ -2744,26 +2787,33 @@
       document.addEventListener('DOMContentLoaded', initializeScripts);
     }
 
-    // Interactive swipable/draggable and navigable related posts carousel
+    // Interactive swipable/draggable and navigable related posts carousel + Dynamic Blogger Posts Fetcher
     function initRelatedCarousel() {
       const container = document.getElementById('related-carousel-container');
       const prevBtn = document.getElementById('carousel-prev-btn');
       const nextBtn = document.getElementById('carousel-next-btn');
+      const track = container ? container.querySelector('.carousel-track') : null;
       
-      if (!container) return; // Only run if we are on a post page
+      if (!container || !track) return; // Only run if we are on a post page
       
       let isDown = false;
-      let startX;
-      let scrollLeftVal;
+      let hasDragged = false;
+      let startX = 0;
+      let scrollLeftVal = 0;
       let isInteracting = false;
       let autoScrollTimer = null;
       let resumeTimer = null;
+      let velX = 0;
+      let lastPageX = 0;
+      let momentumID = null;
       
+      // Fetch dynamic real Blogger articles for this blog
+      loadBloggerRelatedPosts(track);
+
       // Auto-scroll loop
       function stepAutoScroll() {
-        if (!isInteracting) {
-          container.scrollLeft += 0.8;
-          // Loop infinite feel: if reached 50% width of actual elements, reset to 0
+        if (!isInteracting && !isDown) {
+          container.scrollLeft += 0.75;
           const halfWidth = (container.scrollWidth - container.clientWidth) / 2;
           if (container.scrollLeft >= halfWidth && halfWidth > 0) {
             container.scrollLeft = 0;
@@ -2775,44 +2825,81 @@
       // Start auto scroll
       autoScrollTimer = requestAnimationFrame(stepAutoScroll);
       
-      // Mouse drag handlers
+      // Mouse drag handlers with smooth momentum
       container.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // Only primary mouse button
         isDown = true;
+        hasDragged = false;
         isInteracting = true;
-        container.style.scrollBehavior = 'auto'; // Disable smooth scroll for active drag
+        velX = 0;
+        cancelMomentumTracking();
+        container.style.scrollBehavior = 'auto'; // Instant response while dragging
         startX = e.pageX - container.offsetLeft;
+        lastPageX = e.pageX;
         scrollLeftVal = container.scrollLeft;
         
         if (resumeTimer) clearTimeout(resumeTimer);
       });
       
-      container.addEventListener('mouseleave', () => {
+      window.addEventListener('mouseup', () => {
         if (isDown) {
           isDown = false;
-          container.style.scrollBehavior = 'smooth';
+          container.style.scrollBehavior = 'auto';
+          beginMomentumTracking();
           resumeAutoScrollDelay();
-        }
-      });
-      
-      container.addEventListener('mouseup', () => {
-        if (isDown) {
-          isDown = false;
-          container.style.scrollBehavior = 'smooth';
-          resumeAutoScrollDelay();
+          setTimeout(() => { hasDragged = false; }, 80);
         }
       });
       
       container.addEventListener('mousemove', (e) => {
         if (!isDown) return;
-        e.preventDefault();
         const x = e.pageX - container.offsetLeft;
-        const walk = (x - startX) * 1.5; // multiplier for satisfying scroll drag
+        const walk = (x - startX);
+        
+        if (Math.abs(walk) > 4) {
+          hasDragged = true;
+          e.preventDefault();
+        }
+        
+        velX = e.pageX - lastPageX;
+        lastPageX = e.pageX;
         container.scrollLeft = scrollLeftVal - walk;
       });
+
+      function cancelMomentumTracking() {
+        if (momentumID) {
+          cancelAnimationFrame(momentumID);
+          momentumID = null;
+        }
+      }
+
+      function beginMomentumTracking() {
+        cancelMomentumTracking();
+        if (Math.abs(velX) > 0.5) {
+          function momentumStep() {
+            container.scrollLeft -= velX;
+            velX *= 0.92; // Friction damping
+            if (Math.abs(velX) > 0.5) {
+              momentumID = requestAnimationFrame(momentumStep);
+            }
+          }
+          momentumID = requestAnimationFrame(momentumStep);
+        }
+      }
+      
+      // Prevent link navigation if user actually dragged
+      container.addEventListener('click', (e) => {
+        if (hasDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          hasDragged = false;
+        }
+      }, true);
       
       // Touch swipe handlers (for mobile)
       container.addEventListener('touchstart', () => {
         isInteracting = true;
+        cancelMomentumTracking();
         container.style.scrollBehavior = 'smooth';
         if (resumeTimer) clearTimeout(resumeTimer);
       }, { passive: true });
@@ -2844,6 +2931,7 @@
       if (prevBtn) {
         prevBtn.addEventListener('click', () => {
           isInteracting = true;
+          cancelMomentumTracking();
           container.style.scrollBehavior = 'smooth';
           container.scrollLeft -= cardWidth;
           resumeAutoScrollDelay();
@@ -2853,11 +2941,149 @@
       if (nextBtn) {
         nextBtn.addEventListener('click', () => {
           isInteracting = true;
+          cancelMomentumTracking();
           container.style.scrollBehavior = 'smooth';
           container.scrollLeft += cardWidth;
           resumeAutoScrollDelay();
         });
       }
+    }
+
+    // Dynamic Blogger Related Posts Loader (Fetches real articles from Blogger Feed)
+    function loadBloggerRelatedPosts(trackEl) {
+      if (!trackEl) return;
+      
+      const currentUrl = window.location.href.split('?')[0].split('#')[0];
+      const categoryBadges = [
+        'bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-slate-700 tracking-wider shadow-sm',
+        'bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-emerald-800 tracking-wider shadow-sm',
+        'bg-white/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-bold text-[#cb997e] tracking-wider shadow-sm'
+      ];
+      
+      const fallbackIcons = ['book-open', 'landmark', 'building', 'calendar', 'file-text', 'trending-up'];
+      
+      fetch('/feeds/posts/summary?alt=json&max-results=12')
+        .then(res => {
+          if (!res.ok) throw new Error('Feed fetch status: ' + res.status);
+          return res.json();
+        })
+        .then(data => {
+          const entries = data.feed && data.feed.entry ? data.feed.entry : [];
+          if (entries.length === 0) return;
+          
+          const validPosts = [];
+          
+          entries.forEach(entry => {
+            let postLink = '';
+            if (entry.link) {
+              const altLink = entry.link.find(l => l.rel === 'alternate');
+              if (altLink) postLink = altLink.href;
+            }
+            
+            // Skip the current article to avoid recommending the same post
+            if (postLink && postLink.split('?')[0].split('#')[0] === currentUrl) {
+              return;
+            }
+            
+            const title = entry.title ? entry.title.$t : 'İsimsiz Yazı';
+            let dateStr = 'Yeni Yazı';
+            if (entry.published && entry.published.$t) {
+              try {
+                const d = new Date(entry.published.$t);
+                const trMonths = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+                dateStr = `${d.getDate()} ${trMonths[d.getMonth()]} ${d.getFullYear()}`;
+              } catch(e) {}
+            }
+            
+            let category = 'REHBER';
+            if (entry.category && entry.category.length > 0 && entry.category[0].term) {
+              category = entry.category[0].term.toUpperCase();
+            }
+            
+            let snippet = '';
+            if (entry.summary && entry.summary.$t) {
+              snippet = entry.summary.$t.replace(/<[^>]*>/g, '').trim();
+            } else if (entry.content && entry.content.$t) {
+              snippet = entry.content.$t.replace(/<[^>]*>/g, '').trim();
+            }
+            if (!snippet) snippet = 'Terapistler ve klinik yöneticileri için kapsamlı rehber ve analiz.';
+            if (snippet.length > 120) snippet = snippet.substring(0, 115) + '...';
+            
+            let thumbUrl = '';
+            if (entry.media$thumbnail && entry.media$thumbnail.url) {
+              thumbUrl = entry.media$thumbnail.url.replace('/s72-c/', '/w600-h360-c/').replace('/s72-w/', '/w600-h360-c/');
+            }
+            
+            validPosts.push({
+              url: postLink || '#',
+              title: title,
+              date: dateStr,
+              category: category,
+              snippet: snippet,
+              thumbnail: thumbUrl,
+              readTime: Math.max(3, Math.min(10, Math.ceil(snippet.length / 25)))
+            });
+          });
+          
+          if (validPosts.length === 0) return;
+          
+          // Duplicate items to ensure smooth infinite loop
+          let displayPosts = [...validPosts];
+          if (displayPosts.length < 6) {
+            displayPosts = [...validPosts, ...validPosts, ...validPosts];
+          } else if (displayPosts.length < 8) {
+            displayPosts = [...validPosts, ...validPosts];
+          }
+          
+          let cardsHtml = '';
+          displayPosts.forEach((p, idx) => {
+            const iconName = fallbackIcons[idx % fallbackIcons.length];
+            const badgeClass = categoryBadges[idx % categoryBadges.length];
+            
+            const thumbHtml = p.thumbnail 
+              ? `<div class='absolute inset-0 bg-cover bg-center group-hover/card:scale-105 transition-transform duration-500' style='background-image: url("${p.thumbnail}");'></div>`
+              : `<div class='absolute inset-0 bg-gradient-to-br from-[#6b705c]/20 to-[#cb997e]/20 group-hover/card:scale-105 transition-transform duration-500 flex items-center justify-center'>
+                   <i data-lucide='${iconName}' class='w-10 h-10 text-[#6b705c] opacity-60'></i>
+                 </div>`;
+                 
+            cardsHtml += `
+              <a href='${p.url}' draggable='false' class='carousel-card group/card block bg-white rounded-3xl border border-slate-200/60 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-[#6b705c]/40 hover:-translate-y-1 transition-all duration-300 shrink-0 w-[290px] sm:w-[320px] text-slate-900 no-underline cursor-pointer'>
+                <div>
+                  <div class='relative h-40 overflow-hidden bg-slate-100'>
+                    ${thumbHtml}
+                    <span class='absolute top-3 left-3 ${badgeClass}'>${p.category}</span>
+                  </div>
+                  <div class='p-5 space-y-2 text-left'>
+                    <div class='flex items-center gap-2 text-[9px] font-semibold text-slate-400'>
+                      <span>${p.date}</span>
+                      <span>•</span>
+                      <span>${p.readTime} Dk Okuma</span>
+                    </div>
+                    <h4 class='font-display text-sm font-bold text-slate-900 leading-snug group-hover/card:text-[#6b705c] transition-colors line-clamp-2'>
+                      ${p.title}
+                    </h4>
+                    <p class='text-[11px] text-slate-500 leading-normal line-clamp-2'>
+                      ${p.snippet}
+                    </p>
+                  </div>
+                </div>
+                <div class='px-5 pb-5 pt-1 text-left'>
+                  <span class='inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6b705c] group-hover/card:text-[#cb997e] transition-colors'>
+                    Okumaya Başla <i data-lucide='arrow-up-right' class='w-3.5 h-3.5'></i>
+                  </span>
+                </div>
+              </a>
+            `;
+          });
+          
+          trackEl.innerHTML = cardsHtml;
+          if (window.lucide) {
+            window.lucide.createIcons();
+          }
+        })
+        .catch(err => {
+          console.log('Blogger related posts feed fallback:', err);
+        });
     }
 
     // Live mockup list animator (Component Loop Animation - Clean, Big Typography!)
@@ -3057,159 +3283,132 @@
     setInterval(animateIsometricDashboard, 4500);
 
     // ==========================================
-    // Interactive Room Permission & Booking Simulator (Desktop + Mobile Sync)
+    // Interactive Partial Payment & Commission Simulator (Desktop + Mobile Sync)
     // ==========================================
-    const permissions = {
-      melis: { std: true, play: true },
-      ozgur: { std: true, play: false }
+    const simClients = {
+      ahmet: { name: 'Ahmet Bey', totalFee: 2000, status: 'paid', paidAmount: 2000 },
+      selin: { name: 'Selin Hanım', totalFee: 1800, status: 'partial', paidAmount: 800 }
     };
 
-    let bookingTimeout = null;
+    window.setSimPayment = function(clientKey, status) {
+      const client = simClients[clientKey];
+      if (!client) return;
 
-    window.togglePermission = function(therapist, type) {
-      const active = !permissions[therapist][type];
-      permissions[therapist][type] = active;
+      client.status = status;
+      if (status === 'paid') {
+        client.paidAmount = client.totalFee;
+      } else if (status === 'partial') {
+        client.paidAmount = clientKey === 'ahmet' ? 1000 : 800;
+      } else {
+        client.paidAmount = 0;
+      }
 
-      // Update both desktop and mobile buttons if they exist
-      const btnIdDesk = `btn-perm-${therapist}-${type}`;
-      const btnIdMob = `btn-perm-${therapist}-${type}-mob`;
-      
-      [btnIdDesk, btnIdMob].forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) {
-          if (active) {
-            btn.className = 'px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs';
-            btn.innerHTML = `<span>✓ ${type === 'std' ? 'Standart' : 'Oyun Ter.'}</span>`;
-          } else {
-            btn.className = 'px-2 py-1 text-[10px] font-black rounded-lg border transition-all bg-red-50 text-red-800 border-red-200 flex items-center gap-1 cursor-pointer shadow-2xs';
-            btn.innerHTML = `<span>✗ ${type === 'std' ? 'Standart' : 'Oyun Ter.'}</span>`;
+      updateSimUI();
+
+      let msg = '';
+      let colorClass = 'text-emerald-400';
+      if (status === 'paid') {
+        msg = `TAHSİLAT: ${client.name} seansı (₺${client.totalFee.toLocaleString('tr-TR')}) tam ödendi! ✅`;
+      } else if (status === 'partial') {
+        const remaining = client.totalFee - client.paidAmount;
+        msg = `KISMİ ÖDEME: ${client.name} için ₺${client.paidAmount.toLocaleString('tr-TR')} alındı. Kalan borç: ₺${remaining.toLocaleString('tr-TR')} ◐`;
+        colorClass = 'text-amber-400';
+      } else {
+        msg = `ÖDENMEDİ: ${client.name} için ₺${client.totalFee.toLocaleString('tr-TR')} borç bakiyesine eklendi. ❌`;
+        colorClass = 'text-red-400';
+      }
+      updateSimConsole(msg, colorClass);
+    };
+
+    window.quickCollectAll = function() {
+      simClients.ahmet.status = 'paid';
+      simClients.ahmet.paidAmount = 2000;
+      simClients.selin.status = 'paid';
+      simClients.selin.paidAmount = 1800;
+      updateSimUI();
+      updateSimConsole('TÜMÜ TAHSİL EDİLDİ: Toplam ₺3.800 kasaya aktarıldı, bekleyen alacak sıfırlandı! 🎉', 'text-emerald-400');
+    };
+
+    window.quickResetPayments = function() {
+      simClients.ahmet.status = 'paid';
+      simClients.ahmet.paidAmount = 2000;
+      simClients.selin.status = 'partial';
+      simClients.selin.paidAmount = 800;
+      updateSimUI();
+      updateSimConsole('SIFIRLANDI: Başlangıç durumuna dönüldü (Ahmet Bey: Tam, Selin Hanım: Kısmi).', 'text-slate-300');
+    };
+
+    function updateSimUI() {
+      // Calculate totals
+      let totalCollected = 0;
+      let totalPending = 0;
+
+      Object.keys(simClients).forEach(key => {
+        const c = simClients[key];
+        totalCollected += c.paidAmount;
+        totalPending += (c.totalFee - c.paidAmount);
+
+        // Update Buttons & Badges for Desktop & Mobile
+        ['', '-mob'].forEach(suffix => {
+          const badge = document.getElementById(`sim-${key}-status-badge${suffix}`);
+          const btnPaid = document.getElementById(`btn-pay-${key}-paid${suffix}`);
+          const btnPartial = document.getElementById(`btn-pay-${key}-partial${suffix}`);
+          const btnUnpaid = document.getElementById(`btn-pay-${key}-unpaid${suffix}`);
+
+          if (badge) {
+            if (c.status === 'paid') {
+              badge.className = 'text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200';
+              badge.textContent = '● ÖDENDİ';
+            } else if (c.status === 'partial') {
+              badge.className = 'text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200';
+              badge.textContent = `◐ KISMİ (₺${c.paidAmount.toLocaleString('tr-TR')})`;
+            } else {
+              badge.className = 'text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200';
+              badge.textContent = '○ ÖDENMEDİ';
+            }
           }
-        }
+
+          if (btnPaid) {
+            if (c.status === 'paid') {
+              btnPaid.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-emerald-600 text-white border-emerald-600 cursor-pointer shadow-2xs';
+            } else {
+              btnPaid.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 cursor-pointer shadow-2xs';
+            }
+          }
+
+          if (btnPartial) {
+            if (c.status === 'partial') {
+              btnPartial.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-amber-600 text-white border-amber-600 cursor-pointer shadow-2xs';
+            } else {
+              btnPartial.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-amber-700 border-amber-300 hover:bg-amber-50 cursor-pointer shadow-2xs';
+            }
+          }
+
+          if (btnUnpaid) {
+            if (c.status === 'unpaid') {
+              btnUnpaid.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-red-600 text-white border-red-600 cursor-pointer shadow-2xs';
+            } else {
+              btnUnpaid.className = 'px-1.5 py-1 text-[9px] font-bold rounded-lg border transition-all bg-white text-red-700 border-red-200 hover:bg-red-50 cursor-pointer shadow-2xs';
+            }
+          }
+        });
       });
 
-      const therapistName = therapist === 'melis' ? 'Melis Hanım' : 'Özgür Bey';
-      const typeName = type === 'std' ? 'Standart Oda' : 'Oyun Odası';
-      updateSimConsole(`GÜNCELLEME: ${therapistName} için ${typeName} kapısı ${active ? 'AÇILDI! 🎉' : 'KİLİTLENDİ! 🔒'}`, 'text-[#cb997e]');
-    }
+      const therapistShare = Math.round(totalCollected * 0.70);
+      const clinicShare = Math.round(totalCollected * 0.30);
 
-    window.simulateBooking = function(therapist, type) {
-      if (bookingTimeout) clearTimeout(bookingTimeout);
-      resetSimRooms();
+      // Update metric displays (Desktop & Mobile)
+      ['', '-mob'].forEach(suffix => {
+        const colEl = document.getElementById(`sim-collected-amt${suffix}`);
+        const pendEl = document.getElementById(`sim-pending-amt${suffix}`);
+        const therEl = document.getElementById(`sim-therapist-share${suffix}`);
+        const clinEl = document.getElementById(`sim-clinic-share${suffix}`);
 
-      const therapistName = therapist === 'melis' ? 'Melis Hanım' : 'Özgür Bey';
-      const roomNum = type === 'std' ? 1 : 2;
-      
-      // Select elements for both targets
-      const roomElDesk = document.getElementById(`sim-room-${roomNum}`);
-      const badgeElDesk = document.getElementById(`sim-room-${roomNum}-badge`);
-      const descElDesk = document.getElementById(`sim-room-${roomNum}-desc`);
-
-      const roomElMob = document.getElementById(`sim-room-${roomNum}-mob`);
-      const badgeElMob = document.getElementById(`sim-room-${roomNum}-badge-mob`);
-      const descElMob = document.getElementById(`sim-room-${roomNum}-desc-mob`);
-
-      updateSimConsole(`iCal BAĞLANTISI: ${therapistName} takviminden seans rezervasyonu algılandı... (#Oda${roomNum})`, 'text-slate-200');
-
-      const isAuthorized = permissions[therapist][type];
-
-      setTimeout(() => {
-        if (isAuthorized) {
-          updateSimConsole(`HARİKA! ${therapistName} için odaya giriş izni onaylandı. Seans başarıyla işlendi. ✅`, 'text-emerald-400');
-          
-          if (roomElDesk && badgeElDesk && descElDesk) {
-            roomElDesk.className = 'p-3 bg-emerald-50/20 border border-emerald-200 rounded-xl flex flex-col justify-between h-[85px] transition-all scale-102';
-            badgeElDesk.className = 'text-[10px] px-2 py-0.5 bg-emerald-500 text-white font-bold rounded-md';
-            badgeElDesk.textContent = 'DOLU 🟢';
-            descElDesk.className = 'text-[10px] text-emerald-800 font-bold';
-            descElDesk.textContent = `${therapistName} İçeride`;
-          }
-
-          if (roomElMob && badgeElMob && descElMob) {
-            roomElMob.className = 'p-2.5 bg-emerald-50/20 border border-emerald-200 rounded-xl flex flex-col justify-between h-[80px] transition-all scale-102';
-            badgeElMob.className = 'text-[8px] px-1.5 py-0.5 bg-emerald-500 text-white font-bold rounded-md';
-            badgeElMob.textContent = 'DOLU 🟢';
-            descElMob.className = 'text-[8px] text-emerald-800 font-bold';
-            descElMob.textContent = `${therapistName} İçeride`;
-          }
-
-          bookingTimeout = setTimeout(() => {
-            resetSimRooms();
-          }, 4500);
-
-        } else {
-          updateSimConsole(`ENGEL: ${therapistName} bu oda tipi için yetkili değil! Giriş talebi durduruldu. ❌`, 'text-red-400');
-          
-          if (roomElDesk && badgeElDesk && descElDesk) {
-            roomElDesk.className = 'p-3 bg-red-50/20 border border-red-200 rounded-xl flex flex-col justify-between h-[85px] transition-all shake-element';
-            badgeElDesk.className = 'text-[10px] px-2 py-0.5 bg-red-500 text-white font-bold rounded-md';
-            badgeElDesk.textContent = 'KİLİTLİ 🔒';
-            descElDesk.className = 'text-[10px] text-red-800 font-bold';
-            descElDesk.textContent = 'Giriş İzni Yok!';
-          }
-
-          if (roomElMob && badgeElMob && descElMob) {
-            roomElMob.className = 'p-2.5 bg-red-50/20 border border-red-200 rounded-xl flex flex-col justify-between h-[80px] transition-all shake-element';
-            badgeElMob.className = 'text-[8px] px-1.5 py-0.5 bg-red-500 text-white font-bold rounded-md';
-            badgeElMob.textContent = 'KİLİTLİ 🔒';
-            descElMob.className = 'text-[8px] text-red-800 font-bold';
-            descElMob.textContent = 'Giriş İzni Yok!';
-          }
-
-          bookingTimeout = setTimeout(() => {
-            resetSimRooms();
-          }, 4500);
-        }
-      }, 800);
-    }
-
-    function resetSimRooms() {
-      const r1 = document.getElementById('sim-room-1');
-      const r1b = document.getElementById('sim-room-1-badge');
-      const r1d = document.getElementById('sim-room-1-desc');
-
-      const r2 = document.getElementById('sim-room-2');
-      const r2b = document.getElementById('sim-room-2-badge');
-      const r2d = document.getElementById('sim-room-2-desc');
-
-      const r1Mob = document.getElementById('sim-room-1-mob');
-      const r1bMob = document.getElementById('sim-room-1-badge-mob');
-      const r1dMob = document.getElementById('sim-room-1-desc-mob');
-
-      const r2Mob = document.getElementById('sim-room-2-mob');
-      const r2bMob = document.getElementById('sim-room-2-badge-mob');
-      const r2dMob = document.getElementById('sim-room-2-desc-mob');
-
-      if (r1 && r1b && r1d) {
-        r1.className = 'p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[85px] transition-all';
-        r1b.className = 'text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md';
-        r1b.textContent = 'BOŞ';
-        r1d.className = 'text-[10px] text-slate-500 font-bold';
-        r1d.textContent = 'Giriş Yapılabilir';
-      }
-
-      if (r2 && r2b && r2d) {
-        r2.className = 'p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[85px] transition-all';
-        r2b.className = 'text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md';
-        r2b.textContent = 'BOŞ';
-        r2d.className = 'text-[10px] text-slate-500 font-bold';
-        r2d.textContent = 'Sadece Yetkililer';
-      }
-
-      if (r1Mob && r1bMob && r1dMob) {
-        r1Mob.className = 'p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[80px] transition-all';
-        r1bMob.className = 'text-[8px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md';
-        r1bMob.textContent = 'BOŞ';
-        r1dMob.className = 'text-[8px] text-slate-500 font-bold';
-        r1dMob.textContent = 'Giriş Yapılabilir';
-      }
-
-      if (r2Mob && r2bMob && r2dMob) {
-        r2Mob.className = 'p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between h-[80px] transition-all';
-        r2bMob.className = 'text-[8px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-md';
-        r2bMob.textContent = 'BOŞ';
-        r2dMob.className = 'text-[8px] text-slate-500 font-bold';
-        r2dMob.textContent = 'Sadece Yetkililer';
-      }
+        if (colEl) colEl.textContent = `₺${totalCollected.toLocaleString('tr-TR')}`;
+        if (pendEl) pendEl.textContent = `₺${totalPending.toLocaleString('tr-TR')}`;
+        if (therEl) therEl.textContent = `₺${therapistShare.toLocaleString('tr-TR')}`;
+        if (clinEl) clinEl.textContent = `₺${clinicShare.toLocaleString('tr-TR')}`;
+      });
     }
 
     function updateSimConsole(message, colorClass) {
@@ -3220,7 +3419,7 @@
         if (consoleEl) {
           consoleEl.innerHTML = `
             <span class='${colorClass} font-bold mb-0.5'>&gt; ${message}</span>
-            <span class='text-slate-400 font-medium'>Yetkileri değiştirip seans gönderin.</span>
+            <span class='text-slate-400 font-medium'>Seans ödeme butonlarına basarak hesaplamayı test edebilirsiniz.</span>
           `;
         }
       });
