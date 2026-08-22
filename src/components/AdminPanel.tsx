@@ -259,11 +259,27 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     }
     setSendingResetUserId(userId);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      showToast(`${displayName || email} kullanıcısına şifre sıfırlama e-postası başarıyla gönderildi.`, 'success');
+      const res = await fetch('/api/send-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.customSent) {
+        showToast(`${displayName || email} kullanıcısına PsyCalcu özel şablonlu şifre sıfırlama e-postası başarıyla gönderildi.`, 'success');
+      } else {
+        await sendPasswordResetEmail(auth, email.trim());
+        showToast(`${displayName || email} kullanıcısına şifre sıfırlama e-postası başarıyla gönderildi.`, 'success');
+      }
     } catch (error: any) {
       console.error("Admin send password reset error:", error);
-      showToast(`Şifre sıfırlama e-postası gönderilirken hata oluştu: ${error.message || error}`, 'error');
+      try {
+        await sendPasswordResetEmail(auth, email.trim());
+        showToast(`${displayName || email} kullanıcısına şifre sıfırlama e-postası başarıyla gönderildi.`, 'success');
+      } catch (fbErr: any) {
+        showToast(`Şifre sıfırlama e-postası gönderilirken hata oluştu: ${fbErr.message || fbErr}`, 'error');
+      }
     } finally {
       setSendingResetUserId(null);
     }

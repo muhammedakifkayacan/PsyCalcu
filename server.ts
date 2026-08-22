@@ -7,6 +7,7 @@ import nodemailer from "nodemailer";
 import "dotenv/config";
 import { initializeApp as initializeAdminApp, getApps as getAdminApps } from "firebase-admin/app";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
+import { getAuth as getAdminAuth } from "firebase-admin/auth";
 
 let adminDb: any = null;
 
@@ -244,6 +245,158 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
     } catch (error: any) {
       console.error("Nodemailer Email Send Error:", error);
       res.status(500).json({ error: `E-posta gönderimi başarısız oldu: ${error.message}` });
+    }
+  });
+
+  // API Route for Custom Branded Password Reset Email
+  app.post("/api/send-password-reset", async (req: any, res: any) => {
+    try {
+      const { email } = req.body;
+      if (!email || !email.trim()) {
+        return res.status(400).json({ error: "E-posta adresi gereklidir." });
+      }
+
+      const targetEmail = email.trim();
+      console.log(`Password reset requested for: ${targetEmail}`);
+
+      let resetLink = "";
+      try {
+        let adminAppInstance;
+        const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+        let projectId = process.env.FIREBASE_PROJECT_ID;
+        if (fs.existsSync(configPath)) {
+          const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+          projectId = cfg.projectId || projectId;
+        }
+
+        if (getAdminApps().length === 0) {
+          adminAppInstance = initializeAdminApp({ projectId });
+        } else {
+          adminAppInstance = getAdminApps()[0];
+        }
+
+        const adminAuth = getAdminAuth(adminAppInstance);
+        const appUrl = process.env.APP_URL || "https://psycalcu.com";
+        const actionCodeSettings = {
+          url: appUrl,
+        };
+        resetLink = await adminAuth.generatePasswordResetLink(targetEmail, actionCodeSettings);
+        console.log(`Generated reset link for ${targetEmail}`);
+      } catch (linkErr: any) {
+        console.warn("Could not generate password reset link via Admin Auth SDK:", linkErr);
+      }
+
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+
+      // If resetLink was generated and SMTP is configured, send the custom template!
+      if (resetLink && smtpHost && smtpUser && smtpPass) {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+        });
+
+        const htmlTemplate = `
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px 20px; background-color: #fdfbf7; color: #2d312e;">
+            <div style="background-color: #ffffff; border: 1px solid #e5e1d8; border-radius: 24px; padding: 35px 30px; box-shadow: 0 4px 20px rgba(107, 112, 92, 0.05); text-align: center;">
+              
+              <!-- Brand Logo Badge -->
+              <div style="width: 56px; height: 56px; background-color: #6b705c; border-radius: 18px; line-height: 56px; text-align: center; color: #ffffff; font-family: Georgia, serif; font-size: 32px; font-style: italic; margin: 0 auto 16px auto; box-shadow: 0 4px 12px rgba(107, 112, 92, 0.2);">
+                P
+              </div>
+
+              <!-- Brand Title -->
+              <h1 style="font-family: Georgia, serif; font-style: italic; color: #6b705c; font-size: 26px; margin: 0 0 6px 0; font-weight: normal;">
+                PsyCalcu
+              </h1>
+              <p style="font-size: 11px; font-weight: 700; color: #a5a58d; letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 25px 0;">
+                Klinik &amp; Terapi Seans Planlayıcı — Güvenlik Servisi
+              </p>
+
+              <div style="height: 1px; background-color: #e5e1d8; width: 100%; margin-bottom: 28px;"></div>
+
+              <!-- Content Header -->
+              <h2 style="font-size: 18px; color: #333333; margin-top: 0; margin-bottom: 12px; font-weight: 700; text-align: left;">
+                Şifre Sıfırlama Talebi
+              </h2>
+
+              <p style="font-size: 14px; line-height: 1.65; color: #555555; text-align: left; margin-bottom: 24px;">
+                Merhaba,<br><br>
+                PsyCalcu hesabınız için bir şifre yenileme talebinde bulunuldu. Hesabınıza güvenle erişebilmeniz ve yeni bir şifre belirleyebilmeniz için aşağıdaki butona tıklamanız yeterlidir:
+              </p>
+
+              <!-- Action Button -->
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${resetLink}" target="_blank" style="background-color: #6b705c; color: #ffffff !important; padding: 14px 32px; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 14px; display: inline-block; box-shadow: 0 4px 14px rgba(107, 112, 92, 0.25); letter-spacing: 0.2px;">
+                  🔑 Şifremi Sıfırla ve Yeni Şifre Belirle
+                </a>
+              </div>
+
+              <!-- Raw Link Box -->
+              <div style="background-color: #fdfbf7; border: 1px solid #e5e1d8; border-radius: 14px; padding: 14px 16px; margin: 24px 0; text-align: left;">
+                <p style="font-size: 11px; color: #777777; margin: 0 0 6px 0; font-weight: 600;">
+                  Yukarıdaki buton çalışmıyorsa aşağıdaki bağlantıyı tarayıcınıza kopyalayın:
+                </p>
+                <a href="${resetLink}" style="font-size: 11px; color: #6b705c; word-break: break-all; text-decoration: underline;">
+                  ${resetLink}
+                </a>
+              </div>
+
+              <!-- Security Box -->
+              <div style="background-color: #fff9f5; border: 1px solid #f2e3d5; border-radius: 14px; padding: 14px 16px; text-align: left; margin-top: 24px;">
+                <p style="font-size: 12px; line-height: 1.5; color: #cb997e; margin: 0; font-weight: 600;">
+                  ⚠️ Güvenlik Uyarısı:
+                </p>
+                <p style="font-size: 11.5px; line-height: 1.5; color: #8c6a58; margin: 4px 0 0 0;">
+                  Bu talebi siz yapmadıysanız bu e-postayı güvenle göz ardı edebilirsiniz. Şifreniz siz yeni bir şifre oluşturana kadar değişmeyecektir. Bağlantı güvenlik amacıyla tek kullanımlık ve sürelidir.
+                </p>
+              </div>
+
+              <!-- Footer -->
+              <div style="margin-top: 32px; border-top: 1px solid #e5e1d8; padding-top: 20px; text-align: center;">
+                <p style="font-size: 11px; color: #a5a58d; margin: 0 0 4px 0;">
+                  PsyCalcu — Psikologlar &amp; Klinisyenler İçin Seans ve Finans Yönetim Sistemi
+                </p>
+                <p style="font-size: 10px; color: #cccccc; margin: 0;">
+                  Bu e-posta otomatik olarak gönderilmiştir.
+                </p>
+              </div>
+
+            </div>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"PsyCalcu Destek" <${smtpUser}>`,
+          to: targetEmail,
+          subject: "🔑 PsyCalcu Şifre Sıfırlama Bağlantınız",
+          html: htmlTemplate,
+        });
+
+        console.log(`Custom branded password reset email sent to ${targetEmail}`);
+        return res.json({
+          success: true,
+          customSent: true,
+          message: "Şifre sıfırlama e-postası PsyCalcu özel şablonuyla başarıyla gönderildi."
+        });
+      }
+
+      return res.json({
+        success: true,
+        customSent: false,
+        resetLink: resetLink || null,
+        message: "Özel SMTP tanımlı olmadığı için varsayılan e-posta sistemine yönlendiriliyor."
+      });
+    } catch (error: any) {
+      console.error("Custom password reset error:", error);
+      res.status(500).json({ error: error?.message || "E-posta gönderilirken bir hata oluştu." });
     }
   });
 

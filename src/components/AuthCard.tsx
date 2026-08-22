@@ -66,22 +66,44 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
     }
 
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setInfoMessage('Şifre sıfırlama e-postası başarıyla gönderildi! Lütfen gelen kutunuzu (ve gereksiz/spam klasörünü) kontrol edin.');
-      if (showToast) {
-        showToast('Şifre sıfırlama e-postası gönderildi.', 'success');
+      const res = await fetch('/api/send-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.customSent) {
+        setInfoMessage('PsyCalcu özel şablonlu şifre sıfırlama e-postası başarıyla gönderildi! Lütfen gelen kutunuzu (ve gereksiz/spam klasörünü) kontrol edin.');
+        if (showToast) {
+          showToast('Özel tasarım şifre sıfırlama e-postası gönderildi.', 'success');
+        }
+      } else {
+        await sendPasswordResetEmail(auth, email.trim());
+        setInfoMessage('Şifre sıfırlama e-postası başarıyla gönderildi! Lütfen gelen kutunuzu (ve gereksiz/spam klasörünü) kontrol edin.');
+        if (showToast) {
+          showToast('Şifre sıfırlama e-postası gönderildi.', 'success');
+        }
       }
     } catch (err: any) {
-      console.error(err);
-      let errorMsg = 'Şifre sıfırlama e-postası gönderilirken bir hata oluştu.';
-      if (err.code === 'auth/user-not-found') {
-        errorMsg = 'Bu e-posta adresiyle kayıtlı bir kullanıcı bulunamadı.';
-      } else if (err.code === 'auth/invalid-email') {
-        errorMsg = 'Geçersiz bir e-posta adresi girdiniz.';
-      } else if (err.message) {
-        errorMsg = err.message;
+      console.error("Custom password reset fetch failed, falling back to client auth:", err);
+      try {
+        await sendPasswordResetEmail(auth, email.trim());
+        setInfoMessage('Şifre sıfırlama e-postası başarıyla gönderildi! Lütfen gelen kutunuzu kontrol edin.');
+        if (showToast) {
+          showToast('Şifre sıfırlama e-postası gönderildi.', 'success');
+        }
+      } catch (fbErr: any) {
+        let errorMsg = 'Şifre sıfırlama e-postası gönderilirken bir hata oluştu.';
+        if (fbErr.code === 'auth/user-not-found') {
+          errorMsg = 'Bu e-posta adresiyle kayıtlı bir kullanıcı bulunamadı.';
+        } else if (fbErr.code === 'auth/invalid-email') {
+          errorMsg = 'Geçersiz bir e-posta adresi girdiniz.';
+        } else if (fbErr.message) {
+          errorMsg = fbErr.message;
+        }
+        setError(errorMsg);
       }
-      setError(errorMsg);
     } finally {
       setLoading(false);
     }
