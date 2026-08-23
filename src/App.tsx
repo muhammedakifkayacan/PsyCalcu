@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, normalizeOwnerCalendars } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -98,17 +98,26 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
   </div>
 );
 
-// Auto-correct any session before July 1, 2026 to be 0 TL and marked as 'paid'
-const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
+// Auto-correct any session before the user's registration / accounting start date to be 0 TL and marked as 'paid'
+// (because past sessions prior to registration were already accounted for elsewhere),
+// and automatically reconcile smart client prices for all active sessions in the accounting period (on or after registration date)
+const autoCorrectPastSessions = (
+  sessionList: Session[],
+  defaultPrice = 1200,
+  defaultBabysitterFee = 250,
+  defaultOfficeRentFee = 200,
+  accountingStartDate?: string | null
+): Session[] => {
   if (!Array.isArray(sessionList)) return [];
-  return sessionList.map(s => {
+  const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+  const zeroedPast: Session[] = sessionList.map(s => {
     if (!s) return s;
-    if (s.date && s.date < '2026-07-01') {
+    if (cutoffDate && s.date && s.date < cutoffDate) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
           ...s,
           price: 0,
-          paymentStatus: 'paid',
+          paymentStatus: 'paid' as const,
           hasBabysitterFee: false,
           babysitterFeeAmount: 0,
           hasOfficeRentFee: false,
@@ -119,6 +128,7 @@ const autoCorrectPastSessions = (sessionList: Session[]): Session[] => {
     }
     return s;
   });
+  return autoHealSmartClientPrices(zeroedPast, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -135,7 +145,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   faceToFaceCalendarWebcalUrl: '',
   googleSheetId: '',
   googleSheetsLinked: false,
-  enableSmartClientPriceMatching: false,
+  enableSmartClientPriceMatching: true,
   autoMarkShortEventsAsNonSession: true,
   defaultLandingPage: 'agenda',
   userRole: undefined,
@@ -679,18 +689,17 @@ export default function App() {
 
     const cleanEmail = (user.email || '').trim().toLowerCase();
 
-    if (cleanEmail === 'muhammedakifkayacan@gmail.com') {
-      setRegistrationStatus('approved');
-      setRegistrationError(null);
-      return;
-    }
-
     if (cleanEmail === 'uzmpsikologbusra@gmail.com') {
       setRegistrationCreatedAt('2026-07-01T00:00:00.000Z');
     }
 
-    setRegistrationStatus('checking');
-    setRegistrationError(null);
+    if (cleanEmail === 'muhammedakifkayacan@gmail.com') {
+      setRegistrationStatus('approved');
+      setRegistrationError(null);
+    } else {
+      setRegistrationStatus('checking');
+      setRegistrationError(null);
+    }
     
     // Subscribe to registration document
     const regRef = doc(db, 'registrations', user.uid);
@@ -698,7 +707,9 @@ export default function App() {
       try {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setRegistrationStatus(data.status || 'pending');
+          if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+            setRegistrationStatus(data.status || 'pending');
+          }
           setMaxSessionsLimit(data.maxSessionsLimit ?? 'unlimited');
           setFeaturesAIAllowed(data.featuresAIAllowed !== false);
           setFeaturesExportAllowed(data.featuresExportAllowed !== false);
@@ -740,22 +751,26 @@ export default function App() {
           }
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
+            setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, regCreated));
           }
           
           setRegistrationError(null);
         } else {
-          // Document doesn't exist, create it as pending
+          // Document doesn't exist, create it
           try {
             const newReg = {
               userId: user.uid,
               email: user.email || 'bilinmiyor',
               displayName: user.displayName || 'Psikolog',
-              status: 'pending',
+              status: cleanEmail === 'muhammedakifkayacan@gmail.com' ? 'approved' : 'pending',
               createdAt: cleanEmail === 'uzmpsikologbusra@gmail.com' ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
             };
             await setDoc(regRef, newReg);
-            setRegistrationStatus('pending');
+            if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+              setRegistrationStatus('pending');
+            }
             setRegistrationCreatedAt(newReg.createdAt);
+            setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, newReg.createdAt));
             setRegistrationError(null);
 
             // Notify Admin via backend API
@@ -768,7 +783,9 @@ export default function App() {
           } catch (err: any) {
             console.error("Error creating registration document:", err);
             setRegistrationError(err?.message || String(err));
-            setRegistrationStatus('pending');
+            if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+              setRegistrationStatus('pending');
+            }
           }
         }
       } catch (err: any) {
@@ -778,7 +795,9 @@ export default function App() {
     }, (error) => {
       console.error("Error listening to registration document:", error);
       setRegistrationError(error?.message || String(error));
-      setRegistrationStatus('pending');
+      if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+        setRegistrationStatus('pending');
+      }
     });
 
     return () => unsubscribe();
@@ -805,7 +824,13 @@ export default function App() {
         
         if (cloudData) {
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
-          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
+          const cloudSessions = autoCorrectPastSessions(
+            cloudData.sessions || [],
+            cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
+            cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
+            cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
+            registrationCreatedAt
+          );
           
           if (shouldMigrate) {
             // User explicitly requested to migrate anonymous data into their existing cloud account
@@ -835,7 +860,13 @@ export default function App() {
               return cs;
             });
             
-            const finalSessions = autoCorrectPastSessions([...mergedSessions, ...localOnly]);
+            const finalSessions = autoCorrectPastSessions(
+              [...mergedSessions, ...localOnly],
+              cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
+              cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
+              cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
+              registrationCreatedAt
+            );
             
             setSessions(finalSessions);
             setSettings(cloudData.settings);
@@ -2085,14 +2116,36 @@ export default function App() {
     }
     const withTimestamp = { ...savedSession, updatedAt: Date.now(), isManuallyEdited: true };
     setSessions(prev => {
+      let updatedList: Session[];
       const exists = prev.some(s => s.id === savedSession.id);
       if (exists) {
-        return prev.map(s => s.id === savedSession.id ? withTimestamp : s);
+        updatedList = prev.map(s => s.id === savedSession.id ? withTimestamp : s);
       } else {
         // Increment weekly manual limit count only when adding a new session
         incrementWeeklyManualActionCount(1, user?.uid);
-        return [...prev, withTimestamp];
+        updatedList = [...prev, withTimestamp];
       }
+
+      // If price > 0, propagate this price to future unpriced/zero-priced sessions of this client
+      if (withTimestamp.price > 0 && withTimestamp.type !== 'cancelled' && withTimestamp.type !== 'non-session') {
+        const targetNorm = getNormalizedClientName(withTimestamp.clientName);
+        const cutoffDate = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
+        updatedList = updatedList.map(s => {
+          const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
+          if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
+            if (getNormalizedClientName(s.clientName) === targetNorm && (s.price === 0 || !s.price)) {
+              return {
+                ...s,
+                price: withTimestamp.price,
+                updatedAt: Date.now()
+              };
+            }
+          }
+          return s;
+        });
+      }
+
+      return autoCorrectPastSessions(updatedList, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, registrationCreatedAt);
     });
   };
 
@@ -2546,14 +2599,22 @@ export default function App() {
           return;
         }
 
-        // Determine if the incoming session is cancelled, non-session, or zero price
-        const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || ns.price === 0;
+        // Determine if the incoming session is cancelled, non-session, or before the user's registration cutoff
+        const regCutoff = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
+        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff);
+        const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration;
 
         // Auto-match room if not manually edited/set using temp notes
         const tempNotesForRoomMatch = ns.notes || existing.notes;
         const matchedRoomId = findMatchedRoomId(tempNotesForRoomMatch) || existing.roomId;
         // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
+
+        // Smart price lookup if existing price is 0 or default
+        let effectivePrice = isCancelledOrNonSessionOrBefore ? 0 : existing.price;
+        if (!isCancelledOrNonSessionOrBefore && (effectivePrice === 0 || !effectivePrice)) {
+          effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+        }
 
         // Merge changed calendar fields, preserving custom user edits on price/payment status
         const updated = {
@@ -2565,7 +2626,7 @@ export default function App() {
           duration: ns.duration,
           notes: persistentNotes,
           roomId: matchedRoomId,
-          price: isCancelledOrNonSessionOrBefore ? 0 : (existing.price !== settings.defaultSessionPrice ? existing.price : ns.price),
+          price: effectivePrice,
           paymentStatus: isCancelledOrNonSessionOrBefore ? (ns.type === 'non-session' ? 'unpaid' : 'paid') : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
           hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : ns.hasBabysitterFee,
           babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : ns.babysitterFeeAmount,
@@ -2640,7 +2701,7 @@ export default function App() {
 
         const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
-        return Array.from(prevMap.values());
+        return autoCorrectPastSessions(Array.from(prevMap.values()), settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, registrationCreatedAt);
       });
     }
 
@@ -2802,7 +2863,13 @@ export default function App() {
       if (user && registrationStatus === 'approved') {
         const cloudData = await fetchUserData(user.uid);
         if (cloudData) {
-          const cloudSessions = autoCorrectPastSessions(cloudData.sessions || []);
+          const cloudSessions = autoCorrectPastSessions(
+            cloudData.sessions || [],
+            cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
+            cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
+            cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
+            registrationCreatedAt
+          );
           setSessions(cloudSessions);
           setSettings(cloudData.settings);
           

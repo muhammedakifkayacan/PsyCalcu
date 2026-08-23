@@ -396,15 +396,27 @@ export function parseICS(
     }
 
     // Create session for each occurrence
+    const membershipCutoff = membershipDate ? membershipDate.split('T')[0] : '';
+
     for (const occ of occurrences) {
+      const isBeforeRegistration = Boolean(membershipCutoff && occ.dateStr < membershipCutoff);
+
       // Determine financial parameters based on session type
       let price = defaultPrice;
       let hasBabysitterFee = true;
       let babysitterFeeAmount = defaultBabysitterFee;
       let hasOfficeRentFee = finalType === 'face-to-face';
       let officeRentFeeAmount = finalType === 'face-to-face' ? defaultOfficeRentFee : 0;
+      let paymentStatus: 'paid' | 'unpaid' = 'unpaid';
 
-      if (finalType === 'cancelled' || finalType === 'non-session') {
+      if (isBeforeRegistration) {
+        price = 0;
+        paymentStatus = 'paid';
+        hasBabysitterFee = false;
+        babysitterFeeAmount = 0;
+        hasOfficeRentFee = false;
+        officeRentFeeAmount = 0;
+      } else if (finalType === 'cancelled' || finalType === 'non-session') {
         price = 0;
         hasBabysitterFee = false;
         babysitterFeeAmount = 0;
@@ -435,7 +447,7 @@ export function parseICS(
         babysitterFeeAmount: babysitterFeeAmount,
         hasOfficeRentFee: hasOfficeRentFee,
         officeRentFeeAmount: officeRentFeeAmount,
-        paymentStatus: 'unpaid',
+        paymentStatus: paymentStatus,
         notes: notesStr,
         isSyncedFromCalendar: true,
         syncedCalendarType: forcedType

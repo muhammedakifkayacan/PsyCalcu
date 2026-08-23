@@ -138,10 +138,10 @@ export function getNormalizedClientName(name: string): string {
 }
 
 /**
- * Finds the latest session price for a given client (matching exact or variations like name 1, name-2).
- * It will find sessions of the same normalized client name that are before or on the given date,
- * and return the price of the most recent one.
- * If no previous session is found, returns the default price.
+ * Finds the latest valid (non-zero) session price for a given client (matching exact or variations like name 1, name-2).
+ * Prioritizes sessions of the same normalized client name that are before or on the given date with price > 0.
+ * If none found before the date, looks across all sessions for that client with price > 0.
+ * If no previous price is found, returns the default price.
  */
 export function getSmartClientPrice(
   clientName: string,
@@ -149,34 +149,42 @@ export function getSmartClientPrice(
   sessions: Session[],
   defaultPrice: number
 ): number {
-  if (!clientName) return defaultPrice;
+  if (!clientName || !Array.isArray(sessions)) return defaultPrice;
   const targetNormalized = getNormalizedClientName(clientName);
   
-  // Filter sessions that have the same normalized client name
-  // and are before or on the given sessionDate.
-  // Skip cancelled sessions as their price is usually 0.
-  const matchedSessions = sessions.filter(s => {
-    if (s.type === 'cancelled') return false;
+  // Filter active sessions that have the same normalized client name and valid price > 0
+  const validSessions = sessions.filter(s => {
+    if (!s || s.type === 'cancelled' || s.type === 'non-session') return false;
+    if (typeof s.price !== 'number' || s.price <= 0) return false;
     const sNormalized = getNormalizedClientName(s.clientName);
-    return sNormalized === targetNormalized && s.date <= sessionDate;
+    return sNormalized === targetNormalized;
   });
   
-  if (matchedSessions.length === 0) {
+  if (validSessions.length === 0) {
     return defaultPrice;
   }
   
-  // Sort matched sessions by date descending, then time descending
-  matchedSessions.sort((a, b) => {
+  // 1. First priority: Sessions before or on the given sessionDate
+  const priorSessions = validSessions.filter(s => s.date <= sessionDate);
+  if (priorSessions.length > 0) {
+    priorSessions.sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return b.time.localeCompare(a.time);
+    });
+    return priorSessions[0].price;
+  }
+  
+  // 2. Second priority: Any known non-zero price for this client (closest to sessionDate)
+  validSessions.sort((a, b) => {
     if (a.date !== b.date) return b.date.localeCompare(a.date);
     return b.time.localeCompare(a.time);
   });
-  
-  return matchedSessions[0].price;
+  return validSessions[0].price;
 }
 
 /**
  * Finds the latest session price, babysitter fee, and office rent fee for a given client.
- * Looks for non-cancelled sessions before or on the given session date.
+ * Looks for valid non-cancelled, non-session sessions.
  */
 export function getSmartClientCosts(
   clientName: string,
@@ -191,41 +199,102 @@ export function getSmartClientCosts(
     babysitterFeeAmount: defaultBabysitterFee,
     officeRentFeeAmount: defaultOfficeRentFee
   };
-  if (!clientName) return result;
+  if (!clientName || !Array.isArray(sessions)) return result;
   const targetNormalized = getNormalizedClientName(clientName);
 
-  // Find matched sessions for this client (non-cancelled, before or on sessionDate)
+  // Find all matched sessions for this client (non-cancelled, non-session)
   const matchedSessions = sessions.filter(s => {
-    if (s.type === 'cancelled') return false;
+    if (!s || s.type === 'cancelled' || s.type === 'non-session') return false;
     const sNormalized = getNormalizedClientName(s.clientName);
-    return sNormalized === targetNormalized && s.date <= sessionDate;
+    return sNormalized === targetNormalized;
   });
 
   if (matchedSessions.length === 0) {
     return result;
   }
 
-  // Sort descending by date, then time
-  matchedSessions.sort((a, b) => {
+  // Calculate smart price using dedicated robust logic
+  result.price = getSmartClientPrice(clientName, sessionDate, sessions, defaultPrice);
+
+  // Sort descending by date, then time for cost lookups
+  const sortedSessions = [...matchedSessions].sort((a, b) => {
     if (a.date !== b.date) return b.date.localeCompare(a.date);
     return b.time.localeCompare(a.time);
   });
 
-  // Price is the most recent session's price
-  result.price = matchedSessions[0].price;
-
-  // Find the most recent session where they paid a babysitter fee
-  const sessionWithBabysitter = matchedSessions.find(s => s.hasBabysitterFee && s.babysitterFeeAmount > 0);
-  if (sessionWithBabysitter) {
+  // Find the most recent session before or on date (or any session) where babysitter fee was paid
+  const sessionWithBabysitter = sortedSessions.find(s => s.date <= sessionDate && s.hasBabysitterFee && (Number(s.babysitterFeeAmount) || 0) > 0)
+    || sortedSessions.find(s => s.hasBabysitterFee && (Number(s.babysitterFeeAmount) || 0) > 0);
+  if (sessionWithBabysitter && sessionWithBabysitter.babysitterFeeAmount) {
     result.babysitterFeeAmount = sessionWithBabysitter.babysitterFeeAmount;
   }
 
-  // Find the most recent session where they paid an office rent fee
-  const sessionWithOfficeRent = matchedSessions.find(s => s.hasOfficeRentFee && s.officeRentFeeAmount > 0);
-  if (sessionWithOfficeRent) {
+  // Find the most recent session before or on date (or any session) where office rent fee was paid
+  const sessionWithOfficeRent = sortedSessions.find(s => s.date <= sessionDate && s.hasOfficeRentFee && (Number(s.officeRentFeeAmount) || 0) > 0)
+    || sortedSessions.find(s => s.hasOfficeRentFee && (Number(s.officeRentFeeAmount) || 0) > 0);
+  if (sessionWithOfficeRent && sessionWithOfficeRent.officeRentFeeAmount) {
     result.officeRentFeeAmount = sessionWithOfficeRent.officeRentFeeAmount;
   }
 
   return result;
+}
+
+/**
+ * Reconciles sessions so that any active session in the user's active accounting period (on or after registration / cutoff date)
+ * with a 0 TL price automatically inherits the client's established non-zero smart price!
+ */
+export function autoHealSmartClientPrices(
+  sessionList: Session[],
+  defaultPrice: number,
+  defaultBabysitterFee: number,
+  defaultOfficeRentFee: number,
+  accountingStartDate?: string | null
+): Session[] {
+  if (!Array.isArray(sessionList)) return [];
+
+  // Cutoff date is the user's registration date (YYYY-MM-DD), if available
+  const effectiveCutoff = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+
+  // Group latest known valid prices per normalized client name
+  const clientEstablishedPrices = new Map<string, number>();
+
+  // Pass 1: Find all clients with a known non-zero price in active sessions
+  sessionList.forEach(s => {
+    if (!s || s.type === 'cancelled' || s.type === 'non-session') return;
+    const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
+    if (typeof s.price === 'number' && s.price > 0 && isWithinAccounting) {
+      const normName = getNormalizedClientName(s.clientName);
+      if (normName) {
+        // Keep the latest price (or established price)
+        const currentBest = clientEstablishedPrices.get(normName);
+        if (!currentBest) {
+          clientEstablishedPrices.set(normName, s.price);
+        }
+      }
+    }
+  });
+
+  // Pass 2: If a session in active accounting period has price === 0, but the client has an established price, heal it!
+  return sessionList.map(s => {
+    if (!s) return s;
+    const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
+    if (isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
+      if (s.price === 0 || !s.price) {
+        const normName = getNormalizedClientName(s.clientName);
+        const establishedPrice = clientEstablishedPrices.get(normName) || getSmartClientPrice(s.clientName, s.date, sessionList, defaultPrice);
+        if (establishedPrice && establishedPrice > 0) {
+          const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, establishedPrice, defaultBabysitterFee, defaultOfficeRentFee);
+          return {
+            ...s,
+            price: establishedPrice,
+            babysitterFeeAmount: s.hasBabysitterFee ? (s.babysitterFeeAmount || smartCosts.babysitterFeeAmount) : 0,
+            officeRentFeeAmount: s.hasOfficeRentFee ? (s.officeRentFeeAmount || smartCosts.officeRentFeeAmount) : 0,
+            updatedAt: Date.now()
+          };
+        }
+      }
+    }
+    return s;
+  });
 }
 

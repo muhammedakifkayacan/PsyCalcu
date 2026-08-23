@@ -127,23 +127,26 @@ export default function SessionModal({
 
   // Smart client price and costs lookup effect
   useEffect(() => {
-    if (isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled') {
-      const matchedCosts = getSmartClientCosts(
-        clientName,
-        date,
-        sessions,
-        defaultPrice,
-        defaultBabysitterFee,
-        defaultOfficeRentFee
-      );
-      if (!isPriceManuallyEdited && matchedCosts.price !== defaultPrice) {
-        setPrice(matchedCosts.price);
-      }
-      if (!isBabysitterFeeManuallyEdited && matchedCosts.babysitterFeeAmount !== defaultBabysitterFee) {
-        setBabysitterFeeAmount(matchedCosts.babysitterFeeAmount);
-      }
-      if (!isOfficeRentFeeManuallyEdited && matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee) {
-        setOfficeRentFeeAmount(matchedCosts.officeRentFeeAmount);
+    if (isOpen && clientName.trim() && type !== 'cancelled' && type !== 'non-session') {
+      const isPriceZeroOrNew = !sessionToEdit || (sessionToEdit && (sessionToEdit.price === 0 || !sessionToEdit.price));
+      if (isPriceZeroOrNew && !isPriceManuallyEdited) {
+        const matchedCosts = getSmartClientCosts(
+          clientName,
+          date,
+          sessions,
+          defaultPrice,
+          defaultBabysitterFee,
+          defaultOfficeRentFee
+        );
+        if (matchedCosts.price > 0) {
+          setPrice(matchedCosts.price);
+        }
+        if (!isBabysitterFeeManuallyEdited && matchedCosts.babysitterFeeAmount !== defaultBabysitterFee) {
+          setBabysitterFeeAmount(matchedCosts.babysitterFeeAmount);
+        }
+        if (!isOfficeRentFeeManuallyEdited && matchedCosts.officeRentFeeAmount !== defaultOfficeRentFee) {
+          setOfficeRentFeeAmount(matchedCosts.officeRentFeeAmount);
+        }
       }
     }
   }, [
