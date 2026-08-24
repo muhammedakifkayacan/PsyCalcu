@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, X, Check } from 'lucide-react';
+import { AlertTriangle, X, Check, CreditCard, Banknote, Landmark, Wallet } from 'lucide-react';
+import { PaymentMethod } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface DebtPaymentConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (paymentMethod?: PaymentMethod) => void;
   clientName: string;
   totalAmount: number;
 }
@@ -22,10 +23,12 @@ export default function DebtPaymentConfirmationModal({
   useBodyScrollLock(isOpen);
   const { formatMoney } = usePrivacy();
   const [countdown, setCountdown] = useState(5);
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | ''>('');
 
   useEffect(() => {
     if (isOpen) {
       setCountdown(5);
+      setSelectedMethod('');
       const interval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -42,7 +45,7 @@ export default function DebtPaymentConfirmationModal({
 
   const handleConfirm = () => {
     if (countdown === 0) {
-      onConfirm();
+      onConfirm(selectedMethod ? (selectedMethod as PaymentMethod) : undefined);
       onClose();
     }
   };
@@ -66,7 +69,7 @@ export default function DebtPaymentConfirmationModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative bg-white w-full max-w-md overflow-hidden rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl z-50 p-6 md:p-8 flex flex-col gap-6 overscroll-contain touch-pan-y"
+            className="relative bg-white w-full max-w-md overflow-hidden rounded-[2.5rem] border border-[#e5e1d8] shadow-2xl z-50 p-6 md:p-8 flex flex-col gap-5 overscroll-contain touch-pan-y"
             id="debt-payment-confirm-modal"
           >
             {/* Header / Warning Icon */}
@@ -76,7 +79,7 @@ export default function DebtPaymentConfirmationModal({
                   <AlertTriangle className="w-5 h-5" />
                 </div>
                 <h3 className="text-lg font-serif font-medium text-slate-800">
-                  Emin misiniz?
+                  Toplu Tahsilat Onayı
                 </h3>
               </div>
               <button
@@ -94,16 +97,74 @@ export default function DebtPaymentConfirmationModal({
                 <strong className="text-slate-800 font-semibold">{clientName}</strong> adlı danışanın toplam{' '}
                 <strong className="text-[#cb997e] font-bold">{formatMoney(totalAmount)}</strong> tutarındaki tüm ödenmemiş seanslarını toplu olarak <strong className="text-emerald-600">ödendi</strong> olarak işaretlemek üzeresiniz.
               </p>
-              <div className="bg-[#fdfbf7] border border-amber-100 p-4 rounded-2xl text-xs text-amber-800 leading-relaxed flex gap-2.5 items-start">
-                <span className="text-lg leading-none mt-0.5">⚠️</span>
+
+              {/* Payment Method Selector */}
+              <div className="bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8] space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-[#6b705c]">
+                  <span className="flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5" />
+                    Ödeme Yöntemi Belirle (Opsiyonel)
+                  </span>
+                  {selectedMethod && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMethod('')}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 underline font-normal cursor-pointer"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod(selectedMethod === 'card' ? '' : 'card')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      selectedMethod === 'card'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-slate-50'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Kart</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod(selectedMethod === 'cash' ? '' : 'cash')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      selectedMethod === 'cash'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-slate-50'
+                    }`}
+                  >
+                    <Banknote className="w-3.5 h-3.5" />
+                    <span>Nakit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod(selectedMethod === 'transfer' ? '' : 'transfer')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      selectedMethod === 'transfer'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-slate-50'
+                    }`}
+                  >
+                    <Landmark className="w-3.5 h-3.5" />
+                    <span>Havale</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-[#fdfbf7] border border-amber-100 p-3 rounded-2xl text-xs text-amber-800 leading-relaxed flex gap-2 items-start">
+                <span className="text-base leading-none mt-0.5">⚠️</span>
                 <span>
-                  Bu işlem toplu olarak tüm bekleyen seansların ödeme durumunu güncelleyecektir. Lütfen yanlışlıkla tıklamadığınızdan emin olun.
+                  Bu işlem bekleyen tüm seansların ödeme durumunu güncelleyecektir.
                 </span>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-2">
+            <div className="flex flex-col sm:flex-row gap-3 mt-1">
               <button
                 onClick={onClose}
                 className="flex-1 py-3 text-slate-600 bg-slate-100 hover:bg-slate-200 font-bold text-xs rounded-2xl cursor-pointer transition-colors text-center order-2 sm:order-1"

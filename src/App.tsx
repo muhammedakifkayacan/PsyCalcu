@@ -43,11 +43,14 @@ import {
   Calculator,
   CalendarRange,
   CalendarDays,
-  RotateCcw
+  RotateCcw,
+  CreditCard,
+  Banknote,
+  Landmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -2349,17 +2352,21 @@ export default function App() {
     );
   };
 
-  const handleMarkAllClientSessionsAsPaid = (clientName: string) => {
+  const handleMarkAllClientSessionsAsPaid = (clientName: string, paymentMethod?: PaymentMethod) => {
     let totalAmount = 0;
     let sessionCount = 0;
-    const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; paidAmount?: number }> = {};
+    const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; paidAmount?: number; paymentMethod?: PaymentMethod }> = {};
 
     sessions.forEach(s => {
       if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
         const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
         totalAmount += remainingDebt;
         sessionCount++;
-        modifiedPreviousStates[s.id] = { status: s.paymentStatus || 'unpaid', paidAmount: s.paidAmount };
+        modifiedPreviousStates[s.id] = { 
+          status: s.paymentStatus || 'unpaid', 
+          paidAmount: s.paidAmount,
+          paymentMethod: s.paymentMethod
+        };
       }
     });
 
@@ -2370,6 +2377,7 @@ export default function App() {
             ...s,
             paymentStatus: 'paid',
             paidAmount: Number(s.price) || 0,
+            paymentMethod: paymentMethod || s.paymentMethod,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -2385,6 +2393,7 @@ export default function App() {
             ...s,
             paymentStatus: modifiedPreviousStates[s.id].status,
             paidAmount: modifiedPreviousStates[s.id].paidAmount,
+            paymentMethod: modifiedPreviousStates[s.id].paymentMethod,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -2394,12 +2403,14 @@ export default function App() {
       showToast(`${clientName} için toplu ödeme işlemi geri alındı.`, 'info');
     };
 
+    const methodLabel = paymentMethod === 'card' ? ' (Kredi Kartı)' : paymentMethod === 'cash' ? ' (Nakit)' : paymentMethod === 'transfer' ? ' (Banka / Havale)' : '';
+
     showToast(
-      `${clientName} adlı danışanın tüm borçları ödendi!`, 
+      `${clientName} adlı danışanın tüm borçları ödendi!${methodLabel}`, 
       'success',
       {
         title: 'Toplu Tahsilat',
-        message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ${formatMoney(totalAmount)}) başarıyla ödendi olarak işaretlendi.`
+        message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ${formatMoney(totalAmount)}) başarıyla ödendi olarak işaretlendi.${methodLabel ? ` Ödeme Yöntemi: ${methodLabel.trim()}` : ''}`
       },
       undoFn
     );
@@ -2908,7 +2919,7 @@ export default function App() {
       return;
     }
     let csvContent = "\uFEFF"; // BOM for Excel/Sheets compatibility
-    csvContent += "Tarih,Saat,Danışan Adı,Seans Tipi,Süre (Dakika),Seans Ücreti (₺),Bakıcı Gideri (₺),Ofis Kira Gideri (₺),Net Kazanç (₺),Notlar,Entegrasyon Durumu\n";
+    csvContent += "Tarih,Saat,Danışan Adı,Seans Tipi,Süre (Dakika),Seans Ücreti (₺),Ödeme Durumu,Tahsil Edilen (₺),Ödeme Yöntemi,Bakıcı Gideri (₺),Ofis Kira Gideri (₺),Net Kazanç (₺),Notlar,Entegrasyon Durumu\n";
     
     sessions.forEach(s => {
       const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
@@ -2917,6 +2928,9 @@ export default function App() {
       const net = Math.max(0, gross - (baby + office));
       const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
+      const paymentStatusLabel = s.paymentStatus === 'paid' ? 'Ödendi' : s.paymentStatus === 'partial' ? 'Kısmi Ödendi' : 'Ödenmedi';
+      const paidAmountVal = s.paymentStatus === 'paid' ? gross : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
+      const paymentMethodLabel = s.paymentMethod === 'card' ? 'Kredi Kartı' : s.paymentMethod === 'cash' ? 'Nakit' : s.paymentMethod === 'transfer' ? 'Banka / Havale' : '-';
       
       let noteVal = '';
       if (exportIncludeNotes) {
@@ -2936,6 +2950,9 @@ export default function App() {
         typeLabel,
         s.duration,
         gross,
+        paymentStatusLabel,
+        paidAmountVal,
+        paymentMethodLabel,
         baby,
         office,
         net,
@@ -2960,7 +2977,7 @@ export default function App() {
       showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
       return;
     }
-    let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
+    let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tÖdeme Durumu\tTahsil Edilen (₺)\tÖdeme Yöntemi\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
     
     sessions.forEach(s => {
       const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
@@ -2969,6 +2986,9 @@ export default function App() {
       const net = Math.max(0, gross - (baby + office));
       const typeLabel = s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz yüze' : s.type === 'cancelled' ? 'İptal' : 'Seans Dışı';
       const syncStatus = s.isSyncedFromCalendar ? 'Takvim Entegrasyonu' : 'Manuel Giriş';
+      const paymentStatusLabel = s.paymentStatus === 'paid' ? 'Ödendi' : s.paymentStatus === 'partial' ? 'Kısmi Ödendi' : 'Ödenmedi';
+      const paidAmountVal = s.paymentStatus === 'paid' ? gross : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
+      const paymentMethodLabel = s.paymentMethod === 'card' ? 'Kredi Kartı' : s.paymentMethod === 'cash' ? 'Nakit' : s.paymentMethod === 'transfer' ? 'Banka / Havale' : '-';
       
       let noteVal = '';
       if (exportIncludeNotes) {
@@ -2988,6 +3008,9 @@ export default function App() {
         typeLabel,
         s.duration,
         gross,
+        paymentStatusLabel,
+        paidAmountVal,
+        paymentMethodLabel,
         baby,
         office,
         net,
@@ -4400,31 +4423,53 @@ export default function App() {
                                   )}
                                 </div>
 
-                                {/* Payment Status Toggle Badge */}
+                                {/* Payment Status Toggle Badge & Payment Method */}
                                 {!isCancelled && (
-                                  <button
-                                    onClick={() => handleTogglePaymentStatus(session.id)}
-                                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
-                                      session.paymentStatus === 'paid'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                                    <button
+                                      onClick={() => handleTogglePaymentStatus(session.id)}
+                                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
+                                        session.paymentStatus === 'paid'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                          : session.paymentStatus === 'partial'
+                                            ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                      }`}
+                                      title={
+                                        session.paymentStatus === 'paid'
+                                          ? 'Ödenmedi olarak işaretle'
+                                          : session.paymentStatus === 'partial'
+                                            ? 'Tamamı Ödendi olarak işaretle'
+                                            : 'Ödendi olarak işaretle'
+                                      }
+                                    >
+                                      {session.paymentStatus === 'paid'
+                                        ? '● ÖDENDİ'
                                         : session.paymentStatus === 'partial'
-                                          ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                                          : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                                    }`}
-                                    title={
-                                      session.paymentStatus === 'paid'
-                                        ? 'Ödenmedi olarak işaretle'
-                                        : session.paymentStatus === 'partial'
-                                          ? 'Tamamı Ödendi olarak işaretle'
-                                          : 'Ödendi olarak işaretle'
-                                    }
-                                  >
-                                    {session.paymentStatus === 'paid'
-                                      ? '● ÖDENDİ'
-                                      : session.paymentStatus === 'partial'
-                                        ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
-                                        : '○ ÖDENMEDİ'}
-                                  </button>
+                                          ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
+                                          : '○ ÖDENMEDİ'}
+                                    </button>
+
+                                    {session.paymentStatus === 'paid' && session.paymentMethod && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-[#f5f5f0] text-slate-600 border border-[#e5e1d8] shrink-0"
+                                        title={`Ödeme Yöntemi: ${
+                                          session.paymentMethod === 'card' ? 'Kredi Kartı' : session.paymentMethod === 'cash' ? 'Nakit' : 'Banka / Havale'
+                                        }`}
+                                      >
+                                        {session.paymentMethod === 'card' ? (
+                                          <CreditCard className="w-2.5 h-2.5 text-blue-600" />
+                                        ) : session.paymentMethod === 'cash' ? (
+                                          <Banknote className="w-2.5 h-2.5 text-emerald-600" />
+                                        ) : (
+                                          <Landmark className="w-2.5 h-2.5 text-purple-600" />
+                                        )}
+                                        <span>
+                                          {session.paymentMethod === 'card' ? 'Kart' : session.paymentMethod === 'cash' ? 'Nakit' : 'Havale'}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             ) : (
@@ -5926,7 +5971,7 @@ export default function App() {
       <DebtPaymentConfirmationModal
         isOpen={debtConfirmState.isOpen}
         onClose={() => setDebtConfirmState(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={() => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName)}
+        onConfirm={(method) => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName, method)}
         clientName={debtConfirmState.clientName}
         totalAmount={debtConfirmState.totalAmount}
       />

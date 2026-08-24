@@ -1,5 +1,7 @@
 export type SessionType = 'online' | 'face-to-face' | 'cancelled' | 'non-session' | 'rent-income';
 
+export type PaymentMethod = 'card' | 'cash' | 'transfer';
+
 export interface Session {
   id: string;
   clientName: string;
@@ -22,6 +24,7 @@ export interface Session {
   syncedCalendarType?: 'online' | 'face-to-face' | 'rent-income'; // which calendar it came from
   paymentStatus?: 'paid' | 'unpaid' | 'partial';
   paidAmount?: number; // ₺ amount actually received if partial or paid
+  paymentMethod?: PaymentMethod; // 'card' (Kredi/Banka Kartı) | 'cash' (Nakit) | 'transfer' (Havale/EFT)
   updatedAt?: number; // timestamp in ms for conflict-free sync
   isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
   roomId?: string; // Room association for property owners

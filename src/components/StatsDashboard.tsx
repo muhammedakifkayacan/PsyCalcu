@@ -4,7 +4,7 @@ import { Session, AppSettings, Expense, ExpenseCategory } from '../types';
 import { 
   Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins,
   Plus, Edit2, Trash2, Building, Zap, UserCheck, ShoppingBag, Megaphone, Landmark, Sparkles, CreditCard, Wallet,
-  Receipt, DollarSign, Tag, Check
+  Receipt, DollarSign, Tag, Check, Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -169,6 +169,14 @@ export default function StatsDashboard({
     let futureUnpaidIncome = 0;
     let sessionExpensesCount = 0;
 
+    // Breakdown by payment method for collected income
+    const paymentMethodBreakdown = {
+      card: 0,
+      cash: 0,
+      transfer: 0,
+      unspecified: 0
+    };
+
     // Group by date for chart
     const dateGroups: Record<string, { date: string; gross: number; expenses: number; net: number }> = {};
 
@@ -206,6 +214,16 @@ export default function StatsDashboard({
           kdvExpenses += sKdvCut;
           if (sBabyFee > 0 || sOfficeFee > 0 || sKdvCut > 0) {
             sessionExpensesCount++;
+          }
+
+          if (s.paymentMethod === 'card') {
+            paymentMethodBreakdown.card += paidPart;
+          } else if (s.paymentMethod === 'cash') {
+            paymentMethodBreakdown.cash += paidPart;
+          } else if (s.paymentMethod === 'transfer') {
+            paymentMethodBreakdown.transfer += paidPart;
+          } else {
+            paymentMethodBreakdown.unspecified += paidPart;
           }
         }
         
@@ -288,7 +306,8 @@ export default function StatsDashboard({
       cancelledCount,
       sessionExpensesCount,
       chartData,
-      typeData
+      typeData,
+      paymentMethodBreakdown
     };
   }, [filteredSessions, filteredCustomExpenses, settings.defaultKdvRate]);
 
@@ -1022,6 +1041,25 @@ export default function StatsDashboard({
                                   ? `◐ KISMİ (₺${(s.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
                                   : 'ÖDENMEDİ'}
                             </span>
+                            {s.paymentStatus === 'paid' && s.paymentMethod && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-slate-50 text-slate-600 border border-slate-200"
+                                title={`Ödeme Yöntemi: ${
+                                  s.paymentMethod === 'card' ? 'Kredi Kartı' : s.paymentMethod === 'cash' ? 'Nakit' : 'Banka / Havale'
+                                }`}
+                              >
+                                {s.paymentMethod === 'card' ? (
+                                  <CreditCard className="w-2.5 h-2.5 text-blue-600" />
+                                ) : s.paymentMethod === 'cash' ? (
+                                  <Banknote className="w-2.5 h-2.5 text-emerald-600" />
+                                ) : (
+                                  <Landmark className="w-2.5 h-2.5 text-purple-600" />
+                                )}
+                                <span>
+                                  {s.paymentMethod === 'card' ? 'Kart' : s.paymentMethod === 'cash' ? 'Nakit' : 'Havale'}
+                                </span>
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-slate-400 mt-0.5">
                             {displayDate} • {s.time} {s.notes ? `• ${s.notes}` : ''}
@@ -1168,6 +1206,108 @@ export default function StatsDashboard({
               </div>
               <span className="font-semibold text-[#6b705c]">{analytics.cancelledCount} adet</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Methods Breakdown Widget */}
+      <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-[#cb997e]" />
+              ÖDEME YÖNTEMLERİNE GÖRE TAHSİLAT DAĞILIMI
+            </h4>
+            {showExplanations && (
+              <p className="text-xs text-slate-400 animate-fade-in">
+                Seçili dönemde tahsil edilen seans gelirlerinin kart, nakit ve havale/EFT kırılımı
+              </p>
+            )}
+          </div>
+          <div className="text-xs font-semibold text-slate-500 bg-[#f5f5f0] px-3 py-1.5 rounded-full border border-[#e5e1d8]/50 self-start sm:self-auto">
+            Toplam Tahsilat: <span className="text-[#6b705c] font-bold">{formatMoney(analytics.grossIncome, { decimals: 2 })}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          {/* Credit Card */}
+          <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-xs">
+                <CreditCard className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Kredi Kartı / POS</span>
+                <h5 className="text-base font-bold text-slate-800 font-serif">
+                  {formatMoney(analytics.paymentMethodBreakdown.card, { decimals: 2 })}
+                </h5>
+              </div>
+            </div>
+            {analytics.grossIncome > 0 && (
+              <span className="text-xs font-bold text-blue-600 bg-white/80 px-2 py-0.5 rounded-lg border border-blue-200/60">
+                %{Math.round((analytics.paymentMethodBreakdown.card / analytics.grossIncome) * 100)}
+              </span>
+            )}
+          </div>
+
+          {/* Cash */}
+          <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                <Banknote className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Nakit / Elden</span>
+                <h5 className="text-base font-bold text-slate-800 font-serif">
+                  {formatMoney(analytics.paymentMethodBreakdown.cash, { decimals: 2 })}
+                </h5>
+              </div>
+            </div>
+            {analytics.grossIncome > 0 && (
+              <span className="text-xs font-bold text-emerald-600 bg-white/80 px-2 py-0.5 rounded-lg border border-emerald-200/60">
+                %{Math.round((analytics.paymentMethodBreakdown.cash / analytics.grossIncome) * 100)}
+              </span>
+            )}
+          </div>
+
+          {/* Bank Transfer */}
+          <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                <Landmark className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">Havale / EFT</span>
+                <h5 className="text-base font-bold text-slate-800 font-serif">
+                  {formatMoney(analytics.paymentMethodBreakdown.transfer, { decimals: 2 })}
+                </h5>
+              </div>
+            </div>
+            {analytics.grossIncome > 0 && (
+              <span className="text-xs font-bold text-purple-600 bg-white/80 px-2 py-0.5 rounded-lg border border-purple-200/60">
+                %{Math.round((analytics.paymentMethodBreakdown.transfer / analytics.grossIncome) * 100)}
+              </span>
+            )}
+          </div>
+
+          {/* Unspecified / Other */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-slate-500 text-white flex items-center justify-center shadow-xs">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Belirtilmemiş</span>
+                <h5 className="text-base font-bold text-slate-800 font-serif">
+                  {formatMoney(analytics.paymentMethodBreakdown.unspecified, { decimals: 2 })}
+                </h5>
+              </div>
+            </div>
+            {analytics.grossIncome > 0 && analytics.paymentMethodBreakdown.unspecified > 0 && (
+              <span className="text-xs font-bold text-slate-600 bg-white/80 px-2 py-0.5 rounded-lg border border-slate-200">
+                %{Math.round((analytics.paymentMethodBreakdown.unspecified / analytics.grossIncome) * 100)}
+              </span>
+            )}
           </div>
         </div>
       </div>

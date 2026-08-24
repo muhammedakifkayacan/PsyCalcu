@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt } from 'lucide-react';
-import { Session, SessionType, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt, CreditCard, Banknote, Landmark } from 'lucide-react';
+import { Session, SessionType, PaymentMethod, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
@@ -78,6 +78,7 @@ export default function SessionModal({
   const [notes, setNotes] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>('unpaid');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
   const [isBabysitterFeeManuallyEdited, setIsBabysitterFeeManuallyEdited] = useState(false);
   const [isOfficeRentFeeManuallyEdited, setIsOfficeRentFeeManuallyEdited] = useState(false);
@@ -187,6 +188,7 @@ export default function SessionModal({
         setNotes(sessionToEdit.notes || '');
         setPaymentStatus(sessionToEdit.paymentStatus || 'unpaid');
         setPaidAmount(sessionToEdit.paidAmount !== undefined ? sessionToEdit.paidAmount : '');
+        setPaymentMethod(sessionToEdit.paymentMethod || '');
         setRoomId(sessionToEdit.roomId || '');
       } else {
         // New session
@@ -206,6 +208,7 @@ export default function SessionModal({
         setNotes('');
         setPaymentStatus('unpaid');
         setPaidAmount('');
+        setPaymentMethod('');
         setRoomId(prefilledRoomId || '');
       }
     }
@@ -295,6 +298,7 @@ export default function SessionModal({
       syncedCalendarType: sessionToEdit ? sessionToEdit.syncedCalendarType : undefined,
       paymentStatus: isCancelledOrNonSession ? 'unpaid' : paymentStatus,
       paidAmount: calcPaidAmount,
+      paymentMethod: isCancelledOrNonSession ? undefined : (paymentMethod ? (paymentMethod as PaymentMethod) : undefined),
       roomId: roomId || undefined,
     };
 
@@ -722,6 +726,63 @@ export default function SessionModal({
                   </div>
                 </div>
               )}
+
+              {/* Payment Method Selector (Kart / Nakit / Havale-EFT) */}
+              <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
+                    Ödeme Yöntemi
+                  </span>
+                  {paymentMethod && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('')}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 underline font-medium cursor-pointer"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod(paymentMethod === 'card' ? '' : 'card')}
+                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      paymentMethod === 'card'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                    }`}
+                  >
+                    <CreditCard className={`w-3.5 h-3.5 ${paymentMethod === 'card' ? 'text-white' : 'text-[#6b705c]'}`} />
+                    <span>Kart</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod(paymentMethod === 'cash' ? '' : 'cash')}
+                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      paymentMethod === 'cash'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                    }`}
+                  >
+                    <Banknote className={`w-3.5 h-3.5 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
+                    <span>Nakit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod(paymentMethod === 'transfer' ? '' : 'transfer')}
+                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                      paymentMethod === 'transfer'
+                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                    }`}
+                  >
+                    <Landmark className={`w-3.5 h-3.5 ${paymentMethod === 'transfer' ? 'text-white' : 'text-indigo-600'}`} />
+                    <span>Havale / EFT</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
