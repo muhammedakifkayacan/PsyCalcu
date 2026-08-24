@@ -653,6 +653,7 @@ export default function SessionModal({
                     onClick={() => {
                       setPaymentStatus('unpaid');
                       setPaidAmount('');
+                      setPaymentMethod('');
                     }}
                     className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                       paymentStatus === 'unpaid'
@@ -727,62 +728,64 @@ export default function SessionModal({
                 </div>
               )}
 
-              {/* Payment Method Selector (Kart / Nakit / Havale-EFT) */}
-              <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1.5">
-                    <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
-                    Ödeme Yöntemi
-                  </span>
-                  {paymentMethod && (
+              {/* Payment Method Selector (Sadece Ödendi veya Kısmi Ödendi durumunda gösterilir) */}
+              {(paymentStatus === 'paid' || paymentStatus === 'partial') && (
+                <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-1.5 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
+                      Ödeme Yöntemi
+                    </span>
+                    {paymentMethod && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('')}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 underline font-medium cursor-pointer"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('')}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 underline font-medium cursor-pointer"
+                      onClick={() => setPaymentMethod(paymentMethod === 'card' ? '' : 'card')}
+                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                        paymentMethod === 'card'
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                          : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                      }`}
                     >
-                      Temizle
+                      <CreditCard className={`w-3.5 h-3.5 ${paymentMethod === 'card' ? 'text-white' : 'text-[#6b705c]'}`} />
+                      <span>Kart</span>
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod(paymentMethod === 'cash' ? '' : 'cash')}
+                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                        paymentMethod === 'cash'
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                          : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                      }`}
+                    >
+                      <Banknote className={`w-3.5 h-3.5 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
+                      <span>Nakit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod(paymentMethod === 'transfer' ? '' : 'transfer')}
+                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                        paymentMethod === 'transfer'
+                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                          : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
+                      }`}
+                    >
+                      <Landmark className={`w-3.5 h-3.5 ${paymentMethod === 'transfer' ? 'text-white' : 'text-indigo-600'}`} />
+                      <span>Havale / EFT</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod(paymentMethod === 'card' ? '' : 'card')}
-                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
-                      paymentMethod === 'card'
-                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
-                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
-                    }`}
-                  >
-                    <CreditCard className={`w-3.5 h-3.5 ${paymentMethod === 'card' ? 'text-white' : 'text-[#6b705c]'}`} />
-                    <span>Kart</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod(paymentMethod === 'cash' ? '' : 'cash')}
-                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
-                      paymentMethod === 'cash'
-                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
-                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
-                    }`}
-                  >
-                    <Banknote className={`w-3.5 h-3.5 ${paymentMethod === 'cash' ? 'text-white' : 'text-emerald-600'}`} />
-                    <span>Nakit</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod(paymentMethod === 'transfer' ? '' : 'transfer')}
-                    className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
-                      paymentMethod === 'transfer'
-                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
-                        : 'bg-white text-slate-700 border-[#e5e1d8] hover:bg-[#f5f5f0]'
-                    }`}
-                  >
-                    <Landmark className={`w-3.5 h-3.5 ${paymentMethod === 'transfer' ? 'text-white' : 'text-indigo-600'}`} />
-                    <span>Havale / EFT</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           )}
 

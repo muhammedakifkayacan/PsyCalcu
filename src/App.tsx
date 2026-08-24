@@ -4450,7 +4450,7 @@ export default function App() {
                                           : '○ ÖDENMEDİ'}
                                     </button>
 
-                                    {session.paymentStatus === 'paid' && session.paymentMethod && (
+                                    {(session.paymentStatus === 'paid' || session.paymentStatus === 'partial') && session.paymentMethod && (
                                       <span
                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-[#f5f5f0] text-slate-600 border border-[#e5e1d8] shrink-0"
                                         title={`Ödeme Yöntemi: ${
