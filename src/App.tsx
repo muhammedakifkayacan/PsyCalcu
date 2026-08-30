@@ -2604,11 +2604,6 @@ export default function App() {
     newSessions.forEach(ns => {
       if (sessionsMap.has(ns.id)) {
         const existing = sessionsMap.get(ns.id)!;
-        
-        // CRITICAL FIX: If the user manually edited this session, do NOT let calendar sync overwrite its details!
-        if (existing.isManuallyEdited) {
-          return;
-        }
 
         // Determine if the incoming session is cancelled, non-session, or before the user's registration cutoff
         const regCutoff = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
@@ -2621,28 +2616,33 @@ export default function App() {
         // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
-        // Smart price lookup if existing price is 0 or default
+        // Smart price lookup: If existing has a custom price/user edit, preserve it, else smart lookup
         let effectivePrice = isCancelledOrNonSessionOrBefore ? 0 : existing.price;
         if (!isCancelledOrNonSessionOrBefore && (effectivePrice === 0 || !effectivePrice)) {
           effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
         }
 
-        // Merge changed calendar fields, preserving custom user edits on price/payment status
-        const updated = {
+        // Merge changed calendar fields (clientName, date, time, duration, type), 
+        // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
+        const updated: Session = {
           ...existing,
-          clientName: ns.clientName,
-          type: ns.type,
+          clientName: ns.clientName, // Always accept latest event name from calendar (e.g. Ahmet -> Ahmet 1)
+          type: existing.isManuallyEdited ? existing.type : ns.type,
           date: ns.date,
           time: ns.time,
           duration: ns.duration,
           notes: persistentNotes,
           roomId: matchedRoomId,
           price: effectivePrice,
-          paymentStatus: isCancelledOrNonSessionOrBefore ? (ns.type === 'non-session' ? 'unpaid' : 'paid') : (existing.paymentStatus === 'paid' ? 'paid' : ns.paymentStatus),
-          hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : ns.hasBabysitterFee,
-          babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : ns.babysitterFeeAmount,
-          hasOfficeRentFee: isCancelledOrNonSessionOrBefore ? false : ns.hasOfficeRentFee,
-          officeRentFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : ns.officeRentFeeAmount,
+          paymentStatus: isCancelledOrNonSessionOrBefore 
+            ? (ns.type === 'non-session' ? 'unpaid' : 'paid') 
+            : (existing.paymentStatus || ns.paymentStatus),
+          paidAmount: existing.paidAmount,
+          paymentMethod: existing.paymentMethod,
+          hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasBabysitterFee : ns.hasBabysitterFee),
+          babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.babysitterFeeAmount : ns.babysitterFeeAmount),
+          hasOfficeRentFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasOfficeRentFee : ns.hasOfficeRentFee),
+          officeRentFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.officeRentFeeAmount : ns.officeRentFeeAmount),
         };
         
         // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
