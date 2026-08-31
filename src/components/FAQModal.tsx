@@ -150,10 +150,10 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
                 <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 text-[10px] uppercase font-mono">1. Kural</span>
-                🎯 Otomatik Kişisel Etkinlik & Seans Dışı Filtreleme Sistemi
+                🎯 Otomatik Kişisel Etkinlik & Seans Dışı Filtreleme Sistemi (#seansdeğil Desteği)
               </div>
               <p className="text-slate-600 leading-normal pl-1">
-                Takviminizde yer alan spor, fitness, gym, pilates, yoga, yürüyüş, alışveriş, market, kuaför, doktor, diş randevusu, tahlil, hastane, yemek/kahvaltı, tatil, seyahat, temizlik, tamirat, fatura, toplantı, seminer veya "seans değil" gibi kişisel etkinlikler otomatik olarak tespit edilir. Bu etkinlikler ajandanıza <strong>"Seans Değil"</strong> etiketiyle ve <strong>0 ₺</strong> olarak eklenir; toplam seans sayısına, ciroya, ofis kirası ve bakıcı kesintilerine asla dahil edilmez.
+                Takviminizde yer alan spor, fitness, gym, pilates, yoga, yürüyüş, alışveriş, market, kuaför, doktor, diş randevusu, tahlil, hastane, yemek/kahvaltı, tatil, seyahat, temizlik, tamirat, fatura, toplantı, seminer veya sohbet gibi kişisel etkinlikler otomatik olarak tespit edilir. Ayrıca etkinlik başlığı veya açıklamasına <strong>#seansdeğil</strong> (veya <em>#seansdisi</em>, <em>#kisisel</em>) hashtag'i eklediğinizde, öncesinde veya sonrasında ne yazdığı fark etmeksizin etkinlik anında <strong>"Seans Değil"</strong> (0 ₺) olarak işaretlenir ve seans/gelir/gider istatistiklerine dahil edilmez.
               </p>
             </div>
 
@@ -230,14 +230,16 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
             <strong>Hayır, kesinlikle karışmaz.</strong> PsyCalcu gelişmiş <strong>Akıllı Kişisel Etkinlik & Seans Dışı Filtreleme Motoru</strong> ile donatılmıştır.
           </p>
           <div className="bg-[#fdfbf7] p-3.5 rounded-xl border border-[#e5e1d8] space-y-2 text-xs">
-            <p className="font-semibold text-slate-800">Sistem takviminizdeki şu kelime gruplarını otomatik olarak tespit eder:</p>
+            <p className="font-semibold text-slate-800">Sistem takviminizdeki şu kelime gruplarını ve etiketleri otomatik olarak tespit eder:</p>
             <ul className="list-disc pl-4 space-y-1 text-slate-600">
+              <li><strong>Özel Hashtag:</strong> Etkinlik adı veya açıklamasına <code className="bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded">#seansdeğil</code> eklemeniz durumunda öncesinde ne yazdığına bakılmaksızın seans dışı kabul edilir.</li>
               <li><strong>Spor & Egzersiz:</strong> Spor, fitness, gym, pilates, yoga, antrenman, yürüyüş, koşu, yüzme, boks, tenis...</li>
               <li><strong>Alışveriş & İhtiyaç:</strong> Alışveriş, market, pazar, bakkal, AVM, Migros, A101, BİM, ŞOK vb.</li>
               <li><strong>Kişisel Bakım & Güzellik:</strong> Kuaför, berber, saç, tırnak, manikür, pedikür, masaj, cilt bakımı...</li>
               <li><strong>Sağlık & Randevular:</strong> Doktor, dişçi, diş randevusu, hastane, muayene, tahlil, kan tahlili, aşı, sağlık ocağı, check-up, veteriner...</li>
-              <li><strong>Yemek & Sosyal Buluşmalar:</strong> Öğle yemeği, akşam yemeği, kahvaltı, brunch, yemek, cafe, kahve...</li>
-              <li><strong>Tatil, Seyahat & İdari İşler:</strong> Tatil, izin, uçuş, temizlik, tamirat, kargo, fatura, banka, noter, toplantı...</li>
+              <li><strong>Eğitim, Ders & Toplantı:</strong> Ders, sınav, etüt, tez, okul, toplantı, webinar, seminer, kongre...</li>
+              <li><strong>Yemek & Sosyal Buluşmalar:</strong> Öğle yemeği, akşam yemeği, kahvaltı, brunch, sohbet, buluşma, cafe, kahve...</li>
+              <li><strong>Tatil, Seyahat & İdari İşler:</strong> Tatil, izin, uçuş, temizlik, tamirat, kargo, fatura, banka, noter...</li>
             </ul>
           </div>
           <p className="text-xs text-slate-600">

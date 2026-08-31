@@ -901,7 +901,7 @@
           <div>
             <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Kişisel Etkinlik Filtresi</h3>
             <p class='text-xs text-slate-500 leading-relaxed font-normal'>
-              Spor, alışveriş, doktor ve tatil planları seanslardan otomatik ayırt edilir, bütçenizi temiz tutar.
+              Spor, alışveriş, doktor ve tatil planları ile <code>#seansdeğil</code> etiketli tüm etkinlikler muhasebeden otomatik hariç tutulur.
             </p>
           </div>
         </div>
@@ -2451,7 +2451,7 @@
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
           <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Takvimimdeki spor, alışveriş veya doktor randevusu gibi kişisel etkinlikler seans hesaplarına karışır mı?</h4>
           <p class='text-slate-500 leading-relaxed font-normal'>
-            Hayır, kesinlikle karışmaz. PsyCalcu bünyesinde barındırdığı <strong>Otomatik Kişisel Etkinlik &amp; Seans Dışı Filtreleme Sistemi</strong> sayesinde takviminizdeki spor, fitness, market, kuaför, doktor, hastane/tahlil, yemek veya tatil gibi kişisel etkinlikleri akıllı olarak tespit eder. Bu etkinlikler ajandanızda "Seans Değil" etiketiyle yer alır; seans sayılarına, ciroya, ofis kirası veya bakıcı kesintilerine asla dahil edilmez.
+            Hayır, kesinlikle karışmaz. PsyCalcu bünyesinde barındırdığı <strong>Otomatik Kişisel Etkinlik &amp; Seans Dışı Filtreleme Sistemi</strong> sayesinde takviminizdeki spor, fitness, market, kuaför, doktor, hastane/tahlil, yemek veya tatil gibi kişisel etkinlikleri akıllı olarak tespit eder. Ayrıca etkinlik adında veya açıklamasında <code>#seansdeğil</code> (veya <code>#seansdisi</code>) etiketi yer alıyorsa, öncesinde veya sonrasında ne yazdığı fark etmeksizin etkinlik otomatik olarak seans dışı (0 ₺) olarak kaydedilir; seans sayılarına, ciroya, ofis kirası veya bakıcı kesintilerine asla dahil edilmez.
           </p>
         </div>
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>

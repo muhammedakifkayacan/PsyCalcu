@@ -229,6 +229,24 @@ export function isNonSessionSummary(summary?: string, description?: string): boo
   const rawText = `${summary || ''} ${description || ''}`.trim();
   if (!rawText) return false;
 
+  // Direct hashtag check (supports #seansdeğil, #seansdegil, #seansdisi, #seansdışı, #kisisel, #ozel, etc.)
+  const rawLower = rawText.toLocaleLowerCase('tr-TR');
+  if (
+    rawLower.includes('#seansdeğil') ||
+    rawLower.includes('#seansdegil') ||
+    rawLower.includes('#seans-degil') ||
+    rawLower.includes('#seans_degil') ||
+    rawLower.includes('#seansdisi') ||
+    rawLower.includes('#seansdışı') ||
+    rawLower.includes('#seans-disi') ||
+    rawLower.includes('#seans_disi') ||
+    rawLower.includes('#kisisel') ||
+    rawLower.includes('#kişisel') ||
+    rawLower.includes('#nonsession')
+  ) {
+    return true;
+  }
+
   const normalize = (str: string) =>
     str
       .toLocaleLowerCase('tr-TR')
@@ -280,7 +298,7 @@ export function isNonSessionSummary(summary?: string, description?: string): boo
     // Sağlık & Tıbbi Randevular
     'doktor', 'disci', 'hastane', 'muayene', 'tahlil', 'asi', 'eczane', 'veteriner', 'vet', 'rontgen',
     // Yemek & Sosyal Buluşmalar
-    'yemek', 'kahvalti', 'brunch', 'dinner', 'lunch', 'breakfast', 'cafe', 'kahve', 'cay',
+    'yemek', 'kahvalti', 'brunch', 'dinner', 'lunch', 'breakfast', 'cafe', 'kahve', 'cay', 'sohbet', 'muhabbet', 'bulusma', 'arkadas',
     // Tatil, Seyahat & Dinlenme
     'tatil', 'izin', 'bayram', 'seyahat', 'ucus', 'yolculuk', 'gezi', 'holiday', 'vacation', 'trip', 'otel', 'ucak',
     // Eğlence & Kültür
@@ -290,7 +308,7 @@ export function isNonSessionSummary(summary?: string, description?: string): boo
     // Kişisel Notlar & Görevler
     'dinlenme', 'mola', 'kisisel', 'ozel', 'sahsi', 'hatirlatici', 'gorev', 'todo',
     // Eğitim, Toplantı & Dersler
-    'toplanti', 'meeting', 'webinar', 'seminer', 'kongre', 'konferans', 'egitim', 'kurs', 'ders', 'sinav', 'okul'
+    'toplanti', 'meeting', 'webinar', 'seminer', 'kongre', 'konferans', 'egitim', 'kurs', 'ders', 'etut', 'odev', 'tez', 'sinav', 'okul', 'universite', 'fakulte'
   ]);
 
   for (const word of words) {
