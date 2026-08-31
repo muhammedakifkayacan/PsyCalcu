@@ -1966,18 +1966,22 @@ export default function App() {
     // Total unpaid amount
     const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
     
-    // Group by client using normalized name
-    const clientGroups: Record<string, Session[]> = {};
+    // Group by client using normalized name (case-insensitive)
+    const clientGroups: Record<string, { displayName: string; sessions: Session[] }> = {};
     unpaidSessions.forEach(s => {
       const normName = getNormalizedClientName(s.clientName);
-      if (!clientGroups[normName]) {
-        clientGroups[normName] = [];
+      const groupKey = toTurkishUpper(normName);
+      if (!clientGroups[groupKey]) {
+        clientGroups[groupKey] = {
+          displayName: normName,
+          sessions: []
+        };
       }
-      clientGroups[normName].push(s);
+      clientGroups[groupKey].sessions.push(s);
     });
     
     // Map to array of client debt info
-    const clientsWithDebts = Object.entries(clientGroups).map(([clientName, clientSessions]) => {
+    const clientsWithDebts = Object.values(clientGroups).map(({ displayName, sessions: clientSessions }) => {
       // Sort sessions by date and time (oldest first so they can pay oldest first)
       const sortedSessions = [...clientSessions].sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -1987,7 +1991,7 @@ export default function App() {
       const totalAmount = sortedSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
       
       return {
-        clientName,
+        clientName: displayName,
         sessions: sortedSessions,
         totalAmount,
         sessionCount: sortedSessions.length
@@ -2356,9 +2360,11 @@ export default function App() {
     let totalAmount = 0;
     let sessionCount = 0;
     const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; paidAmount?: number; paymentMethod?: PaymentMethod }> = {};
+    const targetKey = toTurkishUpper(getNormalizedClientName(clientName));
 
     sessions.forEach(s => {
-      if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+      const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
+      if (sKey === targetKey && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
         const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
         totalAmount += remainingDebt;
         sessionCount++;
@@ -2372,7 +2378,8 @@ export default function App() {
 
     setSessions(prev => {
       return prev.map(s => {
-        if (s.clientName === clientName && s.type !== 'cancelled' && s.paymentStatus !== 'paid') {
+        const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
+        if (sKey === targetKey && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
           return {
             ...s,
             paymentStatus: 'paid',
@@ -2622,12 +2629,16 @@ export default function App() {
           effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
         }
 
+        const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
+          ? ns.type
+          : (existing.isManuallyEdited ? existing.type : ns.type);
+
         // Merge changed calendar fields (clientName, date, time, duration, type), 
         // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
         const updated: Session = {
           ...existing,
           clientName: ns.clientName, // Always accept latest event name from calendar (e.g. Ahmet -> Ahmet 1)
-          type: existing.isManuallyEdited ? existing.type : ns.type,
+          type: resolvedType,
           date: ns.date,
           time: ns.time,
           duration: ns.duration,

@@ -878,42 +878,55 @@
         </p>
       </div>
 
-      <div class='grid grid-cols-1 md:grid-cols-3 gap-8 isometric-container pt-8'>
+      <div class='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 isometric-container pt-8'>
         
         <!-- Feature 1 -->
-        <div class='isometric-card bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal'>
+        <div class='isometric-card bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal'>
           <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #6b705c;'>
             <i data-lucide='calendar' class='w-6 h-6'></i>
           </div>
           <div>
-            <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Otomatik Takvim</h3>
-            <p class='text-xs sm:text-sm text-slate-500 leading-relaxed font-normal'>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Otomatik Takvim</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
               Google ve iCloud takvimlerinizi bağlayın, seanslarınız tek tıkla otomatik olarak aktarılsın.
             </p>
           </div>
         </div>
 
         <!-- Feature 2 -->
-        <div class='bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal transform hover:translate-y-[-8px] transition-all duration-300 border-slate-200/70 shadow-xs'>
+        <div class='bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal transform hover:translate-y-[-8px] transition-all duration-300 border-slate-200/70 shadow-xs'>
           <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #cb997e;'>
-            <i data-lucide='landmark' class='w-6 h-6'></i>
+            <i data-lucide='filter' class='w-6 h-6'></i>
           </div>
           <div>
-            <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Gider Kesintileri</h3>
-            <p class='text-xs sm:text-sm text-slate-500 leading-relaxed font-normal'>
-              Saatlik ofis kiraları ile seans esnasındaki bakıcı masraflarını seans ücretinden otomatik düşer.
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Kişisel Etkinlik Filtresi</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Spor, alışveriş, doktor ve tatil planları seanslardan otomatik ayırt edilir, bütçenizi temiz tutar.
             </p>
           </div>
         </div>
 
         <!-- Feature 3 -->
-        <div class='isometric-card-right bg-[#fbfbf9] p-8 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal'>
+        <div class='bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal transform hover:translate-y-[-8px] transition-all duration-300 border-slate-200/70 shadow-xs'>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #588157;'>
+            <i data-lucide='landmark' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Gider Kesintileri</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Saatlik ofis kiraları ile seans esnasındaki bakıcı masraflarını seans ücretinden otomatik düşer.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class='isometric-card-right bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal'>
           <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #1e293b;'>
             <i data-lucide='building' class='w-6 h-6'></i>
           </div>
           <div>
-            <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Klinik Yönetimi</h3>
-            <p class='text-xs sm:text-sm text-slate-500 leading-relaxed font-normal'>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Klinik Yönetimi</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
               Ortak ofis mülk sahipleri için kiracıların seanslarını izler ve kira gelirlerini tek panelde gruplar.
             </p>
           </div>
@@ -1793,7 +1806,7 @@
             </div>
             <div class='flex items-start gap-3'>
               <div class='w-6 h-6 rounded-full bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0 font-bold'>3</div>
-              <p>Seanslarınız ve bütçeniz artık anlık olarak eşitlensin.</p>
+              <p>Seanslarınız ve bütçeniz anlık olarak eşitlensin. Kişisel planlarınız (spor, alışveriş vb.) muhasebeye dahil edilmeden filtrelensin.</p>
             </div>
           </div>
         </div>
@@ -2433,6 +2446,12 @@
           <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>KVKK uyumluluğu ve danışan notları güvenliği nasıl sağlanıyor?</h4>
           <p class='text-slate-500 leading-relaxed font-normal'>
             Platformumuz KVKK (Kişisel Verilerin Korunması Kanunu) hassasiyetini en üst düzeyde ve ödünsüz tutar. Seans açıklamaları, özel terapötik notlar ve danışan detayları bulut sunucularımıza veya veritabanımıza <strong>asla kaydedilmez ve saklanmaz</strong>. Bu hassas bilgiler, siz "Notları Göster" seçeneğini aktif ettiğinizde doğrudan kilitli tarayıcı belleğinizde (sessionStorage) geçici olarak işlenir. Not kısmı girilmemiş seanslarda ise güvenliğiniz ve veri mahremiyetiniz için ekranda sadece standart "not girilmemiş" ibaresi gösterilerek gereksiz bilgi akışı engellenir. Oturumu kapattığınızda veya tarayıcı sekmesini kapattığınızda bu geçici veriler bellekten tamamen ve geri döndürülemez şekilde silinir.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Takvimimdeki spor, alışveriş veya doktor randevusu gibi kişisel etkinlikler seans hesaplarına karışır mı?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Hayır, kesinlikle karışmaz. PsyCalcu bünyesinde barındırdığı <strong>Otomatik Kişisel Etkinlik &amp; Seans Dışı Filtreleme Sistemi</strong> sayesinde takviminizdeki spor, fitness, market, kuaför, doktor, hastane/tahlil, yemek veya tatil gibi kişisel etkinlikleri akıllı olarak tespit eder. Bu etkinlikler ajandanızda "Seans Değil" etiketiyle yer alır; seans sayılarına, ciroya, ofis kirası veya bakıcı kesintilerine asla dahil edilmez.
           </p>
         </div>
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>

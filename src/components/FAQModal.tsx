@@ -139,7 +139,7 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
     {
       category: 'sync',
       icon: <Sparkles className="w-5 h-5 text-[#cb997e]" />,
-      question: "Takvim Entegrasyonundaki Otomatik Kurallar Nelerdir? (30 Dk, Muhasebe & KVKK)",
+      question: "Takvim Entegrasyonundaki Otomatik Kurallar Nelerdir? (Kişisel Etkinlik Filtresi, 30 Dk, Akıllı Gruplama & KVKK)",
       answer: (
         <div className="space-y-3 text-slate-600 text-xs md:text-sm leading-relaxed">
           <p className="font-semibold text-slate-800">
@@ -149,17 +149,27 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
           <div className="space-y-2.5 text-xs">
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
-                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] uppercase font-mono">1. Kural</span>
-                ⏱️ 30 Dakika ve Altı Etkinlikler (Seans Dışı / Not)
+                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 text-[10px] uppercase font-mono">1. Kural</span>
+                🎯 Otomatik Kişisel Etkinlik & Seans Dışı Filtreleme Sistemi
               </div>
               <p className="text-slate-600 leading-normal pl-1">
-                Takviminizden gelen ve süresi <strong>30 dakika veya daha kısa</strong> olan etkinlikler (kısa görüşmeler, yarım seanslar, hatırlatma notları veya bloklar) muhasebe bilançonuzu ve gelir/gider hesaplarınızı bozmaması için otomatik olarak <strong>"Seans Dışı Not / Görev"</strong> tipinde işaretlenir ve ücreti 0 TL kabul edilir. Dilerseniz seans detayından tipini manuel olarak yüz yüze veya online seansa dönüştürebilirsiniz.
+                Takviminizde yer alan spor, fitness, gym, pilates, yoga, yürüyüş, alışveriş, market, kuaför, doktor, diş randevusu, tahlil, hastane, yemek/kahvaltı, tatil, seyahat, temizlik, tamirat, fatura, toplantı, seminer veya "seans değil" gibi kişisel etkinlikler otomatik olarak tespit edilir. Bu etkinlikler ajandanıza <strong>"Seans Değil"</strong> etiketiyle ve <strong>0 ₺</strong> olarak eklenir; toplam seans sayısına, ciroya, ofis kirası ve bakıcı kesintilerine asla dahil edilmez.
               </p>
             </div>
 
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
-                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 text-[10px] uppercase font-mono">2. Kural</span>
+                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] uppercase font-mono">2. Kural</span>
+                ⏱️ 30 Dakika ve Altı Etkinlikler (Seans Dışı / Not)
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Takviminizden gelen ve süresi <strong>30 dakika veya daha kısa</strong> olan etkinlikler (kısa görüşmeler, hatırlatma notları veya bloklar) muhasebe bilançonuzu ve gelir/gider hesaplarınızı bozmaması için otomatik olarak <strong>"Seans Dışı Not / Görev"</strong> tipinde işaretlenir ve ücreti 0 TL kabul edilir. Dilerseniz seans detayından tipini manuel olarak yüz yüze veya online seansa dönüştürebilirsiniz.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 text-[10px] uppercase font-mono">3. Kural</span>
                 💡 Akıllı Fiyat & Gider Eşleştirme (Smart Pricing)
               </div>
               <p className="text-slate-600 leading-normal pl-1">
@@ -169,7 +179,17 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
 
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
-                <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 text-[10px] uppercase font-mono">3. Kural</span>
+                <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900 text-[10px] uppercase font-mono">4. Kural</span>
+                🔢 Akıllı Danışan Normalizasyonu & Borç Gruplama
+              </div>
+              <p className="text-slate-600 leading-normal pl-1">
+                Takvimde danışan seans sayılarını takip etmek için başlığa eklediğiniz numaralar (Örn: <em>Ahmet Yılmaz 1</em>, <em>Ahmet Yılmaz 2</em>, <em>#3 Merve</em>) borç takip ekranında otomatik temizlenir. Tüm seanslar tek bir danışan kartı altında birleştirilir; tek tıkla toplu ya da seans bazında tahsilat yapılabilir.
+              </p>
+            </div>
+
+            <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 text-[10px] uppercase font-mono">5. Kural</span>
                 🛡️ Manuel Düzenleme Koruması
               </div>
               <p className="text-slate-600 leading-normal pl-1">
@@ -179,7 +199,7 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
 
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
-                <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 text-[10px] uppercase font-mono">4. Kural</span>
+                <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 text-[10px] uppercase font-mono">6. Kural</span>
                 🔒 KVKK & Danışan Mahremiyeti Filtresi
               </div>
               <p className="text-slate-600 leading-normal pl-1">
@@ -189,7 +209,7 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
 
             <div className="bg-[#fdfbf7] p-3 rounded-xl border border-[#e5e1d8] space-y-1">
               <div className="flex items-center gap-2 font-bold text-slate-800">
-                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 text-[10px] uppercase font-mono">5. Kural</span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 text-[10px] uppercase font-mono">7. Kural</span>
                 📅 Üyelik Öncesi Geçmiş Kayıtlar
               </div>
               <p className="text-slate-600 leading-normal pl-1">
@@ -197,6 +217,32 @@ export default function FAQModal({ isOpen, onClose, onStartTour }: FAQModalProps
               </p>
             </div>
           </div>
+        </div>
+      )
+    },
+    {
+      category: 'sync',
+      icon: <Calendar className="w-5 h-5 text-[#cb997e]" />,
+      question: "Takvimimdeki Spor, Alışveriş veya Doktor Randevusu Gibi Kişisel Planlar Muhasebeye Karışır mı?",
+      answer: (
+        <div className="space-y-3 text-slate-600 text-xs md:text-sm leading-relaxed">
+          <p>
+            <strong>Hayır, kesinlikle karışmaz.</strong> PsyCalcu gelişmiş <strong>Akıllı Kişisel Etkinlik & Seans Dışı Filtreleme Motoru</strong> ile donatılmıştır.
+          </p>
+          <div className="bg-[#fdfbf7] p-3.5 rounded-xl border border-[#e5e1d8] space-y-2 text-xs">
+            <p className="font-semibold text-slate-800">Sistem takviminizdeki şu kelime gruplarını otomatik olarak tespit eder:</p>
+            <ul className="list-disc pl-4 space-y-1 text-slate-600">
+              <li><strong>Spor & Egzersiz:</strong> Spor, fitness, gym, pilates, yoga, antrenman, yürüyüş, koşu, yüzme, boks, tenis...</li>
+              <li><strong>Alışveriş & İhtiyaç:</strong> Alışveriş, market, pazar, bakkal, AVM, Migros, A101, BİM, ŞOK vb.</li>
+              <li><strong>Kişisel Bakım & Güzellik:</strong> Kuaför, berber, saç, tırnak, manikür, pedikür, masaj, cilt bakımı...</li>
+              <li><strong>Sağlık & Randevular:</strong> Doktor, dişçi, diş randevusu, hastane, muayene, tahlil, kan tahlili, aşı, sağlık ocağı, check-up, veteriner...</li>
+              <li><strong>Yemek & Sosyal Buluşmalar:</strong> Öğle yemeği, akşam yemeği, kahvaltı, brunch, yemek, cafe, kahve...</li>
+              <li><strong>Tatil, Seyahat & İdari İşler:</strong> Tatil, izin, uçuş, temizlik, tamirat, kargo, fatura, banka, noter, toplantı...</li>
+            </ul>
+          </div>
+          <p className="text-xs text-slate-600">
+            Bu tür etkinlikler gününüzü planlayabilmeniz için ajandanızda <strong>"Seans Değil"</strong> etiketiyle gösterilir; ancak seans ücreti 0 ₺ olarak ayarlanır, toplam seans sayısına ve ofis kirası / bakıcı kesintilerine <strong>asla dahil edilmez</strong>.
+          </p>
         </div>
       )
     },

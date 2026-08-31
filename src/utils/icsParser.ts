@@ -222,6 +222,85 @@ function generateOccurrences(
 }
 
 /**
+ * Checks whether an event title/summary or description corresponds to a non-session (personal activity, errand, sport, etc.)
+ */
+export function isNonSessionSummary(summary?: string, description?: string): boolean {
+  if (!summary && !description) return false;
+  const rawText = `${summary || ''} ${description || ''}`.trim();
+  if (!rawText) return false;
+
+  const normalize = (str: string) =>
+    str
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ı/g, 'i')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const normalized = normalize(rawText);
+  const words = normalized.split(' ');
+
+  // Multi-word exact phrases
+  const exactPhrases = [
+    'seans degil',
+    'seans disi',
+    'kisisel etkinlik',
+    'kisisel is',
+    'dis randevusu',
+    'saglik ocagi',
+    'fizik tedavi',
+    'kan tahlili',
+    'cilt bakimi',
+    'oto yikama',
+    'ogle yemegi',
+    'aksam yemegi',
+    'dogum gunu',
+    'veli toplantisi',
+    'check up',
+    'checkup'
+  ];
+
+  for (const phrase of exactPhrases) {
+    if (normalized.includes(phrase)) return true;
+  }
+
+  // Keywords representing non-session personal activities / errands
+  const nonSessionKeywords = new Set([
+    // Spor & Egzersiz
+    'spor', 'fitness', 'gym', 'pilates', 'yoga', 'antrenman', 'idman', 'yuruyus', 'kosu', 'yuzme', 'crossfit', 'boks', 'tenis', 'padel', 'mac',
+    // Alışveriş & İhtiyaç
+    'alisveris', 'market', 'bakkal', 'pazar', 'carsi', 'shopping', 'avm', 'migros', 'a101', 'bim', 'sok', 'carrefour',
+    // Kişisel Bakım & Güzellik
+    'kuafor', 'berber', 'tras', 'sac', 'tirnak', 'manikur', 'pedikur', 'bakim', 'masaj', 'agda', 'solaryum', 'lazer',
+    // Sağlık & Tıbbi Randevular
+    'doktor', 'disci', 'hastane', 'muayene', 'tahlil', 'asi', 'eczane', 'veteriner', 'vet', 'rontgen',
+    // Yemek & Sosyal Buluşmalar
+    'yemek', 'kahvalti', 'brunch', 'dinner', 'lunch', 'breakfast', 'cafe', 'kahve', 'cay',
+    // Tatil, Seyahat & Dinlenme
+    'tatil', 'izin', 'bayram', 'seyahat', 'ucus', 'yolculuk', 'gezi', 'holiday', 'vacation', 'trip', 'otel', 'ucak',
+    // Eğlence & Kültür
+    'sinema', 'tiyatro', 'konser', 'parti', 'kutlama', 'dugun', 'nikah', 'kina', 'nisan', 'festival', 'sergi', 'muze',
+    // Ev, İdari & Günlük İşler
+    'temizlik', 'tamir', 'tamirat', 'usta', 'kargo', 'kurye', 'fatura', 'banka', 'noter', 'belediye', 'vergi', 'lastik', 'benzin',
+    // Kişisel Notlar & Görevler
+    'dinlenme', 'mola', 'kisisel', 'ozel', 'sahsi', 'hatirlatici', 'gorev', 'todo',
+    // Eğitim, Toplantı & Dersler
+    'toplanti', 'meeting', 'webinar', 'seminer', 'kongre', 'konferans', 'egitim', 'kurs', 'ders', 'sinav', 'okul'
+  ]);
+
+  for (const word of words) {
+    if (nonSessionKeywords.has(word)) return true;
+  }
+
+  return false;
+}
+
+/**
  * Parses iCalendar (.ics) text format into structured Session objects.
  * Supports Google Calendar, Apple Calendar, Outlook, and all standard RFC 5545 iCal feeds!
  */
@@ -349,26 +428,32 @@ export function parseICS(
 
     const duration = calculateEventDuration(raw.dtStartRaw, raw.dtEndRaw, raw.durationRaw, calTimezone);
 
-    // Determine type (online, face-to-face, or cancelled)
+    // Determine type (online, face-to-face, cancelled, or non-session)
     let finalType: SessionType = 'online';
-    if (forcedType) {
+
+    const searchSource = (
+      (raw.summary || '') + ' ' +
+      (raw.descriptionRaw || '') + ' ' +
+      (raw.locationRaw || '') + ' ' +
+      (raw.noteRaw || '')
+    ).toLowerCase();
+
+    const isCancelled = searchSource.includes('iptal') || searchSource.includes('cancel');
+    const isNonSession = isNonSessionSummary(raw.summary, `${raw.descriptionRaw || ''} ${raw.noteRaw || ''}`);
+
+    if (isCancelled) {
+      finalType = 'cancelled';
+    } else if (isNonSession) {
+      finalType = 'non-session';
+    } else if (forcedType) {
       finalType = forcedType;
     } else {
-      const searchSource = (
-        (raw.summary || '') + ' ' +
-        (raw.descriptionRaw || '') + ' ' +
-        (raw.locationRaw || '') + ' ' +
-        (raw.noteRaw || '')
-      ).toLowerCase();
-
       if (searchSource.includes('yüzyüze') || searchSource.includes('yüz yüze') || searchSource.includes('ofis') || searchSource.includes('klinik') || searchSource.includes('face')) {
         finalType = 'face-to-face';
-      } else if (searchSource.includes('iptal') || searchSource.includes('cancel')) {
-        finalType = 'cancelled';
       }
     }
 
-    if (autoMarkShortEvents && duration <= 30) {
+    if (autoMarkShortEvents && duration <= 30 && finalType !== 'cancelled') {
       finalType = 'non-session';
     }
 

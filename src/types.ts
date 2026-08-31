@@ -133,11 +133,24 @@ export function toTurkishUpper(str: string): string {
 export function getNormalizedClientName(name: string): string {
   if (!name) return "";
   let clean = name.trim();
-  // Regex to remove trailing numbers or patterns like " 1", " - 1", " 12", " (2)", " no 3", " seans 4", " seansı 4"
-  clean = clean.replace(/[\s\-\(\[\{]+(?:seans|no|no:|seansı)?\s*\d+[\)\}\]]*$/i, '');
-  // Strip any trailing spaces or dash noise
-  clean = clean.replace(/[\s\-:\(\)]+$/, '');
-  return clean.trim();
+
+  // 1. Remove leading numbering/session prefixes e.g. "1. Ahmet", "1- Ahmet", "1. seans Ahmet", "#1 Ahmet", "Seans 1: Ahmet"
+  clean = clean.replace(/^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i, '');
+  clean = clean.replace(/^#\s*\d+\s*(?:[\-\:\/]\s*)?/i, '');
+
+  // 2. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
+  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
+  
+  // 3. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
+  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
+
+  // 4. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
+  clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
+
+  // 5. Clean up any remaining trailing or leading punctuation/whitespace
+  clean = clean.replace(/^[\s\-_:.,;()/[\]{}#]+|[\s\-_:.,;()/[\]{}#]+$/g, '');
+
+  return clean.trim() || name.trim();
 }
 
 /**
