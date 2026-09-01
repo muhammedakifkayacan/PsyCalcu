@@ -30,12 +30,15 @@ function parseIcsDateTimeToLocal(
   if (!rawLine) return null;
 
   const colonIdx = rawLine.indexOf(':');
+  const rawParamPart = colonIdx !== -1 ? rawLine.substring(0, colonIdx) : '';
   const rawValue = colonIdx !== -1 ? rawLine.substring(colonIdx + 1).trim() : rawLine.trim();
-  const cleanValue = rawValue.replace(/[-:]/g, ''); // e.g. 20260815T110000Z or 20260815T140000 or 20260815
+  const cleanValue = rawValue.replace(/[-:]/g, '').trim(); // e.g. 20260815T110000Z or 20260815T140000 or 20260815
 
   if (cleanValue.length < 8) return null;
 
-  const isUtc = cleanValue.endsWith('Z') || rawLine.includes('Z');
+  // In RFC 5545, UTC format is designated ONLY by 'Z' at the very END of the date-time value (e.g. 20260815T110000Z).
+  // Parameter parts (such as TZID=Europe/Istanbul) contain the letter 'Z' and MUST NOT trigger UTC conversion!
+  const isUtc = cleanValue.toUpperCase().endsWith('Z') || rawValue.toUpperCase().endsWith('Z');
   const year = parseInt(cleanValue.substring(0, 4), 10);
   const month = parseInt(cleanValue.substring(4, 6), 10);
   const day = parseInt(cleanValue.substring(6, 8), 10);
@@ -61,25 +64,30 @@ function parseIcsDateTimeToLocal(
 
     try {
       // Format to target local timezone (Europe/Istanbul UTC+3)
-      const formatter = new Intl.DateTimeFormat('sv-SE', {
+      const formatter = new Intl.DateTimeFormat('en-CA', {
         timeZone: targetTimezone || 'Europe/Istanbul',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
         hour12: false
       });
-      // Output format in 'sv-SE': "YYYY-MM-DD HH:mm"
-      const formatted = formatter.format(dateObj);
-      const parts = formatted.split(' ');
-      if (parts.length === 2) {
-        return {
-          dateStr: parts[0],
-          timeStr: parts[1],
-          utcMs
-        };
+      const parts = formatter.formatToParts(dateObj);
+      const partMap: Record<string, string> = {};
+      for (const p of parts) {
+        partMap[p.type] = p.value;
       }
+      let h = partMap.hour || String(hour).padStart(2, '0');
+      if (h === '24') h = '00';
+      const dateStr = `${partMap.year}-${partMap.month}-${partMap.day}`;
+      const timeStr = `${h}:${partMap.minute || '00'}`;
+      return {
+        dateStr,
+        timeStr,
+        utcMs
+      };
     } catch (e) {
       // Fallback if timezone conversion fails
     }
@@ -88,7 +96,56 @@ function parseIcsDateTimeToLocal(
     const utcTimeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     return { dateStr: utcDateStr, timeStr: utcTimeStr, utcMs };
   } else {
-    // Local time string
+    // Check if TZID parameter exists in property
+    let tzid: string | null = null;
+    if (rawParamPart) {
+      const match = rawParamPart.match(/TZID=(?:["']([^"']+)["']|([^;:]+))/i);
+      if (match) {
+        tzid = (match[1] || match[2] || '').trim().replace(/^["']|["']$/g, '').replace(/^\//, '');
+      }
+    }
+
+    // If TZID is a foreign timezone (not Turkey/Istanbul and differs from targetTimezone)
+    const isLocalTz = !tzid ||
+      /^(Europe\/Istanbul|Asia\/Istanbul|Turkey|Turkey Standard Time|UTC\+3|GMT\+3)$/i.test(tzid) ||
+      (targetTimezone && tzid.toLowerCase() === targetTimezone.toLowerCase());
+
+    if (!isLocalTz && tzid) {
+      try {
+        // Convert from foreign TZID to target timezone
+        const tempUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+        const invDate = new Date(new Date(tempUtc).toLocaleString('en-US', { timeZone: tzid }));
+        const offsetDiff = tempUtc - invDate.getTime();
+        const actualUtcMs = tempUtc + offsetDiff;
+
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+          timeZone: targetTimezone || 'Europe/Istanbul',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+        const parts = formatter.formatToParts(new Date(actualUtcMs));
+        const partMap: Record<string, string> = {};
+        for (const p of parts) {
+          partMap[p.type] = p.value;
+        }
+        let h = partMap.hour || String(hour).padStart(2, '0');
+        if (h === '24') h = '00';
+        return {
+          dateStr: `${partMap.year}-${partMap.month}-${partMap.day}`,
+          timeStr: `${h}:${partMap.minute || '00'}`,
+          utcMs: actualUtcMs
+        };
+      } catch (e) {
+        // Fallback to direct local extraction below
+      }
+    }
+
+    // Local time string (Europe/Istanbul or matching local timezone)
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
