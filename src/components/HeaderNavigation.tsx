@@ -24,7 +24,8 @@ import {
   Sparkles,
   ChevronRight,
   User,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
@@ -575,6 +576,29 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Diğer Menüler & Modüller</h3>
                   <div className="bg-white rounded-2xl border border-[#e5e1d8] divide-y divide-[#f5f5f0] overflow-hidden shadow-3xs">
                     
+                    {/* Session Audit & Reconciliation Table */}
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => handleTabClick('audit')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
+                        activeTab === 'audit' ? 'bg-[#6b705c]/10 text-[#6b705c] font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#6b705c]/15 flex items-center justify-center text-[#6b705c]">
+                          <FileSpreadsheet className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-bold text-slate-800">Seans Sağlama & Tablo</p>
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Yeni</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400">Takvim karşılaştırma, 0 ₺ ve seans dışı denetimi</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </motion.button>
+
                     {/* Debt Tracker */}
                     <motion.button
                       whileTap={{ scale: 0.98 }}

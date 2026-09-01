@@ -38,7 +38,7 @@ export default function SettingsModal({
   const [defaultIsKdvInclusive, setDefaultIsKdvInclusive] = useState(settings.defaultIsKdvInclusive ?? true);
   const [enableSmartClientPriceMatching, setEnableSmartClientPriceMatching] = useState(settings.enableSmartClientPriceMatching ?? false);
   const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
-  const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search'>(settings.defaultLandingPage || 'agenda');
+  const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search' | 'audit'>(settings.defaultLandingPage || 'agenda');
   const [userRole, setUserRole] = useState<'tenant' | 'owner' | undefined>(settings.userRole);
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
@@ -504,6 +504,7 @@ export default function SettingsModal({
                 <option value="agenda">📅 Ajanda / Takvim</option>
                 <option value="stats">📊 Analiz & İstatistikler</option>
                 <option value="debts">💸 Borç Takip</option>
+                <option value="audit">📋 Seans Sağlama & Tablo</option>
                 <option value="sync">🔄 Takvim Senkronizasyonu</option>
                 <option value="backup">💾 Veri Yedekleme</option>
                 <option value="search">🔍 Gelişmiş Arama</option>

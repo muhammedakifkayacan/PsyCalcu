@@ -68,6 +68,7 @@ import DebtPaymentConfirmationModal from './components/DebtPaymentConfirmationMo
 import { usePrivacy, Money, MaskedClientName } from './context/PrivacyContext';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
+import { SessionAuditTable } from './components/SessionAuditTable';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
@@ -157,7 +158,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-  const { formatMoney, formatClientName } = usePrivacy();
+  const { formatMoney, formatClientName, isPrivacyMode, isHideClientNames } = usePrivacy();
   // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('psycalcu_sessions'); // note: settings key below
@@ -1439,7 +1440,7 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms'>(() => {
+  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit'>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_settings');
       if (saved) {
@@ -1461,7 +1462,7 @@ export default function App() {
   });
   const hasManuallyChangedTabRef = useRef(false);
 
-  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | ((prev: any) => any)) => {
+  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | ((prev: any) => any)) => {
     hasManuallyChangedTabRef.current = true;
     setActiveTabInternal(tab);
   }, []);
@@ -5255,6 +5256,33 @@ export default function App() {
               </div>
             </>
           )}
+            </motion.div>
+          )}
+
+          {activeTab === 'audit' && (
+            <motion.div
+              key="audit-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SessionAuditTable
+                sessions={sessions}
+                settings={settings}
+                onEditSession={(session) => {
+                  setEditingSession(session);
+                  setPrefilledRoomId(session.roomId || '');
+                  setPrefilledTime(session.time);
+                  setIsSessionModalOpen(true);
+                }}
+                onDeleteSession={handleDeleteSession}
+                onGoToDate={(date) => setSelectedDate(date)}
+                setActiveTab={setActiveTab}
+                showToast={showToast}
+                isPrivacyMode={isPrivacyMode}
+                isHideClientNames={isHideClientNames}
+              />
             </motion.div>
           )}
 

@@ -95,7 +95,7 @@ export interface AppSettings {
   googleSheetsLinked: boolean;
   enableSmartClientPriceMatching?: boolean;
   autoMarkShortEventsAsNonSession?: boolean;
-  defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search';
+  defaultLandingPage?: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search' | 'audit';
   userRole?: 'tenant' | 'owner';
   ownerCalendars?: OwnerCalendar[];
   rooms?: Room[];
