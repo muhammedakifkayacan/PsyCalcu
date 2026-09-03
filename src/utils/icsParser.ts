@@ -1,4 +1,5 @@
 import { Session, SessionType } from '../types';
+import { formatLocalDate, getTodayLocalDate } from './dateUtils';
 
 interface ParsedRrule {
   freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -411,14 +412,14 @@ export function parseICS(
   const sixtyDaysAgo = new Date();
   sixtyDaysAgo.setDate(todayObj.getDate() - 60);
 
-  let windowStart = sixtyDaysAgo.toISOString().split('T')[0];
+  let windowStart = formatLocalDate(sixtyDaysAgo);
   if (membershipDate) {
     windowStart = membershipDate.split('T')[0];
   }
 
   const future180Days = new Date();
   future180Days.setDate(todayObj.getDate() + 180);
-  const windowEnd = future180Days.toISOString().split('T')[0];
+  const windowEnd = formatLocalDate(future180Days);
 
   interface RawEvent {
     uid: string;
@@ -624,12 +625,12 @@ export function parseICS(
  * Generates initial mock sessions if the user has no saved data in localStorage.
  */
 export function getInitialMockSessions(defaultPrice: number, defaultBabysitterFee: number, defaultOfficeRentFee: number = 200): Session[] {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocalDate();
 
   const getOffsetDateString = (offsetDays: number) => {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   };
 
   const yesterday = getOffsetDateString(-1);

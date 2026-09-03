@@ -19,6 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { Room } from '../types';
+import { formatLocalDate, getTodayLocalDate } from '../utils/dateUtils';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -58,7 +59,7 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PublicData | null>(initialCachedData);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayLocalDate();
   });
 
   // Selected slot state for WhatsApp booking
@@ -85,7 +86,7 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
 
         // Demo klinik instant data
         if (userId === 'demo_klinik' || userId === 'demo') {
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = getTodayLocalDate();
           const demoData: PublicData = {
             therapistName: 'PsyCalcu Örnek Klinik',
             therapistPhone: '05320000000',
@@ -180,17 +181,17 @@ export default function PublicAvailability({ userId }: PublicAvailabilityProps) 
   const handlePrevDay = () => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() - 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(formatLocalDate(current));
   };
 
   const handleNextDay = () => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(formatLocalDate(current));
   };
 
   const handleToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getTodayLocalDate());
   };
 
   // Helper to build WhatsApp wa.me link

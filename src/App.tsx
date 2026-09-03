@@ -69,6 +69,7 @@ import { usePrivacy, Money, MaskedClientName } from './context/PrivacyContext';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
 import { SessionAuditTable } from './components/SessionAuditTable';
+import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
 import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
@@ -1197,7 +1198,7 @@ export default function App() {
 
   // UI state
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayLocalDate();
   });
   const [agendaViewMode, setAgendaViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -1326,17 +1327,17 @@ export default function App() {
   const handlePrevWeek = () => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() - 7);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(formatLocalDate(d));
   };
 
   const handleNextWeek = () => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + 7);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(formatLocalDate(d));
   };
 
   const handleThisWeek = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayLocalDate();
     setSelectedDate(todayStr);
   };
 
@@ -1360,7 +1361,7 @@ export default function App() {
   const handleThisMonth = () => {
     const now = new Date();
     setCalendarViewDate(now);
-    setSelectedDate(now.toISOString().split('T')[0]);
+    setSelectedDate(getTodayLocalDate());
   };
 
   // Keep calendar view month in sync with selectedDate
@@ -1825,7 +1826,7 @@ export default function App() {
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
 
   const isPastDate = (dateStr: string) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayLocalDate();
     return dateStr < todayStr;
   };
 
@@ -1847,7 +1848,7 @@ export default function App() {
     for (let i = -3; i <= 3; i++) {
       const d = new Date(baseDate);
       d.setDate(baseDate.getDate() + i);
-      const yyyymmdd = d.toISOString().split('T')[0];
+      const yyyymmdd = formatLocalDate(d);
       const dayName = d.toLocaleDateString('tr-TR', { weekday: 'short' });
       const dayNum = d.getDate();
       ribbon.push({ dateStr: yyyymmdd, dayName, dayNum });
@@ -2561,7 +2562,7 @@ export default function App() {
     // 60 days cutoff logic (aligns with icsParser.ts)
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const cutOffDateStr = sixtyDaysAgo.toISOString().split('T')[0];
+    const cutOffDateStr = formatLocalDate(sixtyDaysAgo);
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched
@@ -4093,7 +4094,7 @@ export default function App() {
                             <div className="grid grid-cols-7 gap-1">
                               {calendarGrid.map((cell, idx) => {
                                 const isSelected = cell.dateStr === selectedDate;
-                                const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                                const isToday = cell.dateStr === getTodayLocalDate();
                                 
                                 // Check if there are sessions on this day
                                 const daySessions = sessions.filter(s => s.date === cell.dateStr);
@@ -4148,7 +4149,7 @@ export default function App() {
                               <button 
                                 type="button"
                                 onClick={() => {
-                                  const todayStr = new Date().toISOString().split('T')[0];
+                                  const todayStr = getTodayLocalDate();
                                   setSelectedDate(todayStr);
                                   setIsCalendarOpen(false);
                                 }}
@@ -4177,7 +4178,7 @@ export default function App() {
                   <div className="grid grid-cols-7 gap-2">
                     {dateRibbon.map((day) => {
                       const isSelected = day.dateStr === selectedDate;
-                      const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                      const isToday = day.dateStr === getTodayLocalDate();
                       const daySessions = sessions.filter(s => s.date === day.dateStr);
                       const hasSessions = daySessions.length > 0;
                       const hasPriceIncrease = daySessions.some(s => 
@@ -4676,7 +4677,7 @@ export default function App() {
                 {/* 7 Days Columns Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-7 gap-3 overflow-x-auto">
                   {weekDays.map((day) => {
-                    const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                    const isToday = day.dateStr === getTodayLocalDate();
                     const isSelected = day.dateStr === selectedDate;
                     const daySessions = getFilteredSessionsForDate(day.dateStr);
 
@@ -4885,7 +4886,7 @@ export default function App() {
                   <div className="grid grid-cols-7 gap-1.5">
                     {calendarGrid.map((cell, idx) => {
                       const isSelected = cell.dateStr === selectedDate;
-                      const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                      const isToday = cell.dateStr === getTodayLocalDate();
                       const daySessions = getFilteredSessionsForDate(cell.dateStr);
 
                       const dayRevenue = daySessions.reduce((acc, s) => s.type !== 'cancelled' && s.type !== 'non-session' ? acc + s.price : acc, 0);

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings, SessionType } from '../types';
+import { getAccountingDateRange, getTodayLocalDate, formatLocalDate } from '../utils/dateUtils';
 
 interface SessionAuditTableProps {
   sessions: Session[];
@@ -58,11 +59,11 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   const [period, setPeriod] = useState<PeriodPreset>('last30');
   
   // Custom Date Range State
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getTodayLocalDate(), []);
   const thirtyDaysAgoStr = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   }, []);
 
   const [customStartDate, setCustomStartDate] = useState<string>(thirtyDaysAgoStr);
@@ -76,38 +77,8 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
 
   // Compute Active Date Bounds
   const { startDate, endDate } = useMemo(() => {
-    const now = new Date();
-    if (period === 'last30') {
-      const d = new Date();
-      d.setDate(d.getDate() - 30);
-      return { startDate: d.toISOString().split('T')[0], endDate: now.toISOString().split('T')[0] };
-    }
-    if (period === 'thisMonth') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { 
-        startDate: start.toISOString().split('T')[0], 
-        endDate: end.toISOString().split('T')[0] 
-      };
-    }
-    if (period === 'lastMonth') {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { 
-        startDate: start.toISOString().split('T')[0], 
-        endDate: end.toISOString().split('T')[0] 
-      };
-    }
-    if (period === 'last7') {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      return { startDate: d.toISOString().split('T')[0], endDate: now.toISOString().split('T')[0] };
-    }
-    if (period === 'custom') {
-      return { startDate: customStartDate, endDate: customEndDate };
-    }
-    // all
-    return { startDate: '', endDate: '' };
+    const range = getAccountingDateRange(period, customStartDate, customEndDate);
+    return { startDate: range.start, endDate: range.end };
   }, [period, customStartDate, customEndDate]);
 
   // Mask client name if privacy mode is on

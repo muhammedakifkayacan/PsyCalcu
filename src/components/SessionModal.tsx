@@ -5,6 +5,7 @@ import { Session, SessionType, PaymentMethod, Room, getSmartClientPrice, getNorm
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { getTodayLocalDate } from '../utils/dateUtils';
 
 // Helper time converters
 const timeToMinutes = (timeStr: string): number => {
@@ -85,12 +86,7 @@ export default function SessionModal({
   const [roomId, setRoomId] = useState('');
 
   // Determine if editing a past session (date is before today)
-  const localTodayStr = (() => {
-    const d = new Date();
-    const offset = d.getTimezoneOffset();
-    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-    return localDate.toISOString().split('T')[0];
-  })();
+  const localTodayStr = getTodayLocalDate();
   const isPastSession = sessionToEdit ? (sessionToEdit.date < localTodayStr) : false;
 
   // Check if session is older than 7 days

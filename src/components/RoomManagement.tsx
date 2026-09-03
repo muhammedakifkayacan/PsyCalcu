@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Room, Session, SessionType, BlockedSlot } from '../types';
 import { motion } from 'motion/react';
+import { formatLocalDate, getTodayLocalDate } from '../utils/dateUtils';
 
 interface RoomManagementProps {
   rooms: Room[];
@@ -66,7 +67,7 @@ export default function RoomManagement({
     if (!onDateChange) return;
     const current = new Date(selectedDate);
     current.setDate(current.getDate() - 1);
-    const prevDateStr = current.toISOString().split('T')[0];
+    const prevDateStr = formatLocalDate(current);
     onDateChange(prevDateStr);
   };
 
@@ -74,13 +75,13 @@ export default function RoomManagement({
     if (!onDateChange) return;
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + 1);
-    const nextDateStr = current.toISOString().split('T')[0];
+    const nextDateStr = formatLocalDate(current);
     onDateChange(nextDateStr);
   };
 
   const handleToday = () => {
     if (!onDateChange) return;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayLocalDate();
     onDateChange(todayStr);
   };
   // Local state for room creator form
@@ -344,7 +345,7 @@ export default function RoomManagement({
       {/* Main Room Occupancy Screen (Oda Doluluk Ekranı) */}
       <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-xs space-y-4">
         {(() => {
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = getTodayLocalDate();
           const isTodaySelected = selectedDate === todayStr;
           const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
 
@@ -725,7 +726,7 @@ export default function RoomManagement({
         ) : occupancyView === 'weekly' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
             {getWeeklyDays().map((day, idx) => {
-              const dayStr = day.toISOString().split('T')[0];
+              const dayStr = formatLocalDate(day);
               const isSelectedDay = dayStr === selectedDate;
               const daySessions = sessions.filter(s => s.date === dayStr);
               const occupiedCount = daySessions.length;
@@ -806,9 +807,9 @@ export default function RoomManagement({
                   return <div key={`empty-${idx}`} className="h-20 bg-slate-50/20 rounded-xl" />;
                 }
 
-                const dayStr = day.toISOString().split('T')[0];
+                const dayStr = formatLocalDate(day);
                 const isSelectedDay = dayStr === selectedDate;
-                const isToday = dayStr === new Date().toISOString().split('T')[0];
+                const isToday = dayStr === getTodayLocalDate();
                 const daySessions = sessions.filter(s => s.date === dayStr);
                 const count = daySessions.length;
 

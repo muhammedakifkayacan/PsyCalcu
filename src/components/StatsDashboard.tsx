@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePrivacy } from '../context/PrivacyContext';
+import { getAccountingDateRange, getTodayLocalDate } from '../utils/dateUtils';
 
 export const EXPENSE_CATEGORIES: Record<ExpenseCategory, { label: string; icon: any; color: string; bg: string; border: string }> = {
   salary: { label: 'Maaş & Personel', icon: UserCheck, color: 'text-indigo-700', bg: 'bg-indigo-50/90', border: 'border-indigo-200' },
@@ -65,7 +66,7 @@ export default function StatsDashboard({
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState<ExpenseCategory>('utilities');
   const [formAmount, setFormAmount] = useState('');
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState(() => getTodayLocalDate());
   const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'bank' | 'card'>('cash');
   const [formNotes, setFormNotes] = useState('');
 
@@ -97,43 +98,7 @@ export default function StatsDashboard({
 
   // Compute calculated start & end dates based on selected preset
   const dateRange = useMemo(() => {
-    const today = new Date();
-    const format = (d: Date) => d.toISOString().split('T')[0];
-
-    if (preset === 'thisMonth') {
-      const y = today.getFullYear();
-      const m = today.getMonth();
-      const firstDay = new Date(y, m, 1);
-      const lastDay = new Date(y, m + 1, 0);
-      return { start: format(firstDay), end: format(lastDay) };
-    }
-
-    if (preset === 'lastMonth') {
-      const y = today.getFullYear();
-      const m = today.getMonth();
-      const firstDay = new Date(y, m - 1, 1);
-      const lastDay = new Date(y, m, 0);
-      return { start: format(firstDay), end: format(lastDay) };
-    }
-
-    if (preset === 'last30Days') {
-      const startD = new Date();
-      startD.setDate(today.getDate() - 30);
-      return { start: format(startD), end: format(today) };
-    }
-
-    if (preset === 'last3Months') {
-      const startD = new Date();
-      startD.setMonth(today.getMonth() - 3);
-      return { start: format(startD), end: format(today) };
-    }
-
-    if (preset === 'custom') {
-      return { start: customStartDate, end: customEndDate };
-    }
-
-    // Default 'all'
-    return { start: '', end: '' };
+    return getAccountingDateRange(preset, customStartDate, customEndDate);
   }, [preset, customStartDate, customEndDate]);
 
   // Filter sessions by date range
@@ -374,7 +339,7 @@ export default function StatsDashboard({
     setFormTitle('');
     setFormCategory('utilities');
     setFormAmount('');
-    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormDate(getTodayLocalDate());
     setFormPaymentMethod('cash');
     setFormNotes('');
     setIsExpenseModalOpen(true);
