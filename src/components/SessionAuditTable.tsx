@@ -23,7 +23,11 @@ import {
   User,
   Coffee,
   Check,
-  RotateCcw
+  RotateCcw,
+  Calculator,
+  Copy,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings, SessionType } from '../types';
@@ -229,6 +233,159 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
     };
   }, [sessions, startDate, endDate]);
 
+  // Multi-Row Selection State for Live Audit Totals
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+  const [isDetailExpanded, setIsDetailExpanded] = useState<boolean>(false);
+
+  // Selected sessions and aggregated statistics
+  const selectedStats = useMemo(() => {
+    if (selectedSessionIds.size === 0) {
+      return null;
+    }
+
+    const selectedList = sessions.filter(s => selectedSessionIds.has(s.id));
+    const totalCount = selectedList.length;
+
+    let validCount = 0;
+    let nonSessionCount = 0;
+    let cancelledCount = 0;
+    let zeroPriceCount = 0;
+    let onlineCount = 0;
+    let faceToFaceCount = 0;
+    let totalRevenue = 0;
+    let totalPaid = 0;
+    let totalUnpaid = 0;
+    let totalRentDeductions = 0;
+    let totalBabysitterDeductions = 0;
+    let cashPaid = 0;
+    let bankPaid = 0;
+    let cardPaid = 0;
+
+    for (const s of selectedList) {
+      if (s.type === 'non-session') {
+        nonSessionCount++;
+        continue;
+      }
+      if (s.type === 'cancelled') {
+        cancelledCount++;
+        continue;
+      }
+
+      validCount++;
+      if (s.type === 'online') onlineCount++;
+      if (s.type === 'face-to-face') faceToFaceCount++;
+
+      const price = Number(s.price || 0);
+      if (price === 0) {
+        zeroPriceCount++;
+      }
+      totalRevenue += price;
+
+      // Expenses / deductions
+      if (s.hasOfficeRentFee && s.officeRentFeeAmount) {
+        totalRentDeductions += Number(s.officeRentFeeAmount);
+      }
+      if (s.hasBabysitterFee && s.babysitterFeeAmount) {
+        totalBabysitterDeductions += Number(s.babysitterFeeAmount);
+      }
+
+      // Paid / Unpaid
+      if (s.paymentStatus === 'paid') {
+        const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : price;
+        totalPaid += paid;
+        if (s.paymentMethod === 'cash') cashPaid += paid;
+        else if (s.paymentMethod === 'transfer') bankPaid += paid;
+        else if (s.paymentMethod === 'card') cardPaid += paid;
+      } else if (s.paymentStatus === 'partial') {
+        const paid = Number(s.paidAmount || 0);
+        totalPaid += paid;
+        totalUnpaid += Math.max(0, price - paid);
+        if (s.paymentMethod === 'cash') cashPaid += paid;
+        else if (s.paymentMethod === 'transfer') bankPaid += paid;
+        else if (s.paymentMethod === 'card') cardPaid += paid;
+      } else {
+        totalUnpaid += price;
+      }
+    }
+
+    const totalDeductions = totalRentDeductions + totalBabysitterDeductions;
+    const netIncome = totalRevenue - totalDeductions;
+    const averagePrice = validCount > 0 ? Math.round(totalRevenue / validCount) : 0;
+
+    return {
+      totalCount,
+      validCount,
+      nonSessionCount,
+      cancelledCount,
+      zeroPriceCount,
+      onlineCount,
+      faceToFaceCount,
+      totalRevenue,
+      totalPaid,
+      totalUnpaid,
+      totalRentDeductions,
+      totalBabysitterDeductions,
+      totalDeductions,
+      netIncome,
+      averagePrice,
+      cashPaid,
+      bankPaid,
+      cardPaid,
+    };
+  }, [sessions, selectedSessionIds]);
+
+  const isAllSelected = filteredSessions.length > 0 && filteredSessions.every(s => selectedSessionIds.has(s.id));
+  const isSomeSelected = filteredSessions.some(s => selectedSessionIds.has(s.id)) && !isAllSelected;
+
+  const handleToggleSelect = (sessionId: string) => {
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedSessionIds(new Set());
+    } else {
+      const newSet = new Set(selectedSessionIds);
+      filteredSessions.forEach(s => newSet.add(s.id));
+      setSelectedSessionIds(newSet);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedSessionIds(new Set());
+    setIsDetailExpanded(false);
+  };
+
+  const handleCopySummary = () => {
+    if (!selectedStats) return;
+    const lines = [
+      `📊 PsyCalcu Seçili Seans Sağlama Özeti (${selectedStats.totalCount} Kayıt)`,
+      `• Geçerli Seans: ${selectedStats.validCount} adet (${selectedStats.onlineCount} Online, ${selectedStats.faceToFaceCount} Yüz Yüze)`,
+      `• Toplam Seans Tutarı (Brüt): ${Number(selectedStats.totalRevenue).toLocaleString('tr-TR')} ₺`,
+      `• Tahsil Edilen (Ödenen): ${Number(selectedStats.totalPaid).toLocaleString('tr-TR')} ₺`,
+      `• Kalan / Bekleyen Ödeme: ${Number(selectedStats.totalUnpaid).toLocaleString('tr-TR')} ₺`,
+      selectedStats.totalDeductions > 0 ? `• Kesintiler (Ofis/Bakıcı): -${Number(selectedStats.totalDeductions).toLocaleString('tr-TR')} ₺` : null,
+      `• Net Hakediş: ${Number(selectedStats.netIncome).toLocaleString('tr-TR')} ₺`,
+      selectedStats.validCount > 0 ? `• Ortalama Seans: ${Number(selectedStats.averagePrice).toLocaleString('tr-TR')} ₺ / seans` : null,
+    ].filter(Boolean).join('\n');
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lines).then(() => {
+        showToast(`${selectedStats.totalCount} seansın toplam özeti kopyalandı!`, 'success');
+      }).catch(() => {
+        showToast('Panoya kopyalanamadı', 'error');
+      });
+    }
+  };
+
   const handleSort = (field: 'date' | 'clientName' | 'price') => {
     if (sortField === field) {
       setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -281,7 +438,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in" id="session-audit-table-root">
+    <div className={`space-y-6 animate-fade-in ${selectedStats && selectedStats.totalCount > 0 ? 'pb-32 sm:pb-36' : 'pb-8'}`} id="session-audit-table-root">
       
       {/* HERO BANNER */}
       <div className="bg-[#6b705c] p-6 md:p-8 rounded-[2.5rem] text-white shadow-md relative overflow-hidden">
@@ -599,16 +756,43 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
       <div className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-3xs overflow-hidden">
         
         {/* Table Head Bar */}
-        <div className="px-6 py-4 bg-[#fdfbf7] border-b border-[#e5e1d8] flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="px-5 sm:px-6 py-4 bg-[#fdfbf7] border-b border-[#e5e1d8] flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <FileSpreadsheet className="w-4 h-4 text-[#6b705c]" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
               Seans Listesi ({filteredSessions.length} Kayıt Listeleniyor)
             </h3>
+            {selectedStats && selectedStats.totalCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6b705c] text-white animate-fade-in shadow-2xs">
+                <Check className="w-3 h-3" />
+                {selectedStats.totalCount} Satır Seçili
+              </span>
+            )}
           </div>
-          <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">
-            💡 Satıra tıklayarak seansı anında düzenleyebilirsiniz
-          </span>
+          <div className="flex items-center gap-2">
+            {filteredSessions.length > 0 && (
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-3xs"
+              >
+                {isAllSelected ? (
+                  <>
+                    <RotateCcw className="w-3 h-3 text-slate-400" />
+                    <span>Seçimi Kaldır</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3 h-3 text-[#6b705c]" />
+                    <span>Tümünü Seç ({filteredSessions.length})</span>
+                  </>
+                )}
+              </button>
+            )}
+            <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">
+              💡 Satırları işaretleyerek anlık toplam alın veya tıklayarak düzenleyin
+            </span>
+          </div>
         </div>
 
         {filteredSessions.length === 0 ? (
@@ -637,6 +821,22 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200/70 text-slate-500 text-[11px] font-bold select-none">
                   
+                  {/* Selection Checkbox */}
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={inputRef => {
+                        if (inputRef) {
+                          inputRef.indeterminate = isSomeSelected;
+                        }
+                      }}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] cursor-pointer accent-[#6b705c]"
+                      title={isAllSelected ? "Tüm seçimleri kaldır" : "Görünen tüm seansları seç"}
+                    />
+                  </th>
+
                   {/* Date & Time Sortable */}
                   <th 
                     onClick={() => handleSort('date')}
@@ -684,6 +884,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                   const isNonSession = session.type === 'non-session';
                   const isCancelled = session.type === 'cancelled';
                   const isZeroPrice = (session.price === 0 || !session.price) && !isNonSession && !isCancelled;
+                  const isSelected = selectedSessionIds.has(session.id);
                   const room = (settings.rooms || []).find(r => r.id === session.roomId);
 
                   return (
@@ -691,13 +892,30 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                       key={session.id}
                       onClick={() => onEditSession(session)}
                       className={`group hover:bg-[#fdfbf7] cursor-pointer transition-colors ${
-                        isNonSession 
+                        isSelected
+                          ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15 border-l-4 border-l-[#6b705c]'
+                          : isNonSession 
                           ? 'bg-slate-50/50 opacity-75' 
                           : isZeroPrice 
                           ? 'bg-amber-50/30' 
                           : ''
                       }`}
                     >
+                      {/* Checkbox Column */}
+                      <td 
+                        className="py-3.5 px-3 text-center cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSelect(session.id);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] pointer-events-none accent-[#6b705c]"
+                        />
+                      </td>
                       {/* Date & Time */}
                       <td className="py-3.5 px-4 font-medium text-slate-800 whitespace-nowrap">
                         <div className="flex items-center gap-2">
@@ -834,6 +1052,214 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
           </div>
         )}
       </div>
+
+      {/* STICKY BOTTOM AUDIT TOTALS BAR (BOTTOM SHEET / FLOATING HUD) */}
+      <AnimatePresence>
+        {selectedStats && selectedStats.totalCount > 0 && (
+          <motion.div
+            initial={{ y: 90, opacity: 0, scale: 0.98 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 90, opacity: 0, scale: 0.98 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className="fixed bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 w-[96%] max-w-5xl shadow-2xl rounded-2xl md:rounded-[1.75rem] bg-[#272a22]/95 text-white backdrop-blur-md border border-white/15 overflow-hidden"
+          >
+            {/* Top Bar Header & Core Metrics */}
+            <div className="p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              
+              {/* Left: Selected count & badges */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-[#6b705c] text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Calculator className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-sm text-white">
+                      {selectedStats.totalCount} Seans Seçildi
+                    </span>
+                    <span className="text-[10px] text-[#ddbea9] bg-white/10 px-2 py-0.5 rounded-full font-semibold">
+                      Anlık Sağlama
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-300 mt-0.5">
+                    {selectedStats.onlineCount > 0 && <span>{selectedStats.onlineCount} Online</span>}
+                    {selectedStats.onlineCount > 0 && selectedStats.faceToFaceCount > 0 && <span>•</span>}
+                    {selectedStats.faceToFaceCount > 0 && <span>{selectedStats.faceToFaceCount} Yüz Yüze</span>}
+                    {(selectedStats.nonSessionCount > 0 || selectedStats.cancelledCount > 0) && (
+                      <span className="text-slate-400">
+                        ({selectedStats.nonSessionCount + selectedStats.cancelledCount} Seans Dışı/İptal)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Center: Live Financial Totals */}
+              <div className="flex items-center gap-3 sm:gap-5 overflow-x-auto py-1 px-1 scrollbar-none">
+                {/* Total Gross Revenue */}
+                <div className="shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Toplam Tutar</span>
+                  <span className="text-base sm:text-lg font-bold font-serif text-[#ddbea9]">
+                    {formatCurrency(selectedStats.totalRevenue)}
+                  </span>
+                </div>
+
+                <div className="h-7 w-[1px] bg-white/10 shrink-0" />
+
+                {/* Paid */}
+                <div className="shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">Tahsil Edilen</span>
+                  <span className="text-sm sm:text-base font-bold font-serif text-emerald-300">
+                    {formatCurrency(selectedStats.totalPaid)}
+                  </span>
+                </div>
+
+                <div className="h-7 w-[1px] bg-white/10 shrink-0" />
+
+                {/* Unpaid */}
+                <div className="shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-rose-300 block tracking-wider">Bekleyen Ödeme</span>
+                  <span className={`text-sm sm:text-base font-bold font-serif ${selectedStats.totalUnpaid > 0 ? 'text-rose-300' : 'text-slate-300'}`}>
+                    {formatCurrency(selectedStats.totalUnpaid)}
+                  </span>
+                </div>
+
+                {selectedStats.totalDeductions > 0 && (
+                  <>
+                    <div className="h-7 w-[1px] bg-white/10 shrink-0 hidden lg:block" />
+                    <div className="shrink-0 hidden lg:block">
+                      <span className="text-[10px] uppercase font-bold text-amber-300 block tracking-wider">Net Hakediş</span>
+                      <span className="text-sm sm:text-base font-bold font-serif text-white">
+                        {formatCurrency(selectedStats.netIncome)}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {selectedStats.validCount > 0 && (
+                  <>
+                    <div className="h-7 w-[1px] bg-white/10 shrink-0 hidden xl:block" />
+                    <div className="shrink-0 hidden xl:block">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Ortalama</span>
+                      <span className="text-xs sm:text-sm font-semibold text-slate-200">
+                        {formatCurrency(selectedStats.averagePrice)}/seans
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                {/* Toggle details drawer */}
+                <button
+                  type="button"
+                  onClick={() => setIsDetailExpanded(prev => !prev)}
+                  className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Detaylı Dağılımı Göster"
+                >
+                  {isDetailExpanded ? (
+                    <>
+                      <span>Gizle</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Detay</span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+
+                {/* Copy Summary */}
+                <button
+                  type="button"
+                  onClick={handleCopySummary}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  title="Seçili Toplam Özeti Kopyala"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+
+                {/* Clear Selection */}
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 hover:text-white transition-colors cursor-pointer"
+                  title="Seçimi Temizle"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Expandable Detail Section (Bottomsheet Drawer) */}
+            <AnimatePresence>
+              {isDetailExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-t border-white/10 bg-black/25 px-4 py-3.5 space-y-3"
+                >
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    
+                    {/* Kesintiler */}
+                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/10 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ofis Kirası Kesintisi</span>
+                      <p className="font-serif font-bold text-amber-300">
+                        {formatCurrency(selectedStats.totalRentDeductions)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/10 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Bakıcı Kesintisi</span>
+                      <p className="font-serif font-bold text-amber-300">
+                        {formatCurrency(selectedStats.totalBabysitterDeductions)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/10 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Net Kalan Hakediş</span>
+                      <p className="font-serif font-bold text-emerald-400">
+                        {formatCurrency(selectedStats.netIncome)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/10 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">0 ₺ Seans Sayısı</span>
+                      <p className={`font-serif font-bold ${selectedStats.zeroPriceCount > 0 ? 'text-amber-300' : 'text-slate-300'}`}>
+                        {selectedStats.zeroPriceCount} adet
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods Breakdown */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-xs">
+                    <div className="flex items-center gap-3 text-slate-300 flex-wrap">
+                      <span className="text-slate-400 font-semibold">Tahsilat Türleri:</span>
+                      <span>Nakit: <strong className="text-white">{formatCurrency(selectedStats.cashPaid)}</strong></span>
+                      <span>•</span>
+                      <span>Havale/EFT: <strong className="text-white">{formatCurrency(selectedStats.bankPaid)}</strong></span>
+                      <span>•</span>
+                      <span>Kart: <strong className="text-white">{formatCurrency(selectedStats.cardPaid)}</strong></span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCopySummary}
+                      className="text-xs text-[#ddbea9] hover:underline flex items-center gap-1 cursor-pointer ml-auto"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Hesap Metnini Kopyala
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
