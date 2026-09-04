@@ -5062,6 +5062,8 @@ export default function App() {
                   onDeleteExpense={handleDeleteExpense}
                   showExplanations={showExplanations}
                   showToast={(msg, type) => setToast({ message: msg, type })}
+                  onNavigateToAudit={() => setActiveTab('audit')}
+                  setActiveTab={setActiveTab}
                 />
               )}
             </motion.div>

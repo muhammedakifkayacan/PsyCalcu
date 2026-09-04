@@ -4,7 +4,7 @@ import { Session, AppSettings, Expense, ExpenseCategory } from '../types';
 import { 
   Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins,
   Plus, Edit2, Trash2, Building, Zap, UserCheck, ShoppingBag, Megaphone, Landmark, Sparkles, CreditCard, Wallet,
-  Receipt, DollarSign, Tag, Check, Banknote
+  Receipt, DollarSign, Tag, Check, Banknote, FileSpreadsheet, Calculator, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -36,6 +36,8 @@ interface StatsDashboardProps {
   onDeleteExpense?: (id: string) => void;
   showExplanations?: boolean;
   showToast?: (message: string, type?: 'success' | 'error' | 'info', extraData?: any, onUndo?: () => void, undoLabel?: string) => void;
+  onNavigateToAudit?: () => void;
+  setActiveTab?: (tab: any) => void;
 }
 
 export default function StatsDashboard({
@@ -46,7 +48,9 @@ export default function StatsDashboard({
   onUpdateExpense,
   onDeleteExpense,
   showExplanations = true,
-  showToast
+  showToast,
+  onNavigateToAudit,
+  setActiveTab
 }: StatsDashboardProps) {
   const { formatMoney } = usePrivacy();
   const [preset, setPreset] = useState<string>('thisMonth');
@@ -69,6 +73,14 @@ export default function StatsDashboard({
   const [formDate, setFormDate] = useState(() => getTodayLocalDate());
   const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'bank' | 'card'>('cash');
   const [formNotes, setFormNotes] = useState('');
+
+  const handleGoToAudit = () => {
+    if (onNavigateToAudit) {
+      onNavigateToAudit();
+    } else if (setActiveTab) {
+      setActiveTab('audit');
+    }
+  };
 
   const handleCardClick = (cardType: 'gross' | 'pending' | 'expenses' | 'net') => {
     setSelectedCard(prev => {
@@ -110,6 +122,10 @@ export default function StatsDashboard({
       return true;
     });
   }, [sessions, dateRange]);
+
+  const zeroPriceAuditCount = useMemo(() => {
+    return filteredSessions.filter(s => s.type !== 'cancelled' && (!s.price || s.price === 0)).length;
+  }, [filteredSessions]);
 
   // Filter general clinic custom expenses by date range
   const filteredCustomExpenses = useMemo(() => {
@@ -411,6 +427,16 @@ export default function StatsDashboard({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleGoToAudit}
+              className="text-xs font-semibold text-[#6b705c] hover:text-[#585c4c] bg-[#6b705c]/10 hover:bg-[#6b705c]/15 px-3 py-1.5 rounded-full border border-[#6b705c]/25 flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs group"
+              title="Seans bazlı satır satır sağlama ve mutabakat tablosuna git"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#6b705c]" />
+              <span>Hesap Tutmadı mı? Sağlama Yap</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#6b705c] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </button>
             <div className="text-xs font-semibold text-slate-500 bg-[#f5f5f0] px-3 py-1.5 rounded-full border border-[#e5e1d8]/50">
               Filtrelenen Seans: <span className="text-[#6b705c] font-bold">{filteredSessions.length} adet</span>
             </div>
@@ -661,6 +687,56 @@ export default function StatsDashboard({
             )}
           </div>
         </div>
+      </div>
+
+      {/* RECONCILIATION & AUDIT CALL TO ACTION BANNER */}
+      <div 
+        onClick={handleGoToAudit}
+        className="bg-gradient-to-br from-[#fdfbf7] via-white to-[#f5f5f0] rounded-[2rem] border border-[#e5e1d8] p-5 sm:p-6 shadow-3xs hover:shadow-md hover:border-[#6b705c]/50 transition-all duration-300 cursor-pointer group relative overflow-hidden"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#6b705c] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 group-hover:bg-[#585c4c] transition-all">
+              <Calculator className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-bold text-slate-800 group-hover:text-[#6b705c] transition-colors flex items-center gap-2">
+                  Hesap Tutmadı mı? Seans Sağlaması Yapın
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#6b705c]/10 text-[#6b705c] border border-[#6b705c]/20">
+                  Canlı Sağlama Aracı
+                </span>
+                {zeroPriceAuditCount > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                    ⚠️ {zeroPriceAuditCount} adet 0 ₺ seans var
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
+                Banka dökümünüz veya ajandanızla sistem rakamları uyuşmadığında; <strong>Seans Sağlama Tablosu</strong> ile kayıtları satır satır seçerek <strong>canlı toplam</strong> alabilir, 0 ₺ veya iptal seansları süzebilir ve mutabakatı kolayca tamamlayabilirsiniz.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0 self-start md:self-center">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleGoToAudit();
+              }}
+              className="px-5 py-2.5 rounded-xl bg-[#6b705c] hover:bg-[#585c4c] text-white font-bold text-xs transition-all shadow-xs flex items-center gap-2 group-hover:shadow-sm cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Sağlama Ekranına Git</span>
+              <ChevronRight className="w-4 h-4 text-white/80 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        {/* Subtle Watermark Decoration */}
+        <FileSpreadsheet className="absolute -right-6 -bottom-6 w-32 h-32 text-[#6b705c]/5 pointer-events-none group-hover:scale-110 group-hover:text-[#6b705c]/8 transition-all duration-500" />
       </div>
 
       {/* Main Details & Accounting Explorer */}

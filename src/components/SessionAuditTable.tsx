@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   CheckCircle, 
   Clock, 
@@ -27,7 +27,11 @@ import {
   Calculator,
   Copy,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Columns3,
+  SlidersHorizontal,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings, SessionType } from '../types';
@@ -48,6 +52,37 @@ interface SessionAuditTableProps {
 type PeriodPreset = 'last30' | 'thisMonth' | 'lastMonth' | 'last7' | 'all' | 'custom';
 type AnomalyFilter = 'all' | 'zeroPrice' | 'nonSession' | 'unpaid' | 'paid' | 'faceToFace' | 'online' | 'noRoom';
 
+export type AuditColumnKey = 'date' | 'clientName' | 'type' | 'price' | 'paymentStatus' | 'room' | 'notes' | 'actions';
+
+export interface ColumnDefinition {
+  id: AuditColumnKey;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
+export const AUDIT_COLUMNS: ColumnDefinition[] = [
+  { id: 'date', label: 'Tarih & Saat', shortLabel: 'Tarih', description: 'Seans tarihi ve saati' },
+  { id: 'clientName', label: 'Danışan / Kayıt Adı', shortLabel: 'Danışan', description: 'Danışan adı ve takvim etiketleri' },
+  { id: 'type', label: 'Seans Türü', shortLabel: 'Tür', description: 'Online, Yüz Yüze, İptal, Seans Değil' },
+  { id: 'price', label: 'Ücret & Kesintiler', shortLabel: 'Ücret', description: 'Seans bedeli ve kira/bakıcı kesintileri' },
+  { id: 'paymentStatus', label: 'Ödeme Durumu', shortLabel: 'Ödeme', description: 'Ödendi, Kısmi veya Bekliyor durumu' },
+  { id: 'room', label: 'Oda', shortLabel: 'Oda', description: 'Terapi odası ataması' },
+  { id: 'notes', label: 'Not', shortLabel: 'Not', description: 'Seans notu ve açıklamalar' },
+  { id: 'actions', label: 'İşlemler', shortLabel: 'İşlemler', description: 'Ajandaya git, düzenle, sil butonları' },
+];
+
+export const DEFAULT_VISIBLE_COLUMNS: Record<AuditColumnKey, boolean> = {
+  date: true,
+  clientName: true,
+  type: true,
+  price: true,
+  paymentStatus: true,
+  room: true,
+  notes: true,
+  actions: true,
+};
+
 export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   sessions,
   settings,
@@ -59,6 +94,116 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   isPrivacyMode = false,
   isHideClientNames = false,
 }) => {
+  // Collapsible Filters State (DEFAULT FALSE: hidden on load until user clicks "Filtrele")
+  const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(false);
+
+  // Column Customizer Popover State
+  const [isColumnsOpen, setIsColumnsOpen] = useState<boolean>(false);
+  const columnPickerRef = useRef<HTMLDivElement>(null);
+
+  // Visible Columns with LocalStorage Persistence
+  const [visibleColumns, setVisibleColumns] = useState<Record<AuditColumnKey, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('psycalcu_audit_visible_columns');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_VISIBLE_COLUMNS, ...parsed };
+      }
+    } catch (e) {
+      console.error('Error loading visible columns preference:', e);
+    }
+    return DEFAULT_VISIBLE_COLUMNS;
+  });
+
+  // Close column dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (columnPickerRef.current && !columnPickerRef.current.contains(target)) {
+        setIsColumnsOpen(false);
+      }
+    };
+    if (isColumnsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isColumnsOpen]);
+
+  // Toggle individual column visibility
+  const toggleColumn = (key: AuditColumnKey) => {
+    setVisibleColumns(prev => {
+      const currentlyVisibleCount = Object.values(prev).filter(Boolean).length;
+      if (prev[key] && currentlyVisibleCount <= 1) {
+        if (showToast) showToast('En az bir sütun görünür kalmalıdır', 'info');
+        return prev;
+      }
+      const updated = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  // Quick preset columns for convenience ("belki sadece 2 sütun yetecek")
+  const applyColumnPreset = (presetType: 'all' | 'minimal2' | 'compact3' | 'financial') => {
+    let updated: Record<AuditColumnKey, boolean>;
+    if (presetType === 'minimal2') {
+      // 2 columns only: Danışan & Ücret (+ checkbox)
+      updated = {
+        date: false,
+        clientName: true,
+        type: false,
+        price: true,
+        paymentStatus: false,
+        room: false,
+        notes: false,
+        actions: false,
+      };
+      if (showToast) showToast('2 Sütun modu: Danışan & Ücret aktif', 'info');
+    } else if (presetType === 'compact3') {
+      // 3 columns: Tarih, Danışan & Ücret (+ işlemler)
+      updated = {
+        date: true,
+        clientName: true,
+        type: false,
+        price: true,
+        paymentStatus: false,
+        room: false,
+        notes: false,
+        actions: true,
+      };
+      if (showToast) showToast('3 Sütun modu: Tarih, Danışan & Ücret aktif', 'info');
+    } else if (presetType === 'financial') {
+      // Financial: Tarih, Danışan, Ücret, Ödeme Durumu
+      updated = {
+        date: true,
+        clientName: true,
+        type: false,
+        price: true,
+        paymentStatus: true,
+        room: false,
+        notes: false,
+        actions: true,
+      };
+      if (showToast) showToast('Finansal mutabakat sütunları aktif', 'info');
+    } else {
+      updated = { ...DEFAULT_VISIBLE_COLUMNS };
+      if (showToast) showToast('Tüm sütunlar görünür yapıldı', 'info');
+    }
+
+    setVisibleColumns(updated);
+    try {
+      localStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
+    } catch {}
+  };
+
+  const visibleColumnsCount = useMemo(() => {
+    return Object.values(visibleColumns).filter(Boolean).length;
+  }, [visibleColumns]);
+
   // Period Preset State
   const [period, setPeriod] = useState<PeriodPreset>('last30');
   
@@ -78,6 +223,47 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilter>('all');
   const [sortField, setSortField] = useState<'date' | 'clientName' | 'price'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Active Filter Count & Labels
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (period !== 'last30') count += 1;
+    if (anomalyFilter !== 'all') count += 1;
+    if (searchQuery.trim().length > 0) count += 1;
+    return count;
+  }, [period, anomalyFilter, searchQuery]);
+
+  const periodLabel = useMemo(() => {
+    switch (period) {
+      case 'last30': return 'Son 30 Gün';
+      case 'thisMonth': return 'Bu Ay';
+      case 'lastMonth': return 'Geçen Ay';
+      case 'last7': return 'Son 7 Gün';
+      case 'all': return 'Tüm Kayıtlar';
+      case 'custom': return `${customStartDate || '...'} / ${customEndDate || '...'}`;
+      default: return 'Özel';
+    }
+  }, [period, customStartDate, customEndDate]);
+
+  const anomalyFilterLabel = useMemo(() => {
+    switch (anomalyFilter) {
+      case 'zeroPrice': return '0 ₺ Olanlar';
+      case 'nonSession': return 'Seans Değil';
+      case 'unpaid': return 'Ödeme Bekleyen';
+      case 'paid': return 'Ödenenler';
+      case 'faceToFace': return 'Yüz Yüze';
+      case 'online': return 'Online';
+      case 'noRoom': return 'Odasız';
+      default: return null;
+    }
+  }, [anomalyFilter]);
+
+  const handleResetFilters = () => {
+    setPeriod('last30');
+    setAnomalyFilter('all');
+    setSearchQuery('');
+    if (showToast) showToast('Filtreler sıfırlandı (Son 30 Gün)', 'info');
+  };
 
   // Compute Active Date Bounds
   const { startDate, endDate } = useMemo(() => {
@@ -437,6 +623,131 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
     );
   };
 
+  // Reusable Column Picker Dropdown Menu
+  const renderColumnPickerDropdown = () => (
+    <div 
+      className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-[#e5e1d8] shadow-2xl p-4 z-50 animate-fade-in space-y-3"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+        <div>
+          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <Columns3 className="w-3.5 h-3.5 text-[#6b705c]" />
+            <span>Tablo Sütunları</span>
+          </h4>
+          <p className="text-[10px] text-slate-400">
+            {visibleColumnsCount} / {AUDIT_COLUMNS.length} sütun görünür
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsColumnsOpen(false)}
+          className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Quick Presets */}
+      <div className="space-y-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hızlı Şablonlar:</span>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => applyColumnPreset('minimal2')}
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+              !visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && !visibleColumns.actions
+                ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                : 'bg-[#6b705c]/10 hover:bg-[#6b705c]/20 text-[#585c4c] border-[#6b705c]/20'
+            }`}
+            title="Sadece Danışan Adı ve Ücret (2 sütun)"
+          >
+            <Sparkles className="w-3 h-3 text-current shrink-0" />
+            <span className="truncate">2 Sütun (Özet)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyColumnPreset('compact3')}
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+              visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
+                ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+            title="Tarih, Danışan Adı ve Ücret (3 sütun)"
+          >
+            <span className="truncate">3 Sütun</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyColumnPreset('financial')}
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+              visibleColumns.date && visibleColumns.clientName && visibleColumns.price && visibleColumns.paymentStatus && !visibleColumns.type && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
+                ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+            title="Tarih, Danışan, Ücret ve Ödeme Durumu"
+          >
+            <span className="truncate">Mali Görünüm</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyColumnPreset('all')}
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+              visibleColumnsCount === AUDIT_COLUMNS.length
+                ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+            title="Tüm sütunları göster"
+          >
+            <span className="truncate">Tümünü Göster</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Sütun Listesi */}
+      <div className="space-y-1 pt-2 border-t border-slate-100 max-h-56 overflow-y-auto pr-1">
+        {AUDIT_COLUMNS.map((col) => {
+          const isChecked = !!visibleColumns[col.id];
+          return (
+            <label
+              key={col.id}
+              className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                isChecked ? 'bg-[#fdfbf7] text-slate-800 font-medium' : 'text-slate-400 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleColumn(col.id)}
+                  className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] accent-[#6b705c] cursor-pointer"
+                />
+                <span className={isChecked ? 'text-slate-900 font-semibold' : 'text-slate-500'}>
+                  {col.label}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-normal">
+                {col.shortLabel}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {/* Footer Info */}
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+        <span>💡 Seçim kutusu daima hazırdır</span>
+        <button
+          type="button"
+          onClick={() => setIsColumnsOpen(false)}
+          className="px-3 py-1 bg-[#6b705c] text-white rounded-lg font-bold text-xs hover:bg-[#585c4c] cursor-pointer"
+        >
+          Tamam
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className={`space-y-6 animate-fade-in ${selectedStats && selectedStats.totalCount > 0 ? 'pb-32 sm:pb-36' : 'pb-8'}`} id="session-audit-table-root">
       
@@ -546,210 +857,324 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
         </div>
       </div>
 
-      {/* FILTER & PERIOD TOOLBAR */}
-      <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-[#e5e1d8] shadow-3xs space-y-4">
+      {/* FILTER & PERIOD TOOLBAR (COLLAPSIBLE - HIDDEN BY DEFAULT) */}
+      <div className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-3xs relative z-30">
         
-        {/* Row 1: Period Presets & Search */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          
-          {/* Preset Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-[#fdfbf7] p-1.5 rounded-2xl border border-[#e5e1d8]">
-            <span className="text-[10px] font-bold text-slate-400 uppercase px-2 hidden sm:inline">Dönem:</span>
-            
+        {/* Toggle Bar / Header (Always Visible) */}
+        <div className={`p-4 sm:p-5 bg-[#fdfbf7] flex flex-wrap items-center justify-between gap-3 ${isFiltersOpen ? 'rounded-t-[2rem]' : 'rounded-[2rem]'}`}>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Filter Toggle Button */}
             <button
-              onClick={() => setPeriod('last30')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'last30' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+              type="button"
+              onClick={() => setIsFiltersOpen(prev => !prev)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-xs ${
+                isFiltersOpen
+                  ? 'bg-[#6b705c] text-white'
+                  : activeFilterCount > 0
+                  ? 'bg-[#6b705c]/15 text-[#585c4c] border border-[#6b705c]/30 hover:bg-[#6b705c]/25'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-[#e5e1d8]'
               }`}
             >
-              Son 30 Gün
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>{isFiltersOpen ? 'Filtreleri Gizle' : 'Filtrele'}</span>
+              {activeFilterCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  isFiltersOpen ? 'bg-white text-[#6b705c]' : 'bg-[#6b705c] text-white'
+                }`}>
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isFiltersOpen ? 'rotate-180' : ''}`} />
             </button>
-            <button
-              onClick={() => setPeriod('thisMonth')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'thisMonth' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
-              }`}
-            >
-              Bu Ay
-            </button>
-            <button
-              onClick={() => setPeriod('lastMonth')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'lastMonth' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
-              }`}
-            >
-              Geçen Ay
-            </button>
-            <button
-              onClick={() => setPeriod('last7')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'last7' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
-              }`}
-            >
-              Son 7 Gün
-            </button>
-            <button
-              onClick={() => setPeriod('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'all' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
-              }`}
-            >
-              Tüm Kayıtlar
-            </button>
-            <button
-              onClick={() => setPeriod('custom')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'custom' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
-              }`}
-            >
-              Özel Tarih
-            </button>
+
+            {/* Active Summary Badges (Always visible when collapsed or open) */}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#e5e1d8] text-slate-700 font-medium text-[11px] shadow-3xs">
+                <CalendarIcon className="w-3 h-3 text-[#6b705c]" />
+                <span>{periodLabel}</span>
+              </span>
+
+              {anomalyFilterLabel && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 font-semibold text-[11px] border border-amber-200">
+                  <span>{anomalyFilterLabel}</span>
+                </span>
+              )}
+
+              {searchQuery.trim() && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-900 font-medium text-[11px] border border-sky-200">
+                  <Search className="w-3 h-3 text-sky-600" />
+                  <span>"{searchQuery}"</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchQuery('');
+                    }}
+                    className="hover:text-sky-950 ml-0.5 text-sky-600 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Search Box */}
-          <div className="relative min-w-[240px] flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-3 w-4 h-4 text-[#a5a58d]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Danışan adı, saat veya not içeriği ara..."
-              className="w-full pl-10 pr-9 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] text-slate-800 placeholder:text-slate-400 font-medium"
-            />
-            {searchQuery && (
+          <div className="flex items-center gap-2">
+            {activeFilterCount > 0 && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                type="button"
+                onClick={handleResetFilters}
+                className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                title="Filtreleri sıfırla"
               >
-                <X className="w-4 h-4" />
+                <RotateCcw className="w-3 h-3 text-slate-400" />
+                <span>Sıfırla</span>
               </button>
             )}
+
+            {/* Sütunları Özelleştir Dropdown Trigger */}
+            <div className="relative" ref={columnPickerRef}>
+              <button
+                type="button"
+                onClick={() => setIsColumnsOpen(prev => !prev)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border shadow-3xs ${
+                  isColumnsOpen
+                    ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-[#e5e1d8]'
+                }`}
+                title="Tabloda görünecek sütunları seçin"
+              >
+                <Columns3 className="w-3.5 h-3.5 text-current" />
+                <span>Sütunlar ({visibleColumnsCount}/8)</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${isColumnsOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isColumnsOpen && renderColumnPickerDropdown()}
+            </div>
           </div>
         </div>
 
-        {/* Custom Date Range Picker (Shown only if custom is chosen) */}
-        {period === 'custom' && (
-          <div className="p-3 bg-[#fdfbf7] rounded-xl border border-[#e5e1d8] flex flex-wrap items-center gap-3 animate-fade-in text-xs">
-            <span className="font-semibold text-slate-700">Tarih Aralığı:</span>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => setCustomStartDate(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-[#e5e1d8] rounded-lg text-xs font-medium"
-            />
-            <span className="text-slate-400">—</span>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => setCustomEndDate(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-[#e5e1d8] rounded-lg text-xs font-medium"
-            />
-          </div>
-        )}
-
-        {/* Row 2: Anomaly / Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-          <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Filtrele:</span>
-
-          <button
-            onClick={() => setAnomalyFilter('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'all'
-                ? 'bg-slate-800 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Tümü ({filteredSessions.length})
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('zeroPrice')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'zeroPrice'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-            }`}
-          >
-            ⚠️ 0 ₺ Olanlar
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('nonSession')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'nonSession'
-                ? 'bg-slate-700 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            🚫 Seans Değil / Kişisel
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('unpaid')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'unpaid'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
-            }`}
-          >
-            ⏳ Ödeme Bekleyenler
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('paid')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'paid'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-            }`}
-          >
-            ✅ Ödenenler
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('faceToFace')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'faceToFace'
-                ? 'bg-[#cb997e] text-white shadow-xs'
-                : 'bg-[#cb997e]/10 text-[#a26848] border border-[#cb997e]/20 hover:bg-[#cb997e]/20'
-            }`}
-          >
-            🛋️ Yüz Yüze
-          </button>
-
-          <button
-            onClick={() => setAnomalyFilter('online')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              anomalyFilter === 'online'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'
-            }`}
-          >
-            🌐 Online
-          </button>
-
-          {settings.userRole === 'owner' && (
-            <button
-              onClick={() => setAnomalyFilter('noRoom')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                anomalyFilter === 'noRoom'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
-              }`}
+        {/* Collapsible Filter Body (Animated) */}
+        <AnimatePresence>
+          {isFiltersOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: 'easeInOut' }}
+              className="p-5 md:p-6 space-y-4 border-t border-[#e5e1d8] overflow-hidden rounded-b-[2rem]"
             >
-              🚪 Odasız Yüz Yüze
-            </button>
-          )}
+              {/* Row 1: Period Presets & Search */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                
+                {/* Preset Buttons */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-[#fdfbf7] p-1.5 rounded-2xl border border-[#e5e1d8]">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase px-2 hidden sm:inline">Dönem:</span>
+                  
+                  <button
+                    onClick={() => setPeriod('last30')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'last30' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Son 30 Gün
+                  </button>
+                  <button
+                    onClick={() => setPeriod('thisMonth')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'thisMonth' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Bu Ay
+                  </button>
+                  <button
+                    onClick={() => setPeriod('lastMonth')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'lastMonth' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Geçen Ay
+                  </button>
+                  <button
+                    onClick={() => setPeriod('last7')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'last7' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Son 7 Gün
+                  </button>
+                  <button
+                    onClick={() => setPeriod('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'all' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Tüm Kayıtlar
+                  </button>
+                  <button
+                    onClick={() => setPeriod('custom')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      period === 'custom' ? 'bg-[#6b705c] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Özel Tarih
+                  </button>
+                </div>
 
-          {anomalyFilter !== 'all' && (
-            <button
-              onClick={() => setAnomalyFilter('all')}
-              className="text-[11px] text-slate-500 hover:text-slate-800 underline ml-auto cursor-pointer"
-            >
-              Filtreyi Sıfırla
-            </button>
+                {/* Search Box */}
+                <div className="relative min-w-[240px] flex-1 max-w-md">
+                  <Search className="absolute left-3.5 top-3 w-4 h-4 text-[#a5a58d]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Danışan adı, saat veya not içeriği ara..."
+                    className="w-full pl-10 pr-9 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] text-slate-800 placeholder:text-slate-400 font-medium"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Date Range Picker (Shown only if custom is chosen) */}
+              {period === 'custom' && (
+                <div className="p-3 bg-[#fdfbf7] rounded-xl border border-[#e5e1d8] flex flex-wrap items-center gap-3 animate-fade-in text-xs">
+                  <span className="font-semibold text-slate-700">Tarih Aralığı:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-[#e5e1d8] rounded-lg text-xs font-medium"
+                  />
+                  <span className="text-slate-400">—</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-[#e5e1d8] rounded-lg text-xs font-medium"
+                  />
+                </div>
+              )}
+
+              {/* Row 2: Anomaly / Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Filtrele:</span>
+
+                <button
+                  onClick={() => setAnomalyFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'all'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Tümü ({filteredSessions.length})
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('zeroPrice')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'zeroPrice'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  ⚠️ 0 ₺ Olanlar
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('nonSession')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'nonSession'
+                      ? 'bg-slate-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  🚫 Seans Değil / Kişisel
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('unpaid')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'unpaid'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  ⏳ Ödeme Bekleyenler
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('paid')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'paid'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  ✅ Ödenenler
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('faceToFace')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'faceToFace'
+                      ? 'bg-[#cb997e] text-white shadow-xs'
+                      : 'bg-[#cb997e]/10 text-[#a26848] border border-[#cb997e]/20 hover:bg-[#cb997e]/20'
+                  }`}
+                >
+                  🛋️ Yüz Yüze
+                </button>
+
+                <button
+                  onClick={() => setAnomalyFilter('online')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    anomalyFilter === 'online'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'
+                  }`}
+                >
+                  🌐 Online
+                </button>
+
+                {settings.userRole === 'owner' && (
+                  <button
+                    onClick={() => setAnomalyFilter('noRoom')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                      anomalyFilter === 'noRoom'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    🚪 Odasız Yüz Yüze
+                  </button>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  {anomalyFilter !== 'all' && (
+                    <button
+                      onClick={() => setAnomalyFilter('all')}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                    >
+                      Filtreyi Sıfırla
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsFiltersOpen(false)}
+                    className="text-[11px] font-semibold text-[#6b705c] hover:text-[#585c4c] px-2 py-1 bg-[#6b705c]/10 rounded-lg cursor-pointer"
+                  >
+                    Filtreleri Gizle
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
 
       {/* SESSIONS TABLE */}
@@ -789,6 +1214,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                 )}
               </button>
             )}
+
             <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">
               💡 Satırları işaretleyerek anlık toplam alın veya tıklayarak düzenleyin
             </span>
@@ -838,44 +1264,63 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                   </th>
 
                   {/* Date & Time Sortable */}
-                  <th 
-                    onClick={() => handleSort('date')}
-                    className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Tarih & Saat</span>
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
+                  {visibleColumns.date && (
+                    <th 
+                      onClick={() => handleSort('date')}
+                      className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Tarih & Saat</span>
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                  )}
 
                   {/* Client Name Sortable */}
-                  <th 
-                    onClick={() => handleSort('clientName')}
-                    className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Danışan / Kayıt Adı</span>
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
+                  {visibleColumns.clientName && (
+                    <th 
+                      onClick={() => handleSort('clientName')}
+                      className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Danışan / Kayıt Adı</span>
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                  )}
 
-                  <th className="py-3 px-4">Tür</th>
+                  {visibleColumns.type && (
+                    <th className="py-3 px-4">Tür</th>
+                  )}
 
                   {/* Price Sortable */}
-                  <th 
-                    onClick={() => handleSort('price')}
-                    className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Ücret</span>
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
+                  {visibleColumns.price && (
+                    <th 
+                      onClick={() => handleSort('price')}
+                      className="py-3 px-4 cursor-pointer hover:text-slate-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Ücret</span>
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                  )}
 
-                  <th className="py-3 px-4">Ödeme Durumu</th>
-                  <th className="py-3 px-4">Oda</th>
-                  <th className="py-3 px-4">Not</th>
-                  <th className="py-3 px-4 text-right">İşlemler</th>
+                  {visibleColumns.paymentStatus && (
+                    <th className="py-3 px-4">Ödeme Durumu</th>
+                  )}
+
+                  {visibleColumns.room && (
+                    <th className="py-3 px-4">Oda</th>
+                  )}
+
+                  {visibleColumns.notes && (
+                    <th className="py-3 px-4">Not</th>
+                  )}
+
+                  {visibleColumns.actions && (
+                    <th className="py-3 px-4 text-right">İşlemler</th>
+                  )}
                 </tr>
               </thead>
 
@@ -917,133 +1362,149 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                         />
                       </td>
                       {/* Date & Time */}
-                      <td className="py-3.5 px-4 font-medium text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">{formatDateTR(session.date)}</span>
-                          <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {session.time || '00:00'}
-                          </span>
-                        </div>
-                      </td>
+                      {visibleColumns.date && (
+                        <td className="py-3.5 px-4 font-medium text-slate-800 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900">{formatDateTR(session.date)}</span>
+                            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {session.time || '00:00'}
+                            </span>
+                          </div>
+                        </td>
+                      )}
 
                       {/* Client Name */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-semibold ${isNonSession ? 'text-slate-500 italic' : 'text-slate-900'}`}>
-                            {formatClientName(session.clientName)}
-                          </span>
-                          {session.isSyncedFromCalendar && (
-                            <span 
-                              className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-mono"
-                              title="Takvimden aktarıldı"
-                            >
-                              Takvim
+                      {visibleColumns.clientName && (
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-semibold ${isNonSession ? 'text-slate-500 italic' : 'text-slate-900'}`}>
+                              {formatClientName(session.clientName)}
                             </span>
-                          )}
-                          {session.isManuallyEdited && (
-                            <span 
-                              className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded font-mono"
-                              title="Manuel düzenlendi"
-                            >
-                              Korumalı
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Type Badge */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {getSessionTypeBadge(session.type)}
-                      </td>
-
-                      {/* Price & Expenses */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {isNonSession || isCancelled ? (
-                          <span className="text-slate-400 font-mono text-[11px]">0 ₺</span>
-                        ) : (
-                          <div className="space-y-0.5">
-                            <span className={`font-bold font-mono text-xs ${isZeroPrice ? 'text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded' : 'text-slate-900'}`}>
-                              {formatCurrency(session.price)}
-                            </span>
-                            {(session.hasOfficeRentFee || session.hasBabysitterFee) && (
-                              <p className="text-[9px] text-slate-400">
-                                Kesinti: {formatCurrency((session.hasOfficeRentFee ? session.officeRentFeeAmount : 0) + (session.hasBabysitterFee ? session.babysitterFeeAmount : 0))}
-                              </p>
+                            {session.isSyncedFromCalendar && (
+                              <span 
+                                className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-mono"
+                                title="Takvimden aktarıldı"
+                              >
+                                Takvim
+                              </span>
+                            )}
+                            {session.isManuallyEdited && (
+                              <span 
+                                className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded font-mono"
+                                title="Manuel düzenlendi"
+                              >
+                                Korumalı
+                              </span>
                             )}
                           </div>
-                        )}
-                      </td>
+                        </td>
+                      )}
+
+                      {/* Type Badge */}
+                      {visibleColumns.type && (
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {getSessionTypeBadge(session.type)}
+                        </td>
+                      )}
+
+                      {/* Price & Expenses */}
+                      {visibleColumns.price && (
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {isNonSession || isCancelled ? (
+                            <span className="text-slate-400 font-mono text-[11px]">0 ₺</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <span className={`font-bold font-mono text-xs ${isZeroPrice ? 'text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded' : 'text-slate-900'}`}>
+                                {formatCurrency(session.price)}
+                              </span>
+                              {(session.hasOfficeRentFee || session.hasBabysitterFee) && (
+                                <p className="text-[9px] text-slate-400">
+                                  Kesinti: {formatCurrency((session.hasOfficeRentFee ? session.officeRentFeeAmount : 0) + (session.hasBabysitterFee ? session.babysitterFeeAmount : 0))}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      )}
 
                       {/* Payment Status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {getPaymentStatusBadge(session)}
-                      </td>
+                      {visibleColumns.paymentStatus && (
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {getPaymentStatusBadge(session)}
+                        </td>
+                      )}
 
                       {/* Room */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {room ? (
-                          <span 
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
-                            style={{ backgroundColor: room.color || '#6b705c' }}
-                          >
-                            <Building className="w-2.5 h-2.5" />
-                            {room.name}
-                          </span>
-                        ) : session.type === 'face-to-face' ? (
-                          <span className="text-[10px] text-slate-400 italic">Oda Atanmadı</span>
-                        ) : (
-                          <span className="text-slate-300 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
+                      {visibleColumns.room && (
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {room ? (
+                            <span 
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
+                              style={{ backgroundColor: room.color || '#6b705c' }}
+                            >
+                              <Building className="w-2.5 h-2.5" />
+                              {room.name}
+                            </span>
+                          ) : session.type === 'face-to-face' ? (
+                            <span className="text-[10px] text-slate-400 italic">Oda Atanmadı</span>
+                          ) : (
+                            <span className="text-slate-300 font-mono text-[10px]">-</span>
+                          )}
+                        </td>
+                      )}
 
                       {/* Notes Preview */}
-                      <td className="py-3.5 px-4 max-w-[180px] truncate text-slate-500 text-[11px]">
-                        {session.notes || <span className="text-slate-300 italic">-</span>}
-                      </td>
+                      {visibleColumns.notes && (
+                        <td className="py-3.5 px-4 max-w-[180px] truncate text-slate-500 text-[11px]">
+                          {session.notes || <span className="text-slate-300 italic">-</span>}
+                        </td>
+                      )}
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          
-                          {/* Jump to Date in Agenda */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onGoToDate(session.date);
-                              setActiveTab('agenda');
-                              showToast(`${formatDateTR(session.date)} gününe geçildi`, 'info');
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#6b705c] hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Ajandada bu güne git"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                      {visibleColumns.actions && (
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            
+                            {/* Jump to Date in Agenda */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onGoToDate(session.date);
+                                setActiveTab('agenda');
+                                showToast(`${formatDateTR(session.date)} gününe geçildi`, 'info');
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-[#6b705c] hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="Ajandada bu güne git"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
 
-                          {/* Edit Button */}
-                          <button
-                            type="button"
-                            onClick={() => onEditSession(session)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                            title="Seansı Düzenle"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                            {/* Edit Button */}
+                            <button
+                              type="button"
+                              onClick={() => onEditSession(session)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Seansı Düzenle"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
 
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`"${session.clientName}" seansını silmek istediğinize emin misiniz?`)) {
-                                onDeleteSession(session.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Seansı Sil"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                            {/* Delete Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`"${session.clientName}" seansını silmek istediğinize emin misiniz?`)) {
+                                  onDeleteSession(session.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Seansı Sil"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
