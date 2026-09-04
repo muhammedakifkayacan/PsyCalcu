@@ -625,127 +625,144 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
 
   // Reusable Column Picker Dropdown Menu
   const renderColumnPickerDropdown = () => (
-    <div 
-      className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-[#e5e1d8] shadow-2xl p-4 z-50 animate-fade-in space-y-3"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-        <div>
-          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-            <Columns3 className="w-3.5 h-3.5 text-[#6b705c]" />
-            <span>Tablo Sütunları</span>
-          </h4>
-          <p className="text-[10px] text-slate-400">
-            {visibleColumnsCount} / {AUDIT_COLUMNS.length} sütun görünür
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsColumnsOpen(false)}
-          className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+    <>
+      {/* Mobile Backdrop to prevent clipping and dismiss easily */}
+      <div 
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs z-40 sm:hidden animate-fade-in"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsColumnsOpen(false);
+        }}
+      />
 
-      {/* Quick Presets */}
-      <div className="space-y-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hızlı Şablonlar:</span>
-        <div className="grid grid-cols-2 gap-1.5">
+      {/* Dropdown container: fixed bottom-sheet on mobile, anchored popover on desktop */}
+      <div 
+        className="fixed inset-x-3 bottom-3 z-50 max-h-[85vh] sm:bottom-auto sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-80 sm:max-h-[32rem] flex flex-col bg-white rounded-2xl border border-[#e5e1d8] shadow-2xl p-4 animate-fade-in space-y-3 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0">
+          <div>
+            <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Columns3 className="w-3.5 h-3.5 text-[#6b705c]" />
+              <span>Tablo Sütunları</span>
+            </h4>
+            <p className="text-[10px] text-slate-400">
+              {visibleColumnsCount} / {AUDIT_COLUMNS.length} sütun görünür
+            </p>
+          </div>
           <button
             type="button"
-            onClick={() => applyColumnPreset('minimal2')}
-            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
-              !visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && !visibleColumns.actions
-                ? 'bg-[#6b705c] text-white border-[#6b705c]'
-                : 'bg-[#6b705c]/10 hover:bg-[#6b705c]/20 text-[#585c4c] border-[#6b705c]/20'
-            }`}
-            title="Sadece Danışan Adı ve Ücret (2 sütun)"
+            onClick={() => setIsColumnsOpen(false)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+            aria-label="Kapat"
           >
-            <Sparkles className="w-3 h-3 text-current shrink-0" />
-            <span className="truncate">2 Sütun (Özet)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyColumnPreset('compact3')}
-            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
-              visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
-                ? 'bg-[#6b705c] text-white border-[#6b705c]'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-            }`}
-            title="Tarih, Danışan Adı ve Ücret (3 sütun)"
-          >
-            <span className="truncate">3 Sütun</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyColumnPreset('financial')}
-            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
-              visibleColumns.date && visibleColumns.clientName && visibleColumns.price && visibleColumns.paymentStatus && !visibleColumns.type && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
-                ? 'bg-[#6b705c] text-white border-[#6b705c]'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-            }`}
-            title="Tarih, Danışan, Ücret ve Ödeme Durumu"
-          >
-            <span className="truncate">Mali Görünüm</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyColumnPreset('all')}
-            className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
-              visibleColumnsCount === AUDIT_COLUMNS.length
-                ? 'bg-[#6b705c] text-white border-[#6b705c]'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-            }`}
-            title="Tüm sütunları göster"
-          >
-            <span className="truncate">Tümünü Göster</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
-      {/* Sütun Listesi */}
-      <div className="space-y-1 pt-2 border-t border-slate-100 max-h-56 overflow-y-auto pr-1">
-        {AUDIT_COLUMNS.map((col) => {
-          const isChecked = !!visibleColumns[col.id];
-          return (
-            <label
-              key={col.id}
-              className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition-colors ${
-                isChecked ? 'bg-[#fdfbf7] text-slate-800 font-medium' : 'text-slate-400 hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggleColumn(col.id)}
-                  className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] accent-[#6b705c] cursor-pointer"
-                />
-                <span className={isChecked ? 'text-slate-900 font-semibold' : 'text-slate-500'}>
-                  {col.label}
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400 font-normal">
-                {col.shortLabel}
-              </span>
-            </label>
-          );
-        })}
-      </div>
+        {/* Scrollable Body */}
+        <div className="overflow-y-auto space-y-3 pr-1 max-h-[60vh] sm:max-h-72">
+          {/* Quick Presets */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hızlı Şablonlar:</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => applyColumnPreset('minimal2')}
+                className={`px-2 py-2 sm:py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  !visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && !visibleColumns.actions
+                    ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                    : 'bg-[#6b705c]/10 hover:bg-[#6b705c]/20 text-[#585c4c] border-[#6b705c]/20'
+                }`}
+                title="Sadece Danışan Adı ve Ücret (2 sütun)"
+              >
+                <Sparkles className="w-3 h-3 text-current shrink-0" />
+                <span className="truncate">2 Sütun (Özet)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColumnPreset('compact3')}
+                className={`px-2 py-2 sm:py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  visibleColumns.date && visibleColumns.clientName && visibleColumns.price && !visibleColumns.type && !visibleColumns.paymentStatus && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
+                    ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+                title="Tarih, Danışan Adı ve Ücret (3 sütun)"
+              >
+                <span className="truncate">3 Sütun</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColumnPreset('financial')}
+                className={`px-2 py-2 sm:py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  visibleColumns.date && visibleColumns.clientName && visibleColumns.price && visibleColumns.paymentStatus && !visibleColumns.type && !visibleColumns.room && !visibleColumns.notes && visibleColumns.actions
+                    ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+                title="Tarih, Danışan, Ücret ve Ödeme Durumu"
+              >
+                <span className="truncate">Mali Görünüm</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColumnPreset('all')}
+                className={`px-2 py-2 sm:py-1.5 rounded-lg text-[11px] font-semibold border text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  visibleColumnsCount === AUDIT_COLUMNS.length
+                    ? 'bg-[#6b705c] text-white border-[#6b705c]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+                title="Tüm sütunları göster"
+              >
+                <span className="truncate">Tümünü Göster</span>
+              </button>
+            </div>
+          </div>
 
-      {/* Footer Info */}
-      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-        <span>💡 Seçim kutusu daima hazırdır</span>
-        <button
-          type="button"
-          onClick={() => setIsColumnsOpen(false)}
-          className="px-3 py-1 bg-[#6b705c] text-white rounded-lg font-bold text-xs hover:bg-[#585c4c] cursor-pointer"
-        >
-          Tamam
-        </button>
+          {/* Sütun Listesi */}
+          <div className="space-y-1 pt-2 border-t border-slate-100">
+            {AUDIT_COLUMNS.map((col) => {
+              const isChecked = !!visibleColumns[col.id];
+              return (
+                <label
+                  key={col.id}
+                  className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                    isChecked ? 'bg-[#fdfbf7] text-slate-800 font-medium' : 'text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleColumn(col.id)}
+                      className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] accent-[#6b705c] cursor-pointer"
+                    />
+                    <span className={isChecked ? 'text-slate-900 font-semibold' : 'text-slate-500'}>
+                      {col.label}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    {col.shortLabel}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer Info */}
+        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
+          <span className="hidden sm:inline">💡 Seçimleriniz otomatik kaydedilir</span>
+          <button
+            type="button"
+            onClick={() => setIsColumnsOpen(false)}
+            className="w-full sm:w-auto px-4 py-2 sm:py-1 bg-[#6b705c] text-white rounded-xl sm:rounded-lg font-bold text-xs hover:bg-[#585c4c] cursor-pointer text-center"
+          >
+            Uygula ve Kapat
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 
   return (
@@ -918,7 +935,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
             {activeFilterCount > 0 && (
               <button
                 type="button"
@@ -932,7 +949,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
             )}
 
             {/* Sütunları Özelleştir Dropdown Trigger */}
-            <div className="relative" ref={columnPickerRef}>
+            <div className="relative ml-auto sm:ml-0" ref={columnPickerRef}>
               <button
                 type="button"
                 onClick={() => setIsColumnsOpen(prev => !prev)}
