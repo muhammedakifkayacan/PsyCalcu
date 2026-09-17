@@ -431,6 +431,7 @@ export function parseICS(
     locationRaw?: string;
     noteRaw?: string;
     rruleRaw?: string;
+    recurrenceIdRaw?: string;
     exdates: Set<string>;
     statusRaw?: string;
   }
@@ -482,6 +483,8 @@ export function parseICS(
           currentRaw.locationRaw = cleanVal;
         } else if (key === 'RRULE') {
           currentRaw.rruleRaw = line;
+        } else if (key === 'RECURRENCE-ID') {
+          currentRaw.recurrenceIdRaw = line;
         } else if (key === 'EXDATE') {
           const exParsed = parseIcsDateTimeToLocal(line, calTimezone);
           if (exParsed) {
@@ -592,7 +595,9 @@ export function parseICS(
       }
 
       // Generate deterministic ID per occurrence to prevent duplicate session accumulation
-      const sessionId = occurrences.length > 1
+      // If the event has RRULE, RECURRENCE-ID, or multiple occurrences, always append the occurrence date
+      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
+      const sessionId = hasRecurrence
         ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
         : `ics_${raw.uid}`;
 

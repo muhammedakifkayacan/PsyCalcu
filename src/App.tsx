@@ -290,6 +290,9 @@ export default function App() {
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const [lastCalendarSyncTime, setLastCalendarSyncTime] = useState<Date | null>(null);
+  const lastSyncTimestampRef = useRef<number>(0);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
   const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
   const [agendaStatusFilter, setAgendaStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'cancelled'>('all');
@@ -2573,37 +2576,49 @@ export default function App() {
     const deletedList: any[] = [];
     let deletedCount = 0;
 
-    // Track incoming IDs for easy lookup
-    const incomingIds = new Set(newSessions.map(ns => ns.id));
-
-    // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
-    const sessionsToKeep: Session[] = [];
-    sessions.forEach(s => {
-      if (s.isSyncedFromCalendar && 
-          !s.isFromMultiCalendar &&
-          activeSyncedTypes && 
-          s.syncedCalendarType && 
-          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
-          s.date >= cutOffDateStr) {
-        
-        // This session is from a synced calendar that we just updated, and it's within the sync window
-        if (!incomingIds.has(s.id)) {
-          // It is not in the incoming list, meaning it was deleted or moved from the calendar feed!
-          deletedList.push({
-            id: s.id,
-            clientName: s.clientName,
-            date: s.date,
-            time: s.time,
-            type: s.type
-          });
-          deletedCount++;
-          return; // Filter it out (delete it)
+    // Helper to extract base UID from deterministic or legacy ICS session IDs
+    const extractBaseUid = (id: string) => {
+      if (!id.startsWith('ics_')) return id;
+      const withoutPrefix = id.slice(4); // remove 'ics_'
+      const lastUnderscore = withoutPrefix.lastIndexOf('_');
+      if (lastUnderscore !== -1) {
+        const after = withoutPrefix.slice(lastUnderscore + 1);
+        if (/^\d{8}$/.test(after)) {
+          return withoutPrefix.slice(0, lastUnderscore);
         }
       }
-      sessionsToKeep.push(s);
+      return withoutPrefix;
+    };
+
+    // Track incoming IDs for fast direct lookups
+    const incomingIds = new Set(newSessions.map(ns => ns.id));
+
+    // Multi-index existing sessions for robust matching across ID variations, recurrence exceptions, and reschedules
+    const matchedExistingIds = new Set<string>();
+    const replacedOldIds = new Set<string>();
+    const existingById = new Map<string, Session>();
+    const existingByUidAndDate = new Map<string, Session>();
+    const existingByClientDateTime = new Map<string, Session>();
+    const existingByClientDate = new Map<string, Session[]>();
+
+    sessions.forEach(s => {
+      existingById.set(s.id, s);
+      if (s.id.startsWith('ics_')) {
+        const baseUid = extractBaseUid(s.id);
+        existingByUidAndDate.set(`${baseUid}_${s.date}`, s);
+        if (!existingByUidAndDate.has(baseUid)) {
+          existingByUidAndDate.set(baseUid, s);
+        }
+      }
+      const normName = getNormalizedClientName(s.clientName);
+      if (normName && s.date) {
+        existingByClientDateTime.set(`${normName}_${s.date}_${s.time}`, s);
+        const dateList = existingByClientDate.get(`${normName}_${s.date}`) || [];
+        dateList.push(s);
+        existingByClientDate.set(`${normName}_${s.date}`, dateList);
+      }
     });
 
-    const sessionsMap = new Map(sessionsToKeep.map(s => [s.id, s]));
     let addedCount = 0;
     let updatedCount = 0;
     const toUpdate: Session[] = [];
@@ -2611,8 +2626,43 @@ export default function App() {
     const updatedList: any[] = [];
 
     newSessions.forEach(ns => {
-      if (sessionsMap.has(ns.id)) {
-        const existing = sessionsMap.get(ns.id)!;
+      // Find candidate match among existing sessions using prioritized matching
+      let existing: Session | undefined = undefined;
+
+      // 1. Exact ID
+      if (existingById.has(ns.id)) {
+        existing = existingById.get(ns.id);
+      }
+
+      // 2. Base UID + Date (handles ics_uid vs ics_uid_YYYYMMDD)
+      if (!existing && ns.id.startsWith('ics_')) {
+        const nsBaseUid = extractBaseUid(ns.id);
+        existing = existingByUidAndDate.get(`${nsBaseUid}_${ns.date}`) || existingByUidAndDate.get(nsBaseUid);
+      }
+
+      // 3. Normalized clientName + Date + Time
+      const normClient = getNormalizedClientName(ns.clientName);
+      if (!existing && normClient && ns.date) {
+        const candidate = existingByClientDateTime.get(`${normClient}_${ns.date}_${ns.time}`);
+        if (candidate && !matchedExistingIds.has(candidate.id)) {
+          existing = candidate;
+        }
+      }
+
+      // 4. Same client on same date (e.g. event time moved in calendar)
+      if (!existing && normClient && ns.date) {
+        const candidates = existingByClientDate.get(`${normClient}_${ns.date}`) || [];
+        const unmatched = candidates.filter(c => !matchedExistingIds.has(c.id));
+        if (unmatched.length === 1) {
+          existing = unmatched[0];
+        }
+      }
+
+      if (existing) {
+        matchedExistingIds.add(existing.id);
+        if (existing.id !== ns.id) {
+          replacedOldIds.add(existing.id);
+        }
 
         // Determine if the incoming session is cancelled, non-session, or before the user's registration cutoff
         const regCutoff = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
@@ -2625,20 +2675,45 @@ export default function App() {
         // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
+        // CRITICAL DATA PROTECTION:
+        // A user's payment records ('paid', 'partial', or paidAmount > 0) and manual edits MUST NEVER be lost!
+        const hasPaymentRecorded = existing.paymentStatus === 'paid' || 
+                                   existing.paymentStatus === 'partial' || 
+                                   (Number(existing.paidAmount) || 0) > 0;
+        const isAccountingProtected = hasPaymentRecorded || Boolean(existing.isManuallyEdited);
+
         // Smart price lookup: If existing has a custom price/user edit, preserve it, else smart lookup
-        let effectivePrice = isCancelledOrNonSessionOrBefore ? 0 : existing.price;
-        if (!isCancelledOrNonSessionOrBefore && (effectivePrice === 0 || !effectivePrice)) {
-          effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+        let effectivePrice = existing.price;
+        if (isCancelledOrNonSessionOrBefore && !isAccountingProtected) {
+          effectivePrice = 0;
+        } else if (effectivePrice === 0 || !effectivePrice) {
+          if (!isCancelledOrNonSessionOrBefore) {
+            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+          }
         }
 
         const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
-          ? ns.type
+          ? (isAccountingProtected && existing.type !== 'non-session' && existing.type !== 'cancelled' ? existing.type : ns.type)
           : (existing.isManuallyEdited ? existing.type : ns.type);
+
+        // Preserve payment status if user marked it paid or recorded accounting
+        const effectivePaymentStatus = isAccountingProtected
+          ? existing.paymentStatus
+          : (isCancelledOrNonSessionOrBefore 
+              ? (ns.type === 'non-session' ? 'unpaid' : 'paid') 
+              : (existing.paymentStatus || ns.paymentStatus));
+
+        const effectivePaidAmount = isAccountingProtected
+          ? existing.paidAmount
+          : (isCancelledOrNonSessionOrBefore ? 0 : (existing.paidAmount ?? ns.paidAmount));
+
+        const effectivePaymentMethod = existing.paymentMethod || ns.paymentMethod;
 
         // Merge changed calendar fields (clientName, date, time, duration, type), 
         // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
         const updated: Session = {
           ...existing,
+          id: ns.id, // Migrate to incoming ID to ensure future syncs and lookups match seamlessly
           clientName: ns.clientName, // Always accept latest event name from calendar (e.g. Ahmet -> Ahmet 1)
           type: resolvedType,
           date: ns.date,
@@ -2647,19 +2722,20 @@ export default function App() {
           notes: persistentNotes,
           roomId: matchedRoomId,
           price: effectivePrice,
-          paymentStatus: isCancelledOrNonSessionOrBefore 
-            ? (ns.type === 'non-session' ? 'unpaid' : 'paid') 
-            : (existing.paymentStatus || ns.paymentStatus),
-          paidAmount: existing.paidAmount,
-          paymentMethod: existing.paymentMethod,
-          hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasBabysitterFee : ns.hasBabysitterFee),
-          babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.babysitterFeeAmount : ns.babysitterFeeAmount),
-          hasOfficeRentFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasOfficeRentFee : ns.hasOfficeRentFee),
-          officeRentFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.officeRentFeeAmount : ns.officeRentFeeAmount),
+          paymentStatus: effectivePaymentStatus,
+          paidAmount: effectivePaidAmount,
+          paymentMethod: effectivePaymentMethod,
+          hasBabysitterFee: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? false : (existing.isManuallyEdited ? existing.hasBabysitterFee : ns.hasBabysitterFee),
+          babysitterFeeAmount: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? 0 : (existing.isManuallyEdited ? existing.babysitterFeeAmount : ns.babysitterFeeAmount),
+          hasOfficeRentFee: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? false : (existing.isManuallyEdited ? existing.hasOfficeRentFee : ns.hasOfficeRentFee),
+          officeRentFeeAmount: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? 0 : (existing.isManuallyEdited ? existing.officeRentFeeAmount : ns.officeRentFeeAmount),
+          isSyncedFromCalendar: true,
+          syncedCalendarType: ns.syncedCalendarType || existing.syncedCalendarType,
+          isManuallyEdited: existing.isManuallyEdited
         };
         
-        // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
-        if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+        // Only update if there is a real difference or ID migration
+        if (existing.id !== updated.id || JSON.stringify(existing) !== JSON.stringify(updated)) {
           updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
           toUpdate.push(updated);
           updatedList.push({
@@ -2696,7 +2772,7 @@ export default function App() {
         // Match room for new session
         const matchedRoomId = findMatchedRoomId(ns.notes);
 
-        const nsWithTimestamp = { 
+        const nsWithTimestamp: Session = { 
           ...ns, 
           notes: ns.isSyncedFromCalendar ? "" : (ns.notes || ""),
           roomId: matchedRoomId || ns.roomId,
@@ -2717,11 +2793,56 @@ export default function App() {
       }
     });
 
-    if (toUpdate.length > 0 || deletedCount > 0) {
+    // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
+    const sessionsToKeep: Session[] = [];
+    sessions.forEach(s => {
+      // If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
+      if (replacedOldIds.has(s.id)) {
+        return;
+      }
+
+      if (s.isSyncedFromCalendar && 
+          !s.isFromMultiCalendar &&
+          activeSyncedTypes && 
+          s.syncedCalendarType && 
+          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
+          s.date >= cutOffDateStr) {
+        
+        const isMatched = incomingIds.has(s.id) || matchedExistingIds.has(s.id);
+
+        // CRITICAL PROTECTION: A session with payment records or manual edits must NEVER be deleted by calendar sync!
+        const isAccountingProtected = s.paymentStatus === 'paid' || 
+                                     s.paymentStatus === 'partial' || 
+                                     (Number(s.paidAmount) || 0) > 0 || 
+                                     Boolean(s.isManuallyEdited);
+
+        if (!isMatched) {
+          if (isAccountingProtected) {
+            // Keep protected session!
+            sessionsToKeep.push(s);
+            return;
+          }
+
+          // Unedited, unpaid calendar event removed from external calendar feed
+          deletedList.push({
+            id: s.id,
+            clientName: s.clientName,
+            date: s.date,
+            time: s.time,
+            type: s.type
+          });
+          deletedCount++;
+          return; // Filter it out (delete it)
+        }
+      }
+      sessionsToKeep.push(s);
+    });
+
+    if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
       setSessions(prev => {
-        // Filter out deleted sessions from state
+        // Filter out deleted sessions and replaced old IDs from state
         const keepIds = new Set(sessionsToKeep.map(s => s.id));
-        const filteredPrev = prev.filter(s => keepIds.has(s.id));
+        const filteredPrev = prev.filter(s => keepIds.has(s.id) && !replacedOldIds.has(s.id));
 
         const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
@@ -2782,11 +2903,15 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
+          if (showNotificationOnNoChanges) {
+            showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
+          }
         }
       } catch (err: any) {
         console.error("Online calendar sync failed:", err);
-        showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+        if (showNotificationOnNoChanges) {
+          showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+        }
       }
     }
 
@@ -2804,11 +2929,15 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
+          if (showNotificationOnNoChanges) {
+            showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
+          }
         }
       } catch (err: any) {
         console.error("Face-to-face calendar sync failed:", err);
-        showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+        if (showNotificationOnNoChanges) {
+          showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+        }
       }
     }
 
@@ -2845,6 +2974,7 @@ export default function App() {
     }
 
     setIsManualSyncing(false);
+    setLastCalendarSyncTime(new Date());
 
     const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
     if (hasFetchedOnline) syncedTypesFetched.push('online');
@@ -2880,6 +3010,65 @@ export default function App() {
       showToast('Takvimlerden seans bilgisi alınamadı veya takvim linkleri boş.', 'error');
     }
   };
+
+  // Automated background calendar sync orchestrator (non-intrusive, throttled)
+  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 90000) => {
+    if (featuresCalendarAllowed === false) return;
+    if (!settings.calendarSyncEnabled) return;
+    const hasOwnerCalendars = settings.userRole === 'owner' && settings.ownerCalendars && settings.ownerCalendars.length > 0;
+    if (!settings.onlineCalendarWebcalUrl && !settings.faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) return;
+
+    const now = Date.now();
+    if (now - lastSyncTimestampRef.current < minIntervalMs) {
+      return;
+    }
+
+    if (isManualSyncing || isAutoSyncing || isCloudSaving) {
+      return;
+    }
+
+    lastSyncTimestampRef.current = now;
+    setIsAutoSyncing(true);
+    try {
+      await handleManualCalendarSync(false);
+      setLastCalendarSyncTime(new Date());
+    } catch (e) {
+      console.warn("Background auto-sync error:", e);
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  }, [featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
+
+  // Periodic automatic sync heartbeat (checks every 4 minutes)
+  useEffect(() => {
+    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
+    const interval = setInterval(() => {
+      triggerAutoCalendarSync(180000); // at least 3 minutes between runs
+    }, 240000);
+    return () => clearInterval(interval);
+  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
+
+  // Auto-sync when user switches back to browser tab or focuses window
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        triggerAutoCalendarSync(90000); // 90 seconds throttle
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [triggerAutoCalendarSync]);
+
+  // Auto-sync when user navigates to core calendar or audit views
+  useEffect(() => {
+    if (activeTab === 'agenda' || activeTab === 'audit' || activeTab === 'stats') {
+      triggerAutoCalendarSync(90000);
+    }
+  }, [activeTab, triggerAutoCalendarSync]);
 
   // Pull-to-refresh handler for mobile & manual pull
   const handlePageRefresh = async () => {
@@ -3728,16 +3917,32 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* Sync Button */}
-                    <button
-                      onClick={() => handleManualCalendarSync(true)}
-                      disabled={isManualSyncing}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
-                      title="Tüm iCloud/Google takvim seanslarını şimdi eşitle"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">{isManualSyncing ? 'Eşitleniyor...' : 'Eşitle'}</span>
-                    </button>
+                    {/* Auto Sync Status Indicator & Manual Sync Button */}
+                    <div className="flex items-center gap-1.5">
+                      <div 
+                        className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-medium bg-emerald-50/70 border border-emerald-200/60 text-emerald-800 select-none"
+                        title={lastCalendarSyncTime ? `Son otomatik senkronizasyon: ${lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Google/iCloud Takvimleri periyodik ve arka planda otomatik eşitlenir'}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${isManualSyncing || isAutoSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
+                        <span className="font-semibold">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Otomatik Eşitleme'}</span>
+                        {lastCalendarSyncTime && !isManualSyncing && !isAutoSyncing && (
+                          <span className="text-[10px] text-emerald-600/80">
+                            • {lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Sync Button */}
+                      <button
+                        onClick={() => handleManualCalendarSync(true)}
+                        disabled={isManualSyncing || isAutoSyncing}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
+                        title="Tüm iCloud/Google takvim seanslarını şimdi manuel eşitle"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing || isAutoSyncing ? 'animate-spin text-emerald-600' : ''}`} />
+                        <span className="hidden sm:inline">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Şimdi Eşitle'}</span>
+                      </button>
+                    </div>
 
                     {/* Agenda Filter Dropdown Button */}
                     <div className="relative" ref={agendaFilterRef}>
