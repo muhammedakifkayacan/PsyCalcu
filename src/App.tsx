@@ -150,7 +150,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableKDV: false,
   defaultKdvRate: 20,
   defaultIsKdvInclusive: true,
-  therapistName: 'Dr. Melis Kaya',
+  therapistName: '',
   therapistPhone: '',
   calendarSyncEnabled: true,
   onlineCalendarWebcalUrl: '',
@@ -160,7 +160,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableSmartClientPriceMatching: true,
   autoMarkShortEventsAsNonSession: true,
   defaultLandingPage: 'agenda',
-  userRole: undefined,
+  userRole: 'tenant',
   ownerCalendars: [],
   rooms: [],
 };
@@ -708,12 +708,13 @@ export default function App() {
     }
 
     const cleanEmail = (user.email || '').trim().toLowerCase();
+    const isBusra = cleanEmail.includes('uzmanpsikologbusra') || cleanEmail.includes('uzmpsikologbusra');
 
-    if (cleanEmail === 'uzmpsikologbusra@gmail.com') {
+    if (isBusra) {
       setRegistrationCreatedAt('2026-07-01T00:00:00.000Z');
     }
 
-    if (cleanEmail === 'muhammedakifkayacan@gmail.com') {
+    if (cleanEmail === 'muhammedakifkayacan@gmail.com' || isBusra) {
       setRegistrationStatus('approved');
       setRegistrationError(null);
     } else {
@@ -732,7 +733,7 @@ export default function App() {
       try {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+          if (cleanEmail !== 'muhammedakifkayacan@gmail.com' && !isBusra) {
             const nextStatus = data.status || 'pending';
             setRegistrationStatus(nextStatus);
             safeStorage.setItem(`psycalcu_cached_reg_${user.uid}`, nextStatus, user.uid);
@@ -741,6 +742,9 @@ export default function App() {
             } else {
               safeStorage.removeItem('psycalcu_cached_reg_status');
             }
+          } else {
+            setRegistrationStatus('approved');
+            safeStorage.setItem(`psycalcu_cached_reg_${user.uid}`, 'approved', user.uid);
           }
           setMaxSessionsLimit(data.maxSessionsLimit ?? 'unlimited');
           setFeaturesAIAllowed(data.featuresAIAllowed !== false);
@@ -774,10 +778,10 @@ export default function App() {
           }
           
           let regCreated = data.createdAt;
-          // Protect and correct uzmpsikologbusra@gmail.com's registration date
-          if (cleanEmail === 'uzmpsikologbusra@gmail.com' && data.createdAt !== '2026-07-01T00:00:00.000Z') {
+          // Protect and correct Büşra's registration date & status
+          if (isBusra && (data.createdAt !== '2026-07-01T00:00:00.000Z' || data.status !== 'approved')) {
             regCreated = '2026-07-01T00:00:00.000Z';
-            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z' }, { merge: true }).catch(err => {
+            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z', status: 'approved' }, { merge: true }).catch(err => {
               console.error("Error correcting registration date for Büşra:", err);
             });
           }
@@ -794,13 +798,15 @@ export default function App() {
             const newReg = {
               userId: user.uid,
               email: user.email || 'bilinmiyor',
-              displayName: user.displayName || 'Psikolog',
-              status: cleanEmail === 'muhammedakifkayacan@gmail.com' ? 'approved' : 'pending',
-              createdAt: cleanEmail === 'uzmpsikologbusra@gmail.com' ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
+              displayName: user.displayName || (isBusra ? 'Uzm. Psikolog Büşra' : 'Psikolog'),
+              status: (cleanEmail === 'muhammedakifkayacan@gmail.com' || isBusra) ? 'approved' : 'pending',
+              createdAt: isBusra ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
             };
             await setDoc(regRef, newReg);
-            if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+            if (cleanEmail !== 'muhammedakifkayacan@gmail.com' && !isBusra) {
               setRegistrationStatus('pending');
+            } else {
+              setRegistrationStatus('approved');
             }
             setRegistrationCreatedAt(newReg.createdAt);
             safeStorage.setItem('psycalcu_registration_created_at', newReg.createdAt, user.uid);
@@ -851,15 +857,24 @@ export default function App() {
     const performSync = async () => {
       try {
         setIsAuthSyncing(true);
+        const cleanEmail = (user.email || '').trim().toLowerCase();
+        const isBusra = cleanEmail.includes('uzmanpsikologbusra') || cleanEmail.includes('uzmpsikologbusra');
         const cloudData = await fetchUserData(user.uid);
         
         // Check if there was an explicit request to migrate anonymous local data
         const shouldMigrate = safeStorage.getItem('psycalcu_should_migrate') === 'true';
         
         if (cloudData) {
+          // Clean up legacy placeholder therapistName if present
+          if (cloudData.settings) {
+            if (!cloudData.settings.therapistName || cloudData.settings.therapistName === 'Dr. Melis Kaya') {
+              cloudData.settings.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
+            }
+          }
+
           // Resolve effective accounting / registration cutoff date before correcting sessions
-          let effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt;
-          if (!effectiveCutoff) {
+          let effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt);
+          if (!effectiveCutoff && !isBusra) {
             try {
               const regRef = doc(db, 'registrations', user.uid);
               const regSnap = await getDoc(regRef);
@@ -875,7 +890,7 @@ export default function App() {
             }
           }
           if (!effectiveCutoff) {
-            effectiveCutoff = safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z';
+            effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
           }
 
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
@@ -968,31 +983,46 @@ export default function App() {
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           }
         } else {
-          // BRAND NEW USER (First time registered user, no cloud data yet)
+          // BRAND NEW USER (First time registered user, or local cache available)
           let sessionsToSave: Session[] = [];
-          let settingsToSave = settings;
+          let settingsToSave = { ...settings };
           
-          if (shouldMigrate) {
-            // Sync existing local data to their new cloud database if they checked migrate
-            const savedSessionsStr = safeStorage.getItem('psycalcu_sessions');
-            const savedSettingsStr = safeStorage.getItem('psycalcu_settings');
-            
-            if (savedSessionsStr) {
-              try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
-            }
-            if (savedSettingsStr) {
-              try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
-            }
+          if (!settingsToSave.therapistName || settingsToSave.therapistName === 'Dr. Melis Kaya') {
+            settingsToSave.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
           }
+
+          // Check if there is cached data either user-scoped or anonymous
+          const savedSessionsStr = safeStorage.getItem(`psycalcu_sessions_${user.uid}`) || safeStorage.getItem('psycalcu_sessions');
+          const savedSettingsStr = safeStorage.getItem(`psycalcu_settings_${user.uid}`) || safeStorage.getItem('psycalcu_settings');
           
-          const correctedSessions = autoCorrectPastSessions(sessionsToSave);
+          if (savedSessionsStr) {
+            try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
+          }
+          if (savedSettingsStr) {
+            try { 
+              const parsedSettings = JSON.parse(savedSettingsStr);
+              settingsToSave = { ...settingsToSave, ...parsedSettings };
+              if (!settingsToSave.therapistName || settingsToSave.therapistName === 'Dr. Melis Kaya') {
+                settingsToSave.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
+              }
+            } catch (e) {}
+          }
+
+          const effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
+          const correctedSessions = autoCorrectPastSessions(
+            sessionsToSave,
+            settingsToSave.defaultSessionPrice,
+            settingsToSave.defaultBabysitterFee,
+            settingsToSave.defaultOfficeRentFee,
+            effectiveCutoff
+          );
           
           let hasRealLocalSessions = false;
           if (correctedSessions && correctedSessions.length > 0) {
             hasRealLocalSessions = !correctedSessions.every(s => s.id && s.id.startsWith('mock_'));
           }
           
-          if (hasRealLocalSessions && shouldMigrate) {
+          if (hasRealLocalSessions) {
             await saveUserData(user.uid, settingsToSave, correctedSessions, expenses);
             setSessions(correctedSessions);
             setSettings(settingsToSave);
@@ -1001,7 +1031,7 @@ export default function App() {
               sessions: JSON.stringify(correctedSessions),
               expenses: JSON.stringify(expenses)
             };
-            showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
+            showToast('Mevcut seanslarınız ve ayarlarınız bulut hesabınıza başarıyla kaydedildi!', 'success');
           } else {
             await saveUserData(user.uid, settingsToSave, [], []);
             setSessions([]);
