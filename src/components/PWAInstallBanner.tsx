@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeStorage } from '../utils/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { Smartphone, X, Share, PlusSquare, ArrowDown, Check, Sparkles } from 'lucide-react';
 
@@ -51,7 +52,7 @@ export const PWAInstallBanner: React.FC = () => {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setIsDismissed(true);
-        localStorage.setItem('psycalcu_pwa_banner_dismissed', 'true');
+        safeStorage.setItem('psycalcu_pwa_banner_dismissed', 'true');
       }
       setDeferredPrompt(null);
     } else {
@@ -62,7 +63,7 @@ export const PWAInstallBanner: React.FC = () => {
 
   const handleDismiss = () => {
     setIsDismissed(true);
-    localStorage.setItem('psycalcu_pwa_banner_dismissed', 'true');
+    safeStorage.setItem('psycalcu_pwa_banner_dismissed', 'true');
   };
 
   // Do not render if standalone or dismissed

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safeStorage } from '../utils/storage';
 import { 
   auth, 
   signInWithEmailAndPassword, 
@@ -129,11 +130,11 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
 
     try {
       if (isLogin) {
-        localStorage.setItem('psycalcu_should_migrate', 'false');
+        safeStorage.setItem('psycalcu_should_migrate', 'false');
         const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
         onAuthSuccess(userCredential.user, false);
       } else {
-        localStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
+        safeStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
         const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         onAuthSuccess(userCredential.user, migrateData);
       }
@@ -167,7 +168,7 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
-        localStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
+        safeStorage.setItem('psycalcu_should_migrate', migrateData ? 'true' : 'false');
         onAuthSuccess(result.user, migrateData);
       }
     } catch (err: any) {
@@ -192,11 +193,11 @@ export default function AuthCard({ user, onLogout, onAuthSuccess, existingSessio
       if (!isIframe) {
         try {
           setInfoMessage("Google ile yönlendirmeli giriş sayfasına aktarılıyorsunuz, lütfen bekleyin...");
-          localStorage.setItem('psycalcu_pending_redirect', 'true');
+          safeStorage.setItem('psycalcu_pending_redirect', 'true');
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectErr: any) {
-          localStorage.removeItem('psycalcu_pending_redirect');
+          safeStorage.removeItem('psycalcu_pending_redirect');
           console.error("Google Auth Redirect Error:", redirectErr);
         }
       }

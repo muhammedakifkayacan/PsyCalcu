@@ -19,7 +19,12 @@ export function pruneStorage(currentUserId?: string): void {
       'psycalcu_read_announcement_ids',
       'psycalcu_debug_log',
       'psycalcu_calendar_temp_events',
-      'psycalcu_pending_redirect'
+      'psycalcu_temp_notes_cache',
+      'psycalcu_has_fetched_instant_notes',
+      'psycalcu_pending_redirect',
+      'psycalcu_audit_visible_columns',
+      'psycalcu_pwa_prompt_dismissed',
+      'psycalcu_pwa_banner_dismissed'
     ];
 
     // If we have a user-specific ID, old un-scoped global keys can be purged safely
@@ -38,7 +43,7 @@ export function pruneStorage(currentUserId?: string): void {
 
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('debug_') || k.startsWith('temp_') || k.includes('cache_blob'))) {
+      if (k && (k.startsWith('debug_') || k.startsWith('temp_') || k.includes('cache_blob') || k.startsWith('psycalcu_tour_'))) {
         keysToRemove.push(k);
       }
     }
@@ -78,7 +83,7 @@ export const safeStorage = {
         err?.code === 22 || 
         err?.code === 1014 || 
         err?.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-        String(err).includes('quota');
+        String(err).toLowerCase().includes('quota');
 
       if (isQuota) {
         console.warn(`${LOG_PREFIX} Quota exceeded on setItem(${key}). Pruning non-essential cache...`);
@@ -88,8 +93,8 @@ export const safeStorage = {
           localStorage.setItem(key, value);
           return true;
         } catch (retryErr) {
-          console.error(`${LOG_PREFIX} setItem failed even after pruning:`, retryErr);
-          // Do not crash the app. The cloud database (Firestore) will preserve the data.
+          console.warn(`${LOG_PREFIX} setItem non-fatal fallback (data safely stored in Firestore cloud):`, retryErr);
+          // Do not crash the app or throw. The cloud database (Firestore) preserves all user data.
           return false;
         }
       }
@@ -108,11 +113,44 @@ export const safeStorage = {
     }
   },
 
-  clearAllSafely(): void {
+  clearAllSafely(userId?: string): void {
     if (typeof window === 'undefined' || !window.localStorage) return;
     try {
-      localStorage.clear();
-      sessionStorage.clear();
+      // CRITICAL SAFETY GUARD:
+      // Never call localStorage.clear() indiscriminately!
+      // Doing so destroys Firebase Auth session state (logging the user out) and user settings.
+      // Instead, selectively remove non-essential cache while strictly protecting Auth & User Data.
+      
+      pruneStorage(userId);
+
+      // Clean temporary session storage safely
+      try {
+        sessionStorage.clear();
+      } catch (e) {}
+
+      // Remove non-essential keys from localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+
+        // PROTECT Firebase Auth credentials & User Settings/Sessions
+        const isProtected = 
+          key.startsWith('firebase:') ||
+          key.startsWith('firebaseApp:') ||
+          key.startsWith('psycalcu_settings') ||
+          key.startsWith('psycalcu_sessions') ||
+          key.startsWith('psycalcu_expenses') ||
+          key === 'psycalcu_registration_created_at';
+
+        if (!isProtected) {
+          keysToRemove.push(key);
+        }
+      }
+
+      for (const k of keysToRemove) {
+        try { localStorage.removeItem(k); } catch (e) {}
+      }
     } catch (err) {
       console.warn(`${LOG_PREFIX} clearAllSafely failed:`, err);
     }

@@ -458,7 +458,7 @@ export default function App() {
     setLocalNotifications(prev => {
       const updated = prev.map(n => ({ ...n, read: true }));
       const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-      localStorage.setItem(notificationsKey, JSON.stringify(updated));
+      safeStorage.setItem(notificationsKey, JSON.stringify(updated), user?.uid);
       return updated;
     });
     
@@ -466,7 +466,7 @@ export default function App() {
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
       const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
-      localStorage.setItem(announcementsKey, JSON.stringify(updated));
+      safeStorage.setItem(announcementsKey, JSON.stringify(updated), user?.uid);
       return updated;
     });
     
@@ -477,13 +477,13 @@ export default function App() {
   const handleClearAllNotifications = () => {
     setLocalNotifications([]);
     const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-    localStorage.removeItem(notificationsKey);
+    safeStorage.removeItem(notificationsKey);
     
     const allAnnotIds = announcements.map(ann => ann.id);
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
       const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
-      localStorage.setItem(announcementsKey, JSON.stringify(updated));
+      safeStorage.setItem(announcementsKey, JSON.stringify(updated), user?.uid);
       return updated;
     });
     
@@ -536,7 +536,7 @@ export default function App() {
     setLocalNotifications(prev => {
       const updated = [newNotif, ...prev].slice(0, 100);
       const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-      localStorage.setItem(notificationsKey, JSON.stringify(updated));
+      safeStorage.setItem(notificationsKey, JSON.stringify(updated), user?.uid);
       return updated;
     });
   };
@@ -1652,7 +1652,7 @@ export default function App() {
       const next = !prev;
       try {
         const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
-        localStorage.setItem(key, String(next));
+        safeStorage.setItem(key, String(next), user?.uid);
       } catch (e) {}
       return next;
     });
@@ -1660,7 +1660,7 @@ export default function App() {
 
   const [showExplanations, setShowExplanations] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem('psycalcu_show_explanations');
+      const saved = safeStorage.getItem('psycalcu_show_explanations');
       return saved !== 'false';
     } catch (e) {
       return true;
@@ -1672,7 +1672,7 @@ export default function App() {
       const next = !prev;
       try {
         const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
-        localStorage.setItem(key, String(next));
+        safeStorage.setItem(key, String(next), user?.uid);
       } catch (e) {}
       return next;
     });
@@ -1682,7 +1682,7 @@ export default function App() {
     setShowExplanations(false);
     try {
       const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
-      localStorage.setItem(key, 'false');
+      safeStorage.setItem(key, 'false', user?.uid);
     } catch (e) {}
   }, [user]);
 
@@ -2237,7 +2237,7 @@ export default function App() {
 
   const handleClearAllSessions = () => {
     setSessions([]);
-    localStorage.setItem('psycalcu_sessions', JSON.stringify([]));
+    safeStorage.setItem('psycalcu_sessions', JSON.stringify([]));
   };
 
   const handleToggleType = (id: string, currentType: SessionType) => {
@@ -2520,9 +2520,9 @@ export default function App() {
     setSettings(newSettings);
     if (user) {
       const userSettingsKey = `psycalcu_settings_${user.uid}`;
-      localStorage.setItem(userSettingsKey, JSON.stringify(newSettings));
+      safeStorage.setItem(userSettingsKey, JSON.stringify(newSettings), user.uid);
       const userSessionsKey = `psycalcu_sessions_${user.uid}`;
-      localStorage.setItem(userSessionsKey, JSON.stringify(updatedSessionsList));
+      safeStorage.setItem(userSessionsKey, JSON.stringify(updatedSessionsList), user.uid);
 
       // Direct persist to Firestore
       saveUserData(user.uid, newSettings, updatedSessionsList, expenses).then(() => {
@@ -2608,7 +2608,7 @@ export default function App() {
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: summaryText };
         const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
-        localStorage.setItem(key, JSON.stringify(updated));
+        safeStorage.setItem(key, JSON.stringify(updated), user?.uid);
         return updated;
       });
 
@@ -2672,7 +2672,7 @@ export default function App() {
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: localSummary };
         const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
-        localStorage.setItem(key, JSON.stringify(updated));
+        safeStorage.setItem(key, JSON.stringify(updated), user?.uid);
         return updated;
       });
 
@@ -3221,13 +3221,13 @@ export default function App() {
                 effectiveCutoff = regSnap.data()?.createdAt || null;
                 if (effectiveCutoff) {
                   setRegistrationCreatedAt(effectiveCutoff);
-                  localStorage.setItem('psycalcu_registration_created_at', effectiveCutoff);
+                  safeStorage.setItem('psycalcu_registration_created_at', effectiveCutoff, user?.uid);
                 }
               }
             } catch (e) {}
           }
           if (!effectiveCutoff) {
-            effectiveCutoff = localStorage.getItem('psycalcu_registration_created_at');
+            effectiveCutoff = safeStorage.getItem('psycalcu_registration_created_at');
           }
 
           const cloudSessions = autoCorrectPastSessions(
@@ -3242,8 +3242,8 @@ export default function App() {
           
           const userSessionsKey = `psycalcu_sessions_${user.uid}`;
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
-          localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
-          localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
+          safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
+          safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
         }
       }
       await handleManualCalendarSync(false);
@@ -5807,7 +5807,7 @@ export default function App() {
                             onChange={(e) => {
                               const checked = e.target.checked;
                               setExportIncludeNotes(checked);
-                              try { localStorage.setItem('psycalcu_export_include_notes', String(checked)); } catch (err) {}
+                              try { safeStorage.setItem('psycalcu_export_include_notes', String(checked), user?.uid); } catch (err) {}
                             }}
                             className="mt-0.5 rounded border-[#e5e1d8] text-[#6b705c] focus:ring-[#6b705c] cursor-pointer"
                           />
@@ -5826,7 +5826,7 @@ export default function App() {
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setExportIncludeSyncedNotes(checked);
-                                try { localStorage.setItem('psycalcu_export_include_synced_notes', String(checked)); } catch (err) {}
+                                try { safeStorage.setItem('psycalcu_export_include_synced_notes', String(checked), user?.uid); } catch (err) {}
                                 if (checked && Object.keys(tempNotesCache).length === 0) {
                                   fetchInstantCalendarNotes(true);
                                 }

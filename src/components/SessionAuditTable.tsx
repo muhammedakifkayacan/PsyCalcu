@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { safeStorage } from '../utils/storage';
 import { 
   CheckCircle, 
   Clock, 
@@ -141,7 +142,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
       }
       const updated = { ...prev, [key]: !prev[key] };
       try {
-        localStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
+        safeStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
       } catch {}
       return updated;
     });
@@ -196,7 +197,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
 
     setVisibleColumns(updated);
     try {
-      localStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
+      safeStorage.setItem('psycalcu_audit_visible_columns', JSON.stringify(updated));
     } catch {}
   };
 
