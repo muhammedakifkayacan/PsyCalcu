@@ -60,6 +60,7 @@ import PublicAvailability from './components/PublicAvailability';
 import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
+import { ClientPricingManagerModal } from './components/ClientPricingManagerModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
@@ -80,6 +81,7 @@ import PullToRefresh from './components/PullToRefresh';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 import { safeStorage, pruneStorage } from './utils/storage';
+import { DataBackupSnapshot } from './types';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -1000,6 +1002,12 @@ export default function App() {
             if (cloudData.expenses) {
               setExpenses(cloudData.expenses);
             }
+            if (cloudData.backupSnapshots && Array.isArray(cloudData.backupSnapshots)) {
+              setBackupSnapshots(cloudData.backupSnapshots);
+              try {
+                localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(cloudData.backupSnapshots));
+              } catch (e) {}
+            }
             
             // Auto-sync public availability to make sure public_availability collection is populated
             saveUserData(user.uid, cloudData.settings, cloudSessions, cloudData.expenses || []).catch(err => {
@@ -1606,6 +1614,15 @@ export default function App() {
   const [searchType, setSearchType] = useState<'all' | 'online' | 'face-to-face' | 'cancelled' | 'non-session'>('all');
   const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isClientPricingModalOpen, setIsClientPricingModalOpen] = useState(false);
+  const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>(() => {
+    try {
+      const cached = localStorage.getItem('psycalcu_snapshots_active');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [prefilledRoomId, setPrefilledRoomId] = useState('');
@@ -3973,6 +3990,7 @@ export default function App() {
         setIsFaqOpen={setIsFaqOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         handleLogout={handleLogout}
+        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -6484,6 +6502,50 @@ export default function App() {
             console.error("Error submitting role change request:", err);
             showToast(`Talep gönderilirken hata oluştu: ${err.message || String(err)}`, 'error');
           }
+        }}
+        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
+      />
+
+      {/* Client Pricing & Data Recovery Manager Modal */}
+      <ClientPricingManagerModal
+        isOpen={isClientPricingModalOpen}
+        onClose={() => setIsClientPricingModalOpen(false)}
+        sessions={sessions}
+        settings={settings}
+        expenses={expenses}
+        snapshots={backupSnapshots}
+        onApplyRules={async (updatedSessions, updatedSettings) => {
+          setSessions(updatedSessions);
+          setSettings(updatedSettings);
+          if (user) {
+            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
+            safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(updatedSessions), user.uid);
+            await saveUserData(
+              user.uid, 
+              updatedSettings, 
+              updatedSessions, 
+              expensesRef.current || [], 
+              'Danışan Fiyatları ve Seans Kayıtları Toplu Güncellemesi'
+            );
+          }
+          showToast('Danışan özel fiyatları ve tüm seanslar başarıyla güncellendi!', 'success');
+        }}
+        onRestoreSnapshot={async (snapshot) => {
+          if (!snapshot || !snapshot.sessions) return;
+          setSessions(snapshot.sessions);
+          if (snapshot.settings) setSettings(snapshot.settings);
+          if (snapshot.expenses) setExpenses(snapshot.expenses);
+          if (user) {
+            await saveUserData(
+              user.uid,
+              snapshot.settings || settings,
+              snapshot.sessions,
+              snapshot.expenses || expenses,
+              `Yedek Noktasına Dönüş (${snapshot.label})`
+            );
+          }
+          showToast(`"${snapshot.label}" yedeği başarıyla geri yüklendi!`, 'success');
+          setIsClientPricingModalOpen(false);
         }}
       />
 

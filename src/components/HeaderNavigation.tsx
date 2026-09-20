@@ -66,6 +66,7 @@ interface HeaderNavigationProps {
   setIsFaqOpen: (val: boolean) => void;
   setIsSettingsOpen: (val: boolean) => void;
   handleLogout: () => void;
+  onOpenClientPricingModal?: () => void;
 }
 
 export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
@@ -101,7 +102,8 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   showExplanations,
   setIsFaqOpen,
   setIsSettingsOpen,
-  handleLogout
+  handleLogout,
+  onOpenClientPricingModal
 }) => {
   const { isPrivacyMode, togglePrivacyMode, isHideClientNames, toggleHideClientNames, formatMoney, formatClientName } = usePrivacy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -276,6 +278,19 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               >
                 <Search className="w-4 h-4" />
               </motion.button>
+
+              {/* Danışan Özel Fiyat & Kurtarma Button */}
+              {onOpenClientPricingModal && (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={onOpenClientPricingModal}
+                  className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
+                  title="Danışan Özel Fiyatları & 84 Günlük Geçmiş Kurtarma"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <span>Danışan Fiyatları</span>
+                </motion.button>
+              )}
 
               {/* Notifications Center */}
               <NotificationCenter
@@ -728,6 +743,32 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
                     </motion.button>
+
+                    {/* Client Pricing & Recovery Modal */}
+                    {onOpenClientPricingModal && (
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          onOpenClientPricingModal();
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-emerald-50/60 hover:bg-emerald-50 text-emerald-950"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+                            <Sparkles className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold text-slate-800">Danışan Fiyat & Kurtarma</p>
+                              <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-bold">84 Gün</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500">Özel seans, bakıcı ve ofis ücretlerini yönet</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-emerald-600" />
+                      </motion.button>
+                    )}
                   </div>
                 </div>
 

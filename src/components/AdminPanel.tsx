@@ -19,24 +19,29 @@ import {
   X, 
   Search, 
   Clock, 
-  ShieldAlert,
-  UserCheck,
-  UserX,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
-  Settings,
-  Shield,
-  FileSpreadsheet,
-  Sparkles,
-  FileText,
-  ChevronDown,
-  Calendar,
-  PieChart,
-  CreditCard,
-  KeyRound
+  ShieldAlert, 
+  UserCheck, 
+  UserX, 
+  Trash2, 
+  RefreshCw, 
+  AlertTriangle, 
+  Settings, 
+  Shield, 
+  FileSpreadsheet, 
+  Sparkles, 
+  FileText, 
+  ChevronDown, 
+  Calendar, 
+  PieChart, 
+  CreditCard, 
+  KeyRound,
+  DollarSign,
+  Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ClientPricingManagerModal } from './ClientPricingManagerModal';
+import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
+import { saveUserData } from '../lib/firestoreService';
 
 interface Registration {
   userId: string;
@@ -91,6 +96,161 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [manualOnlineUrl, setManualOnlineUrl] = useState('');
   const [manualFaceUrl, setManualFaceUrl] = useState('');
   const [manualDateNote, setManualDateNote] = useState('');
+
+  // User Client Pricing & 84 Days Recovery Modal State
+  const [clientPricingModalUser, setClientPricingModalUser] = useState<Registration | null>(null);
+  const [targetUserSessions, setTargetUserSessions] = useState<Session[]>([]);
+  const [targetUserSettings, setTargetUserSettings] = useState<AppSettings>({
+    defaultSessionPrice: 1200,
+    defaultBabysitterFee: 250,
+    defaultOfficeRentFee: 200,
+    therapistName: '',
+    calendarSyncEnabled: true,
+    onlineCalendarWebcalUrl: '',
+    faceToFaceCalendarWebcalUrl: '',
+    googleSheetId: '',
+    googleSheetsLinked: false
+  });
+  const [targetUserExpenses, setTargetUserExpenses] = useState<Expense[]>([]);
+  const [targetUserSnapshots, setTargetUserSnapshots] = useState<DataBackupSnapshot[]>([]);
+  const [loadingPricingUserId, setLoadingPricingUserId] = useState<string | null>(null);
+
+  const openClientPricingModal = async (reg: Registration) => {
+    setClientPricingModalUser(reg);
+    setLoadingPricingUserId(reg.userId);
+    try {
+      const userDocRef = doc(db, 'users', reg.userId);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        const settings: AppSettings = data.settings || {
+          defaultSessionPrice: 1200,
+          defaultBabysitterFee: 250,
+          defaultOfficeRentFee: 200,
+          therapistName: reg.displayName || '',
+          calendarSyncEnabled: true,
+          onlineCalendarWebcalUrl: '',
+          faceToFaceCalendarWebcalUrl: '',
+          googleSheetId: '',
+          googleSheetsLinked: false
+        };
+        const sessions: Session[] = Array.isArray(data.sessions) ? data.sessions : [];
+        const expenses: Expense[] = Array.isArray(data.expenses) ? data.expenses : [];
+        const snapshots: DataBackupSnapshot[] = Array.isArray(data.backupSnapshots) ? data.backupSnapshots : [];
+
+        setTargetUserSettings(settings);
+        setTargetUserSessions(sessions);
+        setTargetUserExpenses(expenses);
+        setTargetUserSnapshots(snapshots);
+      } else {
+        setTargetUserSettings({
+          defaultSessionPrice: 1200,
+          defaultBabysitterFee: 250,
+          defaultOfficeRentFee: 200,
+          therapistName: reg.displayName || '',
+          calendarSyncEnabled: true,
+          onlineCalendarWebcalUrl: '',
+          faceToFaceCalendarWebcalUrl: '',
+          googleSheetId: '',
+          googleSheetsLinked: false
+        });
+        setTargetUserSessions([]);
+        setTargetUserExpenses([]);
+        setTargetUserSnapshots([]);
+      }
+    } catch (err: any) {
+      console.error("Error loading user data for pricing modal:", err);
+      showToast("Kullanıcı verileri çekilirken hata oluştu.", "error");
+    } finally {
+      setLoadingPricingUserId(null);
+    }
+  };
+
+  const handleQuickAutoRepair = async (reg: Registration) => {
+    if (!window.confirm(`${reg.displayName} kullanıcısının 84 günlük seansları için sıfırlanmış seans ücretlerini, bakıcı ve ofis masraflarını otomatik hesaplayıp geri yüklemek istiyor musunuz?`)) {
+      return;
+    }
+    setLoadingPricingUserId(reg.userId);
+    try {
+      const userDocRef = doc(db, 'users', reg.userId);
+      const userSnap = await getDoc(userDocRef);
+      if (!userSnap.exists()) {
+        showToast("Kullanıcı veri kaydı bulunamadı.", "error");
+        return;
+      }
+      const data = userSnap.data();
+      const settings: AppSettings = data.settings || {
+        defaultSessionPrice: 1200,
+        defaultBabysitterFee: 250,
+        defaultOfficeRentFee: 200,
+        therapistName: reg.displayName || '',
+        calendarSyncEnabled: true,
+        onlineCalendarWebcalUrl: '',
+        faceToFaceCalendarWebcalUrl: '',
+        googleSheetId: '',
+        googleSheetsLinked: false
+      };
+      const existingSessions: Session[] = Array.isArray(data.sessions) ? data.sessions : [];
+      const existingExpenses: Expense[] = Array.isArray(data.expenses) ? data.expenses : [];
+
+      const defPrice = Number(settings.defaultSessionPrice) > 0 ? Number(settings.defaultSessionPrice) : 1200;
+      const defBaby = typeof settings.defaultBabysitterFee === 'number' ? Number(settings.defaultBabysitterFee) : 250;
+      const defRent = typeof settings.defaultOfficeRentFee === 'number' ? Number(settings.defaultOfficeRentFee) : 200;
+
+      let repairedCount = 0;
+      const repairedSessions: Session[] = existingSessions.map(s => {
+        if (!s || s.type === 'cancelled' || s.type === 'non-session') return s;
+        
+        let changed = false;
+        const updated: Session = { ...s };
+
+        // Repair price
+        if (!updated.price || Number(updated.price) <= 0) {
+          updated.price = defPrice;
+          changed = true;
+        }
+
+        // Repair babysitter
+        if (!updated.hasBabysitterFee || !updated.babysitterFeeAmount || Number(updated.babysitterFeeAmount) <= 0) {
+          updated.hasBabysitterFee = true;
+          updated.babysitterFeeAmount = defBaby;
+          changed = true;
+        }
+
+        // Repair office rent
+        if (updated.type === 'face-to-face') {
+          if (!updated.hasOfficeRentFee || !updated.officeRentFeeAmount || Number(updated.officeRentFeeAmount) <= 0) {
+            updated.hasOfficeRentFee = true;
+            updated.officeRentFeeAmount = defRent;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          repairedCount++;
+          updated.isManuallyEdited = true;
+          updated.updatedAt = Date.now();
+          return updated;
+        }
+        return s;
+      });
+
+      await saveUserData(
+        reg.userId,
+        settings,
+        repairedSessions,
+        existingExpenses,
+        `Yönetici Tarafından 1-Tıkla 84 Günlük Veri Kurtarma (${repairedCount} Seans Onarıldı)`
+      );
+
+      showToast(`Harika! ${reg.displayName} için ${repairedCount} adet seansın fiyat ve masrafları başarıyla geri yüklendi!`, 'success');
+    } catch (err: any) {
+      console.error("Auto repair error:", err);
+      showToast(`Onarım sırasında hata oluştu: ${err.message || String(err)}`, 'error');
+    } finally {
+      setLoadingPricingUserId(null);
+    }
+  };
 
   const openCalendarHistoryModal = async (reg: Registration) => {
     setCalendarHistoryModalUser(reg);
@@ -969,6 +1129,46 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                           </div>
                         </div>
 
+                        {/* Section 8.5: Danışan Fiyat & 84 Günlük Seans Kurtarma (Admin Özel) */}
+                        <div className="space-y-2 border-t border-slate-50 pt-3 pb-1 bg-emerald-50/40 p-3 rounded-2xl border border-emerald-100">
+                          <label className="font-semibold text-slate-700 flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                              <Sparkles className="w-4 h-4 text-emerald-600" />
+                              Danışan Özel Fiyat & Seans Kurtarma (84 Gün)
+                            </span>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                              Kalıcı Kurtarma
+                            </span>
+                          </label>
+                          <p className="text-[10px] text-slate-500 leading-relaxed">
+                            Kullanıcının Temmuz'dan beri gelen tüm seanslarını, sıfırlanmış ücretlerini, bakıcı ve ofis masraflarını tek tıkla onarın veya detaylı listeden düzenleyin.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={loadingPricingUserId === reg.userId}
+                              onClick={() => handleQuickAutoRepair(reg)}
+                              className="py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {loadingPricingUserId === reg.userId ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Wrench className="w-3.5 h-3.5" />
+                              )}
+                              <span>⚡ 1-Tıkla 84 Günü Onar</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loadingPricingUserId === reg.userId}
+                              onClick={() => openClientPricingModal(reg)}
+                              className="py-2.5 px-3 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-3xs"
+                            >
+                              <Users className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Danışan Fiyat Masası</span>
+                            </button>
+                          </div>
+                        </div>
+
                         {/* Section 9: Password Reset (Only for standard email registered users) */}
                         {!reg.isLegacy && reg.email && !reg.email.includes('Eski Kayıt') && (
                           <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
@@ -1297,6 +1497,47 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* User Client Pricing & 84 Days Recovery Modal for Admin */}
+      {clientPricingModalUser && (
+        <ClientPricingManagerModal
+          isOpen={!!clientPricingModalUser}
+          onClose={() => setClientPricingModalUser(null)}
+          sessions={targetUserSessions}
+          settings={targetUserSettings}
+          expenses={targetUserExpenses}
+          snapshots={targetUserSnapshots}
+          isAdminView={true}
+          targetUserName={clientPricingModalUser.displayName}
+          onApplyRules={async (updatedSessions, updatedSettings) => {
+            setTargetUserSessions(updatedSessions);
+            setTargetUserSettings(updatedSettings);
+            await saveUserData(
+              clientPricingModalUser.userId,
+              updatedSettings,
+              updatedSessions,
+              targetUserExpenses,
+              `Yönetici Tarafından Danışan Fiyat Düzenlemesi (${clientPricingModalUser.displayName})`
+            );
+            showToast(`${clientPricingModalUser.displayName} kullanıcısının tüm seansları ve fiyatları güncellendi!`, 'success');
+          }}
+          onRestoreSnapshot={async (snapshot) => {
+            if (!snapshot || !snapshot.sessions) return;
+            setTargetUserSessions(snapshot.sessions);
+            if (snapshot.settings) setTargetUserSettings(snapshot.settings);
+            if (snapshot.expenses) setTargetUserExpenses(snapshot.expenses);
+            await saveUserData(
+              clientPricingModalUser.userId,
+              snapshot.settings || targetUserSettings,
+              snapshot.sessions,
+              snapshot.expenses || targetUserExpenses,
+              `Yönetici Tarafından Yedek Geri Yükleme (${snapshot.label})`
+            );
+            showToast(`${clientPricingModalUser.displayName} için "${snapshot.label}" yedeği geri yüklendi!`, 'success');
+            setClientPricingModalUser(null);
+          }}
+        />
+      )}
     </div>
   );
 }

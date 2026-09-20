@@ -79,6 +79,31 @@ export interface Expense {
   createdAt?: number;
 }
 
+export interface ClientPricingRule {
+  price: number;
+  hasBabysitterFee?: boolean;
+  babysitterFeeAmount?: number;
+  hasOfficeRentFee?: boolean;
+  officeRentFeeAmount?: number;
+  notes?: string;
+  updatedAt?: number;
+}
+
+export interface DataBackupSnapshot {
+  id: string;
+  timestamp: string; // ISO string
+  label: string; // e.g. "20 Eylül 2026 19:30 - Otomatik Yedek"
+  sessionCount: number;
+  expenseCount: number;
+  totalGrossIncome: number;
+  totalNetIncome: number;
+  paidSessionsCount: number;
+  unpaidSessionsCount: number;
+  sessions: Session[];
+  settings: AppSettings;
+  expenses: Expense[];
+}
+
 export interface AppSettings {
   defaultSessionPrice: number;
   defaultBabysitterFee: number;
@@ -101,6 +126,7 @@ export interface AppSettings {
   rooms?: Room[];
   blockedSlots?: BlockedSlot[];
   accountingStartDate?: string; // YYYY-MM-DD cutoff for accounting & debt tracking
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule };
 }
 
 export interface DaySummary {
@@ -164,10 +190,18 @@ export function getSmartClientPrice(
   clientName: string,
   sessionDate: string,
   sessions: Session[],
-  defaultPrice: number
+  defaultPrice: number,
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
 ): number {
-  if (!clientName || !Array.isArray(sessions)) return defaultPrice;
+  if (!clientName) return defaultPrice;
   const targetNormalized = getNormalizedClientName(clientName);
+  
+  // Highest priority: Explicit client custom price rule
+  if (clientCustomPrices && clientCustomPrices[targetNormalized] && clientCustomPrices[targetNormalized].price > 0) {
+    return clientCustomPrices[targetNormalized].price;
+  }
+
+  if (!Array.isArray(sessions)) return defaultPrice;
   
   // Filter active sessions that have the same normalized client name and valid price > 0
   const validSessions = sessions.filter(s => {
@@ -209,15 +243,30 @@ export function getSmartClientCosts(
   sessions: Session[],
   defaultPrice: number,
   defaultBabysitterFee: number,
-  defaultOfficeRentFee: number
+  defaultOfficeRentFee: number,
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
 ): { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number } {
   const result = {
     price: defaultPrice,
     babysitterFeeAmount: defaultBabysitterFee,
     officeRentFeeAmount: defaultOfficeRentFee
   };
-  if (!clientName || !Array.isArray(sessions)) return result;
+  if (!clientName) return result;
   const targetNormalized = getNormalizedClientName(clientName);
+
+  // Check if explicit custom pricing exists
+  if (clientCustomPrices && clientCustomPrices[targetNormalized]) {
+    const rule = clientCustomPrices[targetNormalized];
+    if (rule.price > 0) result.price = rule.price;
+    if (typeof rule.babysitterFeeAmount === 'number' && rule.babysitterFeeAmount > 0) {
+      result.babysitterFeeAmount = rule.babysitterFeeAmount;
+    }
+    if (typeof rule.officeRentFeeAmount === 'number' && rule.officeRentFeeAmount > 0) {
+      result.officeRentFeeAmount = rule.officeRentFeeAmount;
+    }
+  }
+
+  if (!Array.isArray(sessions)) return result;
 
   // Find all matched sessions for this client (non-cancelled, non-session)
   const matchedSessions = sessions.filter(s => {
@@ -231,7 +280,7 @@ export function getSmartClientCosts(
   }
 
   // Calculate smart price using dedicated robust logic
-  result.price = getSmartClientPrice(clientName, sessionDate, sessions, defaultPrice);
+  result.price = getSmartClientPrice(clientName, sessionDate, sessions, defaultPrice, clientCustomPrices);
 
   // Sort descending by date, then time for cost lookups
   const sortedSessions = [...matchedSessions].sort((a, b) => {
@@ -316,6 +365,72 @@ export function autoHealSmartClientPrices(
           };
         }
       }
+    }
+    return s;
+  });
+}
+
+/**
+ * Bulk applies a client pricing and accounting rule to all historical and future sessions of a specific client!
+ */
+export function bulkApplyClientRule(
+  sessions: Session[],
+  clientName: string,
+  rule: {
+    price?: number;
+    hasBabysitterFee?: boolean;
+    babysitterFeeAmount?: number;
+    hasOfficeRentFee?: boolean;
+    officeRentFeeAmount?: number;
+    paymentStatus?: 'paid' | 'unpaid' | 'partial';
+  },
+  onlyUnpaidOrAll: 'all' | 'unpaid-only' = 'all'
+): Session[] {
+  if (!Array.isArray(sessions) || !clientName) return sessions;
+  const targetNormalized = getNormalizedClientName(clientName);
+
+  return sessions.map(s => {
+    if (!s || s.type === 'cancelled' || s.type === 'non-session') return s;
+    const sNormalized = getNormalizedClientName(s.clientName);
+    if (sNormalized !== targetNormalized) return s;
+
+    if (onlyUnpaidOrAll === 'unpaid-only' && s.paymentStatus === 'paid') {
+      return s;
+    }
+
+    const updated: Session = { ...s };
+    let changed = false;
+
+    if (typeof rule.price === 'number' && rule.price >= 0) {
+      updated.price = rule.price;
+      changed = true;
+    }
+    if (typeof rule.hasBabysitterFee === 'boolean') {
+      updated.hasBabysitterFee = rule.hasBabysitterFee;
+      if (typeof rule.babysitterFeeAmount === 'number') {
+        updated.babysitterFeeAmount = rule.hasBabysitterFee ? rule.babysitterFeeAmount : 0;
+      }
+      changed = true;
+    }
+    if (typeof rule.hasOfficeRentFee === 'boolean') {
+      updated.hasOfficeRentFee = rule.hasOfficeRentFee;
+      if (typeof rule.officeRentFeeAmount === 'number') {
+        updated.officeRentFeeAmount = rule.hasOfficeRentFee ? rule.officeRentFeeAmount : 0;
+      }
+      changed = true;
+    }
+    if (rule.paymentStatus) {
+      updated.paymentStatus = rule.paymentStatus;
+      if (rule.paymentStatus === 'paid') {
+        updated.paidAmount = updated.price;
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      updated.isManuallyEdited = true;
+      updated.updatedAt = Date.now();
+      return updated;
     }
     return s;
   });

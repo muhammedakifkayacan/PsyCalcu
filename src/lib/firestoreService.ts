@@ -1,11 +1,14 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, disableNetwork, arrayUnion } from 'firebase/firestore';
-import { Session, AppSettings, Expense } from '../types';
+import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
 
 interface UserData {
   settings: AppSettings;
   sessions: Session[];
   expenses?: Expense[];
+  backupSnapshots?: DataBackupSnapshot[];
+  calendarHistory?: any[];
+  calendarBackup?: any;
 }
 
 export let isFirestoreQuotaExceeded = false;
@@ -66,7 +69,10 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
       return {
         settings,
         sessions: (data.sessions as Session[]) || [],
-        expenses: (data.expenses as Expense[]) || []
+        expenses: (data.expenses as Expense[]) || [],
+        backupSnapshots: (data.backupSnapshots as DataBackupSnapshot[]) || [],
+        calendarHistory: data.calendarHistory || [],
+        calendarBackup: data.calendarBackup
       };
     }
     return null;
@@ -81,9 +87,47 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
 }
 
 /**
- * Save all user data (sessions and settings) to Firestore
+ * Helper to build a clean snapshot object
  */
-export async function saveUserData(userId: string, settings: AppSettings, sessions: Session[], expenses?: Expense[]): Promise<void> {
+export function createSnapshotObject(
+  label: string,
+  settings: AppSettings,
+  sessions: Session[],
+  expenses: Expense[] = []
+): DataBackupSnapshot {
+  const activeSessions = (sessions || []).filter(s => s.type !== 'cancelled' && s.type !== 'non-session');
+  const paidSessions = activeSessions.filter(s => s.paymentStatus === 'paid');
+  const unpaidSessions = activeSessions.filter(s => s.paymentStatus !== 'paid');
+  const totalGross = activeSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const totalExpenses = (expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0) +
+    activeSessions.reduce((sum, s) => sum + (s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0) + (s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0), 0);
+
+  return {
+    id: 'snap_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    timestamp: new Date().toISOString(),
+    label,
+    sessionCount: sessions.length,
+    expenseCount: expenses.length,
+    totalGrossIncome: totalGross,
+    totalNetIncome: totalGross - totalExpenses,
+    paidSessionsCount: paidSessions.length,
+    unpaidSessionsCount: unpaidSessions.length,
+    sessions: JSON.parse(JSON.stringify(sessions)),
+    settings: JSON.parse(JSON.stringify(settings)),
+    expenses: JSON.parse(JSON.stringify(expenses))
+  };
+}
+
+/**
+ * Save all user data (sessions and settings) to Firestore and maintain versioned snapshots
+ */
+export async function saveUserData(
+  userId: string, 
+  settings: AppSettings, 
+  sessions: Session[], 
+  expenses?: Expense[],
+  snapshotReason?: string
+): Promise<void> {
   if (isFirestoreQuotaExceeded) {
     throw new Error('quota-exceeded');
   }
@@ -102,8 +146,28 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
     const payload: any = { 
       settings: cleanedSettings, 
       sessions: cleanedSessions, 
-      expenses: cleanedExpenses 
+      expenses: cleanedExpenses,
+      lastUpdatedAt: new Date().toISOString()
     };
+
+    // Auto-create snapshot if sessions exist and it's a significant event or requested
+    if (sessions && sessions.length > 0 && snapshotReason) {
+      const snap = createSnapshotObject(snapshotReason, cleanedSettings, cleanedSessions, cleanedExpenses);
+      payload.backupSnapshots = arrayUnion(snap);
+      
+      // Also cache snapshot in localStorage
+      try {
+        const localKey = `psycalcu_snapshots_${userId}`;
+        const existingLocalStr = localStorage.getItem(localKey);
+        let localSnaps: DataBackupSnapshot[] = [];
+        if (existingLocalStr) {
+          try { localSnaps = JSON.parse(existingLocalStr); } catch (e) {}
+        }
+        localSnaps.unshift(snap);
+        if (localSnaps.length > 30) localSnaps = localSnaps.slice(0, 30);
+        localStorage.setItem(localKey, JSON.stringify(localSnaps));
+      } catch (localErr) {}
+    }
 
     // Keep a persistent calendarBackup and history log inside the user document whenever URLs exist
     if (settings?.onlineCalendarWebcalUrl || settings?.faceToFaceCalendarWebcalUrl || (settings?.ownerCalendars && settings.ownerCalendars.length > 0)) {
@@ -167,5 +231,6 @@ export async function migrateLocalDataToFirestore(
   sessions: Session[], 
   settings: AppSettings
 ): Promise<void> {
-  return saveUserData(userId, settings, sessions);
+  return saveUserData(userId, settings, sessions, [], 'İlk Bulut Eşitlemesi');
 }
+
