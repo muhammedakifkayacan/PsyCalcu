@@ -100,6 +100,7 @@ export interface AppSettings {
   ownerCalendars?: OwnerCalendar[];
   rooms?: Room[];
   blockedSlots?: BlockedSlot[];
+  accountingStartDate?: string; // YYYY-MM-DD cutoff for accounting & debt tracking
 }
 
 export interface DaySummary {
@@ -268,8 +269,14 @@ export function autoHealSmartClientPrices(
 ): Session[] {
   if (!Array.isArray(sessionList)) return [];
 
-  // Cutoff date is the user's registration date (YYYY-MM-DD), if available
+  // Cutoff date is the user's registration date or accounting start date (YYYY-MM-DD)
   const effectiveCutoff = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+  
+  // SAFETY GUARD: If no cutoff date is known, do not auto-heal past sessions!
+  // This completely prevents race conditions from inflating historical 0 TL sessions into full price.
+  if (!effectiveCutoff) {
+    return sessionList;
+  }
 
   // Group latest known valid prices per normalized client name
   const clientEstablishedPrices = new Map<string, number>();

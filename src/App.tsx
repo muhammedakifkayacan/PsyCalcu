@@ -115,9 +115,17 @@ const autoCorrectPastSessions = (
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
   const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+
+  // CRITICAL SAFETY GUARD:
+  // If no cutoff date is known, DO NOT alter sessions or blindly heal prices!
+  // This prevents unauthenticated or initial loads from corrupting historical zeroed sessions.
+  if (!cutoffDate) {
+    return sessionList;
+  }
+
   const zeroedPast: Session[] = sessionList.map(s => {
     if (!s) return s;
-    if (cutoffDate && s.date && s.date < cutoffDate) {
+    if (s.date && s.date < cutoffDate) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
           ...s,
@@ -275,7 +283,11 @@ export default function App() {
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
-  const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(null);
+  const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(() => {
+    return localStorage.getItem('psycalcu_registration_created_at') || null;
+  });
+  const [isDebtCutoffModalOpen, setIsDebtCutoffModalOpen] = useState(false);
+  const [debtCutoffDate, setDebtCutoffDate] = useState<string>('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [maxSessionsLimit, setMaxSessionsLimit] = useState<string | number>('unlimited');
   const [featuresAIAllowed, setFeaturesAIAllowed] = useState<boolean>(true);
@@ -759,6 +771,7 @@ export default function App() {
           }
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
+            localStorage.setItem('psycalcu_registration_created_at', regCreated);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, regCreated));
           }
           
@@ -778,6 +791,7 @@ export default function App() {
               setRegistrationStatus('pending');
             }
             setRegistrationCreatedAt(newReg.createdAt);
+            localStorage.setItem('psycalcu_registration_created_at', newReg.createdAt);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, newReg.createdAt));
             setRegistrationError(null);
 
@@ -831,13 +845,34 @@ export default function App() {
         const shouldMigrate = localStorage.getItem('psycalcu_should_migrate') === 'true';
         
         if (cloudData) {
+          // Resolve effective accounting / registration cutoff date before correcting sessions
+          let effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt;
+          if (!effectiveCutoff) {
+            try {
+              const regRef = doc(db, 'registrations', user.uid);
+              const regSnap = await getDoc(regRef);
+              if (regSnap.exists()) {
+                effectiveCutoff = regSnap.data()?.createdAt || null;
+                if (effectiveCutoff) {
+                  setRegistrationCreatedAt(effectiveCutoff);
+                  localStorage.setItem('psycalcu_registration_created_at', effectiveCutoff);
+                }
+              }
+            } catch (e) {
+              console.warn("Could not read registration doc in performSync:", e);
+            }
+          }
+          if (!effectiveCutoff) {
+            effectiveCutoff = localStorage.getItem('psycalcu_registration_created_at');
+          }
+
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
           const cloudSessions = autoCorrectPastSessions(
             cloudData.sessions || [],
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            registrationCreatedAt
+            effectiveCutoff
           );
           
           if (shouldMigrate) {
@@ -873,7 +908,7 @@ export default function App() {
               cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
               cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
               cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-              registrationCreatedAt
+              effectiveCutoff
             );
             
             setSessions(finalSessions);
@@ -1953,9 +1988,13 @@ export default function App() {
       return `${h}:${m}`;
     };
 
+    const effectiveAccountingStart = settings.accountingStartDate || (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
+
     // Filter non-cancelled, non-session, unpaid, and realized (past or present) sessions
     const unpaidSessions = sessions.filter(s => {
       if (s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
+      // Do not count sessions strictly before the accounting start cutoff as active debts
+      if (effectiveAccountingStart && s.date && s.date < effectiveAccountingStart) return false;
       const sessionDateTime = `${s.date}T${padTime(s.time)}`;
       return sessionDateTime <= nowStr;
     });
@@ -2007,9 +2046,10 @@ export default function App() {
       unpaidSessions,
       totalUnpaidAmount,
       clientsWithDebts,
-      debtorCount: clientsWithDebts.length
+      debtorCount: clientsWithDebts.length,
+      effectiveAccountingStart
     };
-  }, [sessions]);
+  }, [sessions, settings.accountingStartDate, registrationCreatedAt]);
 
   const filteredDebtors = useMemo(() => {
     if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
@@ -2423,6 +2463,74 @@ export default function App() {
       {
         title: 'Toplu Tahsilat',
         message: `${clientName} adlı danışanın ${sessionCount} seanslık borcu (Toplam: ${formatMoney(totalAmount)}) başarıyla ödendi olarak işaretlendi.${methodLabel ? ` Ödeme Yöntemi: ${methodLabel.trim()}` : ''}`
+      },
+      undoFn
+    );
+  };
+
+  const handleClearDebtsBeforeDate = async (cutoffDateStr: string) => {
+    if (!cutoffDateStr) return;
+
+    let clearedCount = 0;
+    const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; price: number; paidAmount?: number }> = {};
+
+    setSessions(prev => {
+      return prev.map(s => {
+        if (!s) return s;
+        if (s.date && s.date < cutoffDateStr && (s.paymentStatus !== 'paid' || s.price !== 0)) {
+          clearedCount++;
+          modifiedPreviousStates[s.id] = {
+            status: s.paymentStatus || 'unpaid',
+            price: Number(s.price) || 0,
+            paidAmount: s.paidAmount
+          };
+          return {
+            ...s,
+            paymentStatus: 'paid' as const,
+            price: 0,
+            paidAmount: 0,
+            hasBabysitterFee: false,
+            babysitterFeeAmount: 0,
+            hasOfficeRentFee: false,
+            officeRentFeeAmount: 0,
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      });
+    });
+
+    const newSettings = { ...settings, accountingStartDate: cutoffDateStr };
+    setSettings(newSettings);
+    if (user) {
+      const userSettingsKey = `psycalcu_settings_${user.uid}`;
+      localStorage.setItem(userSettingsKey, JSON.stringify(newSettings));
+    }
+
+    const undoFn = () => {
+      setSessions(prev => prev.map(s => {
+        if (modifiedPreviousStates[s.id]) {
+          return {
+            ...s,
+            paymentStatus: modifiedPreviousStates[s.id].status,
+            price: modifiedPreviousStates[s.id].price,
+            paidAmount: modifiedPreviousStates[s.id].paidAmount,
+            updatedAt: Date.now(),
+            isManuallyEdited: true
+          };
+        }
+        return s;
+      }));
+      showToast('Eski seansları temizleme işlemi geri alındı.', 'info');
+    };
+
+    showToast(
+      `${cutoffDateStr} öncesi seanslar kapatıldı!`,
+      'success',
+      {
+        title: 'Geçmiş Seanslar Kapatıldı',
+        message: `${cutoffDateStr} tarihinden önceki seanslar (${clearedCount} seans) ödendi/kapanmış kabul edildi ve borç takip listesinden kaldırıldı.`
       },
       undoFn
     );
@@ -3076,12 +3184,30 @@ export default function App() {
       if (user && registrationStatus === 'approved') {
         const cloudData = await fetchUserData(user.uid);
         if (cloudData) {
+          let effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt;
+          if (!effectiveCutoff) {
+            try {
+              const regRef = doc(db, 'registrations', user.uid);
+              const regSnap = await getDoc(regRef);
+              if (regSnap.exists()) {
+                effectiveCutoff = regSnap.data()?.createdAt || null;
+                if (effectiveCutoff) {
+                  setRegistrationCreatedAt(effectiveCutoff);
+                  localStorage.setItem('psycalcu_registration_created_at', effectiveCutoff);
+                }
+              }
+            } catch (e) {}
+          }
+          if (!effectiveCutoff) {
+            effectiveCutoff = localStorage.getItem('psycalcu_registration_created_at');
+          }
+
           const cloudSessions = autoCorrectPastSessions(
             cloudData.sessions || [],
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            registrationCreatedAt
+            effectiveCutoff
           );
           setSessions(cloudSessions);
           setSettings(cloudData.settings);
@@ -5338,6 +5464,52 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Period / History Management Bar */}
+              <div className="bg-[#fdfbf7] p-4 sm:p-5 rounded-3xl border border-[#e5e1d8] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#6b705c]/10 flex items-center justify-center text-[#6b705c] shrink-0">
+                    <CalendarIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold tracking-wider uppercase block">
+                      Borç & Muhasebe Başlangıç Tarihi
+                    </span>
+                    <span className="text-sm font-bold text-slate-800">
+                      {debtsData.effectiveAccountingStart 
+                        ? new Date(debtsData.effectiveAccountingStart).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+                        : 'Tüm Geçmiş Seanslar'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebtCutoffDate(debtsData.effectiveAccountingStart || new Date().toISOString().split('T')[0]);
+                      setIsDebtCutoffModalOpen(true);
+                    }}
+                    className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
+                    <span>Başlangıç Tarihini Ayarla</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultCutoff = debtsData.effectiveAccountingStart || new Date().toISOString().split('T')[0];
+                      setDebtCutoffDate(defaultCutoff);
+                      setIsDebtCutoffModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                    title="Seçilen tarihten önceki tüm seansları ödendi kabul edip borç listesinden kaldırır"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Eski Seansları Borçtan Düş</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Debtors List and Search */}
               <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-xs flex flex-col min-h-[400px]">
                 {/* Header and Search */}
@@ -6237,6 +6409,85 @@ export default function App() {
         clientName={debtConfirmState.clientName}
         totalAmount={debtConfirmState.totalAmount}
       />
+
+      {/* Debt Cutoff Date Modal */}
+      <AnimatePresence>
+        {isDebtCutoffModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain" role="dialog">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDebtCutoffModalOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-[#e5e1d8] z-10 space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2 text-[#6b705c]">
+                  <CalendarIcon className="w-5 h-5" />
+                  <h3 className="text-base font-bold text-slate-800">Borç Takip Başlangıç Tarihi</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDebtCutoffModalOpen(false)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Takviminizden gelen eski seansların borç olarak listelenmesini önlemek için bir başlangıç tarihi belirleyin. 
+                Bu tarihten önceki tüm seanslar <strong>kapanmış / ödendi</strong> kabul edilecek ve borç takip listesinden kaldırılacaktır.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 block">Başlangıç Tarihi</label>
+                <input
+                  type="date"
+                  value={debtCutoffDate}
+                  onChange={(e) => setDebtCutoffDate(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium"
+                />
+              </div>
+
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200/60 text-[11px] text-amber-800 leading-normal flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  Örneğin <strong>{debtCutoffDate || 'seçilen tarih'}</strong> öncesindeki seanslar kapatıldığında, şişmiş eski takvim randevuları temizlenir ve sadece gerçek bekleyen seanslarınız kalır.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDebtCutoffModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  disabled={!debtCutoffDate}
+                  onClick={() => {
+                    handleClearDebtsBeforeDate(debtCutoffDate);
+                    setIsDebtCutoffModalOpen(false);
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#6b705c] hover:bg-[#585c4c] rounded-xl shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Önceki Seansları Kapat ve Kaydet</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive Onboarding Tour */}
       <InteractiveTour

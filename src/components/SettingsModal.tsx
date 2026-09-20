@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar } from 'lucide-react';
 import { AppSettings } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -40,6 +40,7 @@ export default function SettingsModal({
   const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search' | 'audit'>(settings.defaultLandingPage || 'agenda');
   const [userRole, setUserRole] = useState<'tenant' | 'owner' | undefined>(settings.userRole);
+  const [accountingStartDate, setAccountingStartDate] = useState(settings.accountingStartDate || '');
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(5);
@@ -70,6 +71,7 @@ export default function SettingsModal({
       setAutoMarkShortEventsAsNonSession(settings.autoMarkShortEventsAsNonSession ?? true);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
       setUserRole(settings.userRole);
+      setAccountingStartDate(settings.accountingStartDate || '');
       setPendingSmartPriceToggle(null);
     }
   }, [isOpen, settings]);
@@ -90,6 +92,7 @@ export default function SettingsModal({
       autoMarkShortEventsAsNonSession,
       defaultLandingPage,
       userRole,
+      accountingStartDate: accountingStartDate ? accountingStartDate : undefined,
     });
     onClose();
   };
@@ -310,6 +313,25 @@ export default function SettingsModal({
             </div>
             {showExplanations && (
               <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            )}
+          </div>
+
+          {/* Accounting & Debt Tracking Start Date */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#cb997e]" />
+              <span>Muhasebe & Borç Takip Başlangıç Tarihi</span>
+            </label>
+            <input
+              type="date"
+              value={accountingStartDate}
+              onChange={(e) => setAccountingStartDate(e.target.value)}
+              className="w-full px-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+            />
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
+                Bu tarihten önceki takvim seansları geçmiş/kapanmış dönem kabul edilir ve borç takip listesinde ödenmemiş olarak birikmez.
+              </p>
             )}
           </div>
 
