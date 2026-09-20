@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt, CreditCard, Banknote, Landmark } from 'lucide-react';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt, CreditCard, Banknote, Landmark, History } from 'lucide-react';
 import { Session, SessionType, PaymentMethod, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -40,6 +40,7 @@ interface SessionModalProps {
   enableKDV?: boolean;
   defaultKdvRate?: number;
   defaultIsKdvInclusive?: boolean;
+  onOpenClientHistory?: (clientName: string) => void;
 }
 
 export default function SessionModal({
@@ -59,7 +60,8 @@ export default function SessionModal({
   prefilledTime = '',
   enableKDV = false,
   defaultKdvRate = 20,
-  defaultIsKdvInclusive = true
+  defaultIsKdvInclusive = true,
+  onOpenClientHistory,
 }: SessionModalProps) {
   useBodyScrollLock(isOpen);
   const { formatMoney } = usePrivacy();
@@ -344,13 +346,26 @@ export default function SessionModal({
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-3.5 flex-1 overflow-y-auto">
           {/* Client Name */}
           <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
-              {type === 'rent-income' 
-                ? 'ÖDEMEYİ YAPAN / TERAPİST' 
-                : type === 'non-session' 
-                  ? 'ETKİNLİK / TOPLANTI BAŞLIĞI' 
-                  : 'DANIŞAN ADI SOYADI'}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
+                {type === 'rent-income' 
+                  ? 'ÖDEMEYİ YAPAN / TERAPİST' 
+                  : type === 'non-session' 
+                    ? 'ETKİNLİK / TOPLANTI BAŞLIĞI' 
+                    : 'DANIŞAN ADI SOYADI'}
+              </label>
+              {onOpenClientHistory && clientName.trim().length > 0 && type !== 'non-session' && (
+                <button
+                  type="button"
+                  onClick={() => onOpenClientHistory(clientName)}
+                  className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200/60"
+                  title="Bu danışanın tüm seans geçmişini ve bakiyesini gör"
+                >
+                  <History className="w-3 h-3 text-emerald-600" />
+                  <span>Seans Geçmişi</span>
+                </button>
+              )}
+            </div>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input

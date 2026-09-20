@@ -46,7 +46,8 @@ import {
   RotateCcw,
   CreditCard,
   Banknote,
-  Landmark
+  Landmark,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -61,6 +62,7 @@ import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
 import { ClientPricingManagerModal } from './components/ClientPricingManagerModal';
+import { ClientHistoryModal } from './components/ClientHistoryModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
@@ -1615,6 +1617,7 @@ export default function App() {
   const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isClientPricingModalOpen, setIsClientPricingModalOpen] = useState(false);
+  const [historyModalClientName, setHistoryModalClientName] = useState<string | null>(null);
   const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>(() => {
     try {
       const cached = localStorage.getItem('psycalcu_snapshots_active');
@@ -4786,9 +4789,25 @@ export default function App() {
                             {/* Client & Description */}
                             <div className="flex-1 w-full">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-sm font-bold text-slate-800">
-                                  {isTenantSession ? `Terapist: ${formatClientName(session.clientName)}` : formatClientName(session.clientName)}
-                                </h4>
+                                {session.type === 'non-session' ? (
+                                  <h4 className="text-sm font-bold text-slate-800">
+                                    {formatClientName(session.clientName)}
+                                  </h4>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setHistoryModalClientName(session.clientName);
+                                    }}
+                                    className="text-sm font-bold text-slate-800 hover:text-emerald-700 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer group text-left"
+                                    title={`${session.clientName} danışanının tüm seans geçmişini ve bakiyesini gör`}
+                                    id={`open-history-agenda-${session.id}`}
+                                  >
+                                    <span>{isTenantSession ? `Terapist: ${formatClientName(session.clientName)}` : formatClientName(session.clientName)}</span>
+                                    <History className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+                                  </button>
+                                )}
                                 
                                 {/* Status badge */}
                                 {isCancelled ? (
@@ -5242,9 +5261,19 @@ export default function App() {
                                       }`}
                                     />
                                   </div>
-                                  <div className="font-bold text-slate-900 mt-1 truncate">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (session.type !== 'non-session') {
+                                        setHistoryModalClientName(session.clientName);
+                                      }
+                                    }}
+                                    className="font-bold text-slate-900 mt-1 truncate block w-full text-left hover:text-emerald-700 hover:underline cursor-pointer"
+                                    title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                                  >
                                     {session.clientName}
-                                  </div>
+                                  </button>
                                   <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
                                     <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
                                     <span className="font-semibold text-slate-700">{formatMoney(session.price)}</span>
@@ -5482,7 +5511,19 @@ export default function App() {
                                     : 'Ödeme Bekliyor'}
                               </span>
                             </div>
-                            <h5 className="font-bold text-slate-900 text-xs mt-1.5">{session.clientName}</h5>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (session.type !== 'non-session') {
+                                  setHistoryModalClientName(session.clientName);
+                                }
+                              }}
+                              className="font-bold text-slate-900 text-xs mt-1.5 block w-full text-left hover:text-emerald-700 hover:underline cursor-pointer"
+                              title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                            >
+                              {session.clientName}
+                            </button>
                           </div>
                           <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
                             <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
@@ -5686,7 +5727,15 @@ export default function App() {
                         <div key={debtor.clientName} className="border border-[#e5e1d8]/80 rounded-2xl p-5 bg-[#fdfbf7]/40 hover:shadow-xs transition-shadow flex flex-col justify-between space-y-4">
                           <div className="flex justify-between items-start">
                             <div>
-                              <h4 className="font-bold text-slate-800 text-base">{debtor.clientName}</h4>
+                              <button
+                                type="button"
+                                onClick={() => setHistoryModalClientName(debtor.clientName)}
+                                className="font-bold text-slate-800 text-base hover:text-emerald-700 hover:underline flex items-center gap-1.5 cursor-pointer text-left group"
+                                title={`${debtor.clientName} danışanının tüm seans geçmişini ve detaylarını gör`}
+                              >
+                                <span>{debtor.clientName}</span>
+                                <History className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 opacity-60 group-hover:opacity-100 transition-opacity" />
+                              </button>
                               <p className="text-xs text-slate-400 mt-0.5">{debtor.sessionCount} adet seans borcu</p>
                             </div>
                             <div className="text-right">
@@ -6346,9 +6395,21 @@ export default function App() {
                             <div key={session.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 hover:bg-[#fdfbf7]/40 rounded-2xl border border-slate-100 gap-4 transition-all">
                               <div className="space-y-1.5 text-left min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-sm text-slate-800">
-                                    {session.clientName}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (session.type !== 'non-session') {
+                                        setHistoryModalClientName(session.clientName);
+                                      }
+                                    }}
+                                    className="font-bold text-sm text-slate-800 hover:text-emerald-700 hover:underline flex items-center gap-1.5 cursor-pointer text-left group"
+                                    title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                                  >
+                                    <span>{session.clientName}</span>
+                                    {session.type !== 'non-session' && (
+                                      <History className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+                                    )}
+                                  </button>
                                   <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
                                     session.type === 'online' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/50' :
                                     isFaceToFace ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/50' :
@@ -6572,6 +6633,7 @@ export default function App() {
         enableKDV={settings.enableKDV}
         defaultKdvRate={settings.defaultKdvRate}
         defaultIsKdvInclusive={settings.defaultIsKdvInclusive}
+        onOpenClientHistory={(name) => setHistoryModalClientName(name)}
       />
 
       {/* FAQ Modal Component */}
@@ -6595,6 +6657,23 @@ export default function App() {
         onConfirm={(method) => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName, method)}
         clientName={debtConfirmState.clientName}
         totalAmount={debtConfirmState.totalAmount}
+      />
+
+      {/* Client Complete History & Ledger Modal */}
+      <ClientHistoryModal
+        isOpen={!!historyModalClientName}
+        onClose={() => setHistoryModalClientName(null)}
+        clientName={historyModalClientName || ''}
+        sessions={sessions}
+        settings={settings}
+        onSelectSession={(session) => {
+          setEditingSession(session);
+          setIsSessionModalOpen(true);
+        }}
+        onJumpToDate={(date) => {
+          setSelectedDate(date);
+          setActiveTab('agenda');
+        }}
       />
 
       {/* Debt Cutoff Date Modal */}
