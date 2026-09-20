@@ -33,6 +33,8 @@ export default function SettingsModal({
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [therapistPhone, setTherapistPhone] = useState(settings.therapistPhone || '');
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
+  const [defaultOnlinePrice, setDefaultOnlinePrice] = useState<number | string>(settings.defaultOnlinePrice ?? settings.defaultSessionPrice);
+  const [defaultFaceToFacePrice, setDefaultFaceToFacePrice] = useState<number | string>(settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice);
   const [defaultBabysitterFee, setDefaultBabysitterFee] = useState<number | string>(settings.defaultBabysitterFee);
   const [defaultOfficeRentFee, setDefaultOfficeRentFee] = useState<number | string>(settings.defaultOfficeRentFee);
   const [enableKDV, setEnableKDV] = useState(settings.enableKDV ?? false);
@@ -64,6 +66,8 @@ export default function SettingsModal({
       setTherapistName(settings.therapistName);
       setTherapistPhone(settings.therapistPhone || '');
       setDefaultSessionPrice(settings.defaultSessionPrice);
+      setDefaultOnlinePrice(settings.defaultOnlinePrice ?? settings.defaultSessionPrice);
+      setDefaultFaceToFacePrice(settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice);
       setDefaultBabysitterFee(settings.defaultBabysitterFee);
       setDefaultOfficeRentFee(settings.defaultOfficeRentFee);
       setEnableKDV(settings.enableKDV ?? false);
@@ -84,7 +88,9 @@ export default function SettingsModal({
       ...settings,
       therapistName,
       therapistPhone,
-      defaultSessionPrice: Number(defaultSessionPrice),
+      defaultSessionPrice: Number(defaultSessionPrice) || Number(defaultOnlinePrice) || 1200,
+      defaultOnlinePrice: Number(defaultOnlinePrice) || Number(defaultSessionPrice) || 1200,
+      defaultFaceToFacePrice: Number(defaultFaceToFacePrice) || Number(defaultSessionPrice) || 1200,
       defaultBabysitterFee: Number(defaultBabysitterFee),
       defaultOfficeRentFee: Number(defaultOfficeRentFee),
       enableKDV,
@@ -277,27 +283,56 @@ export default function SettingsModal({
             )}
           </div>
 
-          {/* Session Price */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Seans Ücreti (₺)</label>
-            <div className="relative">
-              <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
-              <input
-                type="number"
-                required
-                min="0"
-                value={defaultSessionPrice === 0 ? '' : defaultSessionPrice}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setDefaultSessionPrice(val === '' ? '' : Number(val));
-                }}
-                onFocus={(e) => e.target.select()}
-                className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-              />
+          {/* Session Prices (Online & Face-to-face) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Online Seans (₺)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  value={defaultOnlinePrice === 0 ? '' : defaultOnlinePrice}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const num = val === '' ? '' : Number(val);
+                    setDefaultOnlinePrice(num);
+                    if (!defaultSessionPrice || defaultSessionPrice === defaultOnlinePrice) {
+                      setDefaultSessionPrice(num);
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
+              {showExplanations && (
+                <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Online seanslar için başlangıç fiyatı.</p>
+              )}
             </div>
-            {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yeni oluşturulan veya içe aktarılan seanslar için başlangıç fiyatı.</p>
-            )}
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Yüz Yüze Seans (₺)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  value={defaultFaceToFacePrice === 0 ? '' : defaultFaceToFacePrice}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const num = val === '' ? '' : Number(val);
+                    setDefaultFaceToFacePrice(num);
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
+              {showExplanations && (
+                <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüz yüze seanslar için başlangıç fiyatı.</p>
+              )}
+            </div>
           </div>
 
           {/* Babysitter Fee */}

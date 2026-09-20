@@ -28,11 +28,14 @@ interface SessionModalProps {
   sessionToEdit?: Session | null;
   onSave: (session: Session) => void;
   defaultPrice: number;
+  defaultOnlinePrice?: number;
+  defaultFaceToFacePrice?: number;
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number;
   selectedDate: string; // prefill date
   sessions: Session[];
   enableSmartClientPriceMatching?: boolean;
+  clientCustomPrices?: { [normalizedClientName: string]: any };
   userRole?: 'tenant' | 'owner';
   rooms?: Room[];
   prefilledRoomId?: string;
@@ -49,11 +52,14 @@ export default function SessionModal({
   sessionToEdit,
   onSave,
   defaultPrice,
+  defaultOnlinePrice,
+  defaultFaceToFacePrice,
   defaultBabysitterFee,
   defaultOfficeRentFee,
   selectedDate,
   sessions,
   enableSmartClientPriceMatching = false,
+  clientCustomPrices,
   userRole = 'tenant',
   rooms = [],
   prefilledRoomId = '',
@@ -129,13 +135,19 @@ export default function SessionModal({
     if (isOpen && clientName.trim() && type !== 'cancelled' && type !== 'non-session') {
       const isPriceZeroOrNew = !sessionToEdit || (sessionToEdit && (sessionToEdit.price === 0 || !sessionToEdit.price));
       if (isPriceZeroOrNew && !isPriceManuallyEdited) {
+        const typeDefault = type === 'online' 
+          ? (defaultOnlinePrice || defaultPrice) 
+          : (type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
+
         const matchedCosts = getSmartClientCosts(
           clientName,
           date,
           sessions,
-          defaultPrice,
+          typeDefault,
           defaultBabysitterFee,
-          defaultOfficeRentFee
+          defaultOfficeRentFee,
+          clientCustomPrices,
+          type
         );
         if (matchedCosts.price > 0) {
           setPrice(matchedCosts.price);
@@ -159,8 +171,11 @@ export default function SessionModal({
     isOpen,
     sessionToEdit,
     defaultPrice,
+    defaultOnlinePrice,
+    defaultFaceToFacePrice,
     defaultBabysitterFee,
     defaultOfficeRentFee,
+    clientCustomPrices,
     type
   ]);
 
@@ -190,12 +205,14 @@ export default function SessionModal({
         setRoomId(sessionToEdit.roomId || '');
       } else {
         // New session
+        const initialType: SessionType = 'online';
+        const initialPrice = defaultOnlinePrice || defaultPrice;
         setClientName('');
-        setType('online');
+        setType(initialType);
         setDate(selectedDate);
         setTime(prefilledTime || '10:00');
         setDuration(50);
-        setPrice(defaultPrice);
+        setPrice(initialPrice);
         setHasBabysitterFee(true);
         setBabysitterFeeAmount(defaultBabysitterFee);
         setHasOfficeRentFee(false);
@@ -210,7 +227,7 @@ export default function SessionModal({
         setRoomId(prefilledRoomId || '');
       }
     }
-  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime, enableKDV, defaultKdvRate, defaultIsKdvInclusive]);
+  }, [isOpen, sessionToEdit, selectedDate, defaultPrice, defaultOnlinePrice, defaultFaceToFacePrice, defaultBabysitterFee, defaultOfficeRentFee, prefilledRoomId, prefilledTime, enableKDV, defaultKdvRate, defaultIsKdvInclusive]);
 
   const handleTypeChange = (newType: SessionType) => {
     setType(newType);
@@ -233,15 +250,19 @@ export default function SessionModal({
       setHasOfficeRentFee(false);
       setHasKDV(false);
     } else if (newType === 'face-to-face') {
-      if (price === 0) {
-        setPrice(defaultPrice);
+      const typeDefault = defaultFaceToFacePrice || defaultPrice;
+      if (price === 0 || !isPriceManuallyEdited) {
+        const smartCosts = getSmartClientCosts(clientName, date, sessions, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, 'face-to-face');
+        setPrice(smartCosts.price || typeDefault);
       }
       setHasBabysitterFee(true);
       setHasOfficeRentFee(true);
       setHasKDV(enableKDV);
     } else { // online
-      if (price === 0) {
-        setPrice(defaultPrice);
+      const typeDefault = defaultOnlinePrice || defaultPrice;
+      if (price === 0 || !isPriceManuallyEdited) {
+        const smartCosts = getSmartClientCosts(clientName, date, sessions, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, 'online');
+        setPrice(smartCosts.price || typeDefault);
       }
       setHasBabysitterFee(true);
       setHasOfficeRentFee(false);

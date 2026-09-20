@@ -80,7 +80,9 @@ export interface Expense {
 }
 
 export interface ClientPricingRule {
-  price: number;
+  price: number; // general / fallback price
+  onlinePrice?: number; // specific price for online sessions
+  faceToFacePrice?: number; // specific price for face-to-face sessions
   hasBabysitterFee?: boolean;
   babysitterFeeAmount?: number;
   hasOfficeRentFee?: boolean;
@@ -106,6 +108,8 @@ export interface DataBackupSnapshot {
 
 export interface AppSettings {
   defaultSessionPrice: number;
+  defaultOnlinePrice?: number; // per online session default price
+  defaultFaceToFacePrice?: number; // per face-to-face session default price
   defaultBabysitterFee: number;
   defaultOfficeRentFee: number; // per face-to-face session office rent
   enableKDV?: boolean; // whether KDV (VAT) tax feature is enabled (default false)
@@ -182,8 +186,9 @@ export function getNormalizedClientName(name: string): string {
 
 /**
  * Finds the latest valid (non-zero) session price for a given client (matching exact or variations like name 1, name-2).
- * Prioritizes sessions of the same normalized client name that are before or on the given date with price > 0.
- * If none found before the date, looks across all sessions for that client with price > 0.
+ * Prioritizes sessions of the same normalized client name and SAME SESSION TYPE (online vs face-to-face)
+ * that are before or on the given date with price > 0.
+ * If none found before the date, looks across all sessions for that client.
  * If no previous price is found, returns the default price.
  */
 export function getSmartClientPrice(
@@ -191,14 +196,24 @@ export function getSmartClientPrice(
   sessionDate: string,
   sessions: Session[],
   defaultPrice: number,
-  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule },
+  sessionType?: SessionType
 ): number {
   if (!clientName) return defaultPrice;
   const targetNormalized = getNormalizedClientName(clientName);
   
   // Highest priority: Explicit client custom price rule
-  if (clientCustomPrices && clientCustomPrices[targetNormalized] && clientCustomPrices[targetNormalized].price > 0) {
-    return clientCustomPrices[targetNormalized].price;
+  if (clientCustomPrices && clientCustomPrices[targetNormalized]) {
+    const rule = clientCustomPrices[targetNormalized];
+    if (sessionType === 'online' && typeof rule.onlinePrice === 'number' && rule.onlinePrice > 0) {
+      return rule.onlinePrice;
+    }
+    if (sessionType === 'face-to-face' && typeof rule.faceToFacePrice === 'number' && rule.faceToFacePrice > 0) {
+      return rule.faceToFacePrice;
+    }
+    if (rule.price > 0) {
+      return rule.price;
+    }
   }
 
   if (!Array.isArray(sessions)) return defaultPrice;
@@ -214,8 +229,28 @@ export function getSmartClientPrice(
   if (validSessions.length === 0) {
     return defaultPrice;
   }
+
+  // 1. If sessionType is specified (e.g. 'online' or 'face-to-face'), first try matching sessions of the EXACT SAME type!
+  if (sessionType === 'online' || sessionType === 'face-to-face') {
+    const sameTypeSessions = validSessions.filter(s => s.type === sessionType);
+    if (sameTypeSessions.length > 0) {
+      const priorSameType = sameTypeSessions.filter(s => s.date <= sessionDate);
+      if (priorSameType.length > 0) {
+        priorSameType.sort((a, b) => {
+          if (a.date !== b.date) return b.date.localeCompare(a.date);
+          return b.time.localeCompare(a.time);
+        });
+        return priorSameType[0].price;
+      }
+      sameTypeSessions.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.time.localeCompare(a.time);
+      });
+      return sameTypeSessions[0].price;
+    }
+  }
   
-  // 1. First priority: Sessions before or on the given sessionDate
+  // 2. Fallback: Sessions before or on the given sessionDate across all types
   const priorSessions = validSessions.filter(s => s.date <= sessionDate);
   if (priorSessions.length > 0) {
     priorSessions.sort((a, b) => {
@@ -225,7 +260,7 @@ export function getSmartClientPrice(
     return priorSessions[0].price;
   }
   
-  // 2. Second priority: Any known non-zero price for this client (closest to sessionDate)
+  // 3. Fallback: Any known non-zero price for this client (closest to sessionDate)
   validSessions.sort((a, b) => {
     if (a.date !== b.date) return b.date.localeCompare(a.date);
     return b.time.localeCompare(a.time);
@@ -235,7 +270,7 @@ export function getSmartClientPrice(
 
 /**
  * Finds the latest session price, babysitter fee, and office rent fee for a given client.
- * Looks for valid non-cancelled, non-session sessions.
+ * Respects session type (online vs face-to-face).
  */
 export function getSmartClientCosts(
   clientName: string,
@@ -244,12 +279,13 @@ export function getSmartClientCosts(
   defaultPrice: number,
   defaultBabysitterFee: number,
   defaultOfficeRentFee: number,
-  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule },
+  sessionType?: SessionType
 ): { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number } {
   const result = {
     price: defaultPrice,
     babysitterFeeAmount: defaultBabysitterFee,
-    officeRentFeeAmount: defaultOfficeRentFee
+    officeRentFeeAmount: (sessionType === 'face-to-face' || !sessionType) ? defaultOfficeRentFee : 0
   };
   if (!clientName) return result;
   const targetNormalized = getNormalizedClientName(clientName);
@@ -257,13 +293,23 @@ export function getSmartClientCosts(
   // Check if explicit custom pricing exists
   if (clientCustomPrices && clientCustomPrices[targetNormalized]) {
     const rule = clientCustomPrices[targetNormalized];
-    if (rule.price > 0) result.price = rule.price;
+    if (sessionType === 'online' && typeof rule.onlinePrice === 'number' && rule.onlinePrice > 0) {
+      result.price = rule.onlinePrice;
+    } else if (sessionType === 'face-to-face' && typeof rule.faceToFacePrice === 'number' && rule.faceToFacePrice > 0) {
+      result.price = rule.faceToFacePrice;
+    } else if (rule.price > 0) {
+      result.price = rule.price;
+    }
+
     if (typeof rule.babysitterFeeAmount === 'number' && rule.babysitterFeeAmount > 0) {
       result.babysitterFeeAmount = rule.babysitterFeeAmount;
     }
     if (typeof rule.officeRentFeeAmount === 'number' && rule.officeRentFeeAmount > 0) {
       result.officeRentFeeAmount = rule.officeRentFeeAmount;
     }
+  } else {
+    // Calculate smart price using dedicated robust logic
+    result.price = getSmartClientPrice(clientName, sessionDate, sessions, defaultPrice, clientCustomPrices, sessionType);
   }
 
   if (!Array.isArray(sessions)) return result;
@@ -278,9 +324,6 @@ export function getSmartClientCosts(
   if (matchedSessions.length === 0) {
     return result;
   }
-
-  // Calculate smart price using dedicated robust logic
-  result.price = getSmartClientPrice(clientName, sessionDate, sessions, defaultPrice, clientCustomPrices);
 
   // Sort descending by date, then time for cost lookups
   const sortedSessions = [...matchedSessions].sort((a, b) => {
@@ -307,14 +350,16 @@ export function getSmartClientCosts(
 
 /**
  * Reconciles sessions so that any active session in the user's active accounting period (on or after registration / cutoff date)
- * with a 0 TL price automatically inherits the client's established non-zero smart price!
+ * with a 0 TL price automatically inherits the client's established non-zero smart price according to session type!
  */
 export function autoHealSmartClientPrices(
   sessionList: Session[],
   defaultPrice: number,
   defaultBabysitterFee: number,
   defaultOfficeRentFee: number,
-  accountingStartDate?: string | null
+  accountingStartDate?: string | null,
+  defaultOnlinePrice?: number,
+  defaultFaceToFacePrice?: number
 ): Session[] {
   if (!Array.isArray(sessionList)) return [];
 
@@ -327,8 +372,9 @@ export function autoHealSmartClientPrices(
     return sessionList;
   }
 
-  // Group latest known valid prices per normalized client name
-  const clientEstablishedPrices = new Map<string, number>();
+  // Group latest known valid prices per normalized client name AND session type
+  const clientTypeEstablishedPrices = new Map<string, number>();
+  const clientGeneralEstablishedPrices = new Map<string, number>();
 
   // Pass 1: Find all clients with a known non-zero price in active sessions
   sessionList.forEach(s => {
@@ -337,25 +383,35 @@ export function autoHealSmartClientPrices(
     if (typeof s.price === 'number' && s.price > 0 && isWithinAccounting) {
       const normName = getNormalizedClientName(s.clientName);
       if (normName) {
-        // Keep the latest price (or established price)
-        const currentBest = clientEstablishedPrices.get(normName);
-        if (!currentBest) {
-          clientEstablishedPrices.set(normName, s.price);
+        const typeKey = `${normName}_${s.type}`;
+        if (!clientTypeEstablishedPrices.has(typeKey)) {
+          clientTypeEstablishedPrices.set(typeKey, s.price);
+        }
+        if (!clientGeneralEstablishedPrices.has(normName)) {
+          clientGeneralEstablishedPrices.set(normName, s.price);
         }
       }
     }
   });
 
-  // Pass 2: If a session in active accounting period has price === 0, but the client has an established price, heal it!
+  // Pass 2: If a session in active accounting period has price === 0, heal it taking session type into account!
   return sessionList.map(s => {
     if (!s) return s;
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
     if (isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
       if (s.price === 0 || !s.price) {
         const normName = getNormalizedClientName(s.clientName);
-        const establishedPrice = clientEstablishedPrices.get(normName) || getSmartClientPrice(s.clientName, s.date, sessionList, defaultPrice);
+        const typeKey = `${normName}_${s.type}`;
+        const typeDefault = s.type === 'online' 
+          ? (defaultOnlinePrice || defaultPrice) 
+          : (s.type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
+
+        const establishedPrice = clientTypeEstablishedPrices.get(typeKey) 
+          || clientGeneralEstablishedPrices.get(normName) 
+          || getSmartClientPrice(s.clientName, s.date, sessionList, typeDefault, undefined, s.type);
+
         if (establishedPrice && establishedPrice > 0) {
-          const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, establishedPrice, defaultBabysitterFee, defaultOfficeRentFee);
+          const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, establishedPrice, defaultBabysitterFee, defaultOfficeRentFee, undefined, s.type);
           return {
             ...s,
             price: establishedPrice,
@@ -378,6 +434,8 @@ export function bulkApplyClientRule(
   clientName: string,
   rule: {
     price?: number;
+    onlinePrice?: number;
+    faceToFacePrice?: number;
     hasBabysitterFee?: boolean;
     babysitterFeeAmount?: number;
     hasOfficeRentFee?: boolean;
@@ -401,10 +459,18 @@ export function bulkApplyClientRule(
     const updated: Session = { ...s };
     let changed = false;
 
-    if (typeof rule.price === 'number' && rule.price >= 0) {
+    // Type-specific pricing priority:
+    if (s.type === 'online' && typeof rule.onlinePrice === 'number' && rule.onlinePrice >= 0) {
+      updated.price = rule.onlinePrice;
+      changed = true;
+    } else if (s.type === 'face-to-face' && typeof rule.faceToFacePrice === 'number' && rule.faceToFacePrice >= 0) {
+      updated.price = rule.faceToFacePrice;
+      changed = true;
+    } else if (typeof rule.price === 'number' && rule.price >= 0) {
       updated.price = rule.price;
       changed = true;
     }
+
     if (typeof rule.hasBabysitterFee === 'boolean') {
       updated.hasBabysitterFee = rule.hasBabysitterFee;
       if (typeof rule.babysitterFeeAmount === 'number') {

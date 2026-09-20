@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -115,7 +115,9 @@ const autoCorrectPastSessions = (
   defaultPrice = 1200,
   defaultBabysitterFee = 250,
   defaultOfficeRentFee = 200,
-  accountingStartDate?: string | null
+  accountingStartDate?: string | null,
+  defaultOnlinePrice?: number,
+  defaultFaceToFacePrice?: number
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
 
@@ -150,10 +152,14 @@ const autoCorrectPastSessions = (
     let changed = false;
 
     if (s.type !== 'cancelled' && s.type !== 'non-session') {
+      const typeDefault = s.type === 'online'
+        ? (defaultOnlinePrice || defaultPrice)
+        : (s.type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
+
       // Repair price if zero or missing
       if (typeof updated.price !== 'number' || updated.price === 0) {
-        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
-        updated.price = smartCosts.price || defaultPrice || 1200;
+        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, undefined, s.type);
+        updated.price = smartCosts.price || typeDefault || 1200;
         changed = true;
       }
 
@@ -183,11 +189,13 @@ const autoCorrectPastSessions = (
     return s;
   });
 
-  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
+  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
   defaultSessionPrice: 1200,
+  defaultOnlinePrice: 1200,
+  defaultFaceToFacePrice: 1200,
   defaultBabysitterFee: 250,
   defaultOfficeRentFee: 200,
   enableKDV: false,
@@ -218,6 +226,8 @@ export default function App() {
         const parsed = JSON.parse(savedSettings);
         return {
           defaultSessionPrice: parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultSessionPrice,
+          defaultOnlinePrice: parsed.defaultOnlinePrice ?? parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultOnlinePrice,
+          defaultFaceToFacePrice: parsed.defaultFaceToFacePrice ?? parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultFaceToFacePrice,
           defaultBabysitterFee: parsed.defaultBabysitterFee ?? DEFAULT_SETTINGS.defaultBabysitterFee,
           defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
           enableKDV: parsed.enableKDV ?? DEFAULT_SETTINGS.enableKDV,
@@ -2279,13 +2289,14 @@ export default function App() {
         updatedList = [...prev, withTimestamp];
       }
 
-      // If price > 0, propagate this price to future unpriced/zero-priced sessions of this client
+      // If price > 0, propagate this price to future unpriced/zero-priced sessions of this client MATCHING the session type
       if (withTimestamp.price > 0 && withTimestamp.type !== 'cancelled' && withTimestamp.type !== 'non-session') {
         const targetNorm = getNormalizedClientName(withTimestamp.clientName);
         const cutoffDate = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
         updatedList = updatedList.map(s => {
           const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
-          if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
+          // Only propagate to future sessions of the EXACT SAME session type (online -> online, face-to-face -> face-to-face)
+          if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type === withTimestamp.type) {
             if (getNormalizedClientName(s.clientName) === targetNorm && (s.price === 0 || !s.price)) {
               return {
                 ...s,
@@ -2296,9 +2307,41 @@ export default function App() {
           }
           return s;
         });
+
+        // Also update settings.clientCustomPrices to remember the distinct price per session type
+        setSettings(prevSettings => {
+          const existingRule: Partial<ClientPricingRule> = prevSettings.clientCustomPrices?.[targetNorm] || {};
+          const updatedRule: ClientPricingRule = {
+            price: withTimestamp.price,
+            onlinePrice: withTimestamp.type === 'online' ? withTimestamp.price : (existingRule.onlinePrice ?? prevSettings.defaultOnlinePrice ?? withTimestamp.price),
+            faceToFacePrice: withTimestamp.type === 'face-to-face' ? withTimestamp.price : (existingRule.faceToFacePrice ?? prevSettings.defaultFaceToFacePrice ?? withTimestamp.price),
+            hasBabysitterFee: withTimestamp.hasBabysitterFee ?? existingRule.hasBabysitterFee ?? true,
+            babysitterFeeAmount: withTimestamp.babysitterFeeAmount ?? existingRule.babysitterFeeAmount ?? prevSettings.defaultBabysitterFee,
+            hasOfficeRentFee: withTimestamp.hasOfficeRentFee ?? existingRule.hasOfficeRentFee ?? (withTimestamp.type === 'face-to-face'),
+            officeRentFeeAmount: withTimestamp.officeRentFeeAmount ?? existingRule.officeRentFeeAmount ?? prevSettings.defaultOfficeRentFee,
+            updatedAt: Date.now()
+          };
+          const newCustomPrices = {
+            ...(prevSettings.clientCustomPrices || {}),
+            [targetNorm]: updatedRule
+          };
+          const newSettings = { ...prevSettings, clientCustomPrices: newCustomPrices };
+          try {
+            safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
+          } catch (e) {}
+          return newSettings;
+        });
       }
 
-      return autoCorrectPastSessions(updatedList, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, registrationCreatedAt);
+      return autoCorrectPastSessions(
+        updatedList,
+        settings.defaultSessionPrice,
+        settings.defaultBabysitterFee,
+        settings.defaultOfficeRentFee,
+        registrationCreatedAt,
+        settings.defaultOnlinePrice,
+        settings.defaultFaceToFacePrice
+      );
     });
   };
 
@@ -6621,11 +6664,14 @@ export default function App() {
         sessionToEdit={editingSession}
         onSave={handleSaveSession}
         defaultPrice={settings.defaultSessionPrice}
+        defaultOnlinePrice={settings.defaultOnlinePrice}
+        defaultFaceToFacePrice={settings.defaultFaceToFacePrice}
         defaultBabysitterFee={settings.defaultBabysitterFee}
         defaultOfficeRentFee={settings.defaultOfficeRentFee}
         selectedDate={selectedDate}
         sessions={sessions}
         enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
+        clientCustomPrices={settings.clientCustomPrices}
         userRole={settings.userRole}
         rooms={settings.rooms || []}
         prefilledRoomId={prefilledRoomId}

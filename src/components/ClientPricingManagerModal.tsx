@@ -43,6 +43,8 @@ interface ClientRowState {
   onlineCount: number;
   currentPrice: number;
   newPrice: number;
+  newOnlinePrice: number;
+  newFaceToFacePrice: number;
   hasBabysitterFee: boolean;
   babysitterFeeAmount: number;
   hasOfficeRentFee: boolean;
@@ -105,7 +107,9 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
 
       if (!map.has(norm)) {
         const customRule = customPrices[norm];
-        const defaultPrice = customRule?.price ?? (s.price > 0 ? s.price : settings.defaultSessionPrice ?? 1200);
+        const defaultGeneralPrice = customRule?.price ?? (s.price > 0 ? s.price : settings.defaultSessionPrice ?? 1200);
+        const onlineRulePrice = customRule?.onlinePrice ?? customRule?.price ?? settings.defaultOnlinePrice ?? defaultGeneralPrice;
+        const faceRulePrice = customRule?.faceToFacePrice ?? customRule?.price ?? settings.defaultFaceToFacePrice ?? defaultGeneralPrice;
         const hasBabysitter = customRule?.hasBabysitterFee ?? s.hasBabysitterFee ?? true;
         const babysitterAmount = customRule?.babysitterFeeAmount ?? s.babysitterFeeAmount ?? settings.defaultBabysitterFee ?? 250;
         const hasOfficeRent = customRule?.hasOfficeRentFee ?? (s.type === 'face-to-face' ? (s.hasOfficeRentFee ?? true) : false);
@@ -117,8 +121,10 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
           sessionCount: 0,
           faceToFaceCount: 0,
           onlineCount: 0,
-          currentPrice: defaultPrice,
-          newPrice: defaultPrice,
+          currentPrice: defaultGeneralPrice,
+          newPrice: defaultGeneralPrice,
+          newOnlinePrice: onlineRulePrice,
+          newFaceToFacePrice: faceRulePrice,
           hasBabysitterFee: hasBabysitter,
           babysitterFeeAmount: babysitterAmount,
           hasOfficeRentFee: hasOfficeRent,
@@ -318,6 +324,38 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
         [norm]: {
           ...current,
           newPrice: val,
+          newOnlinePrice: val,
+          newFaceToFacePrice: val,
+          isModified: true
+        }
+      };
+    });
+  };
+
+  const handleOnlinePriceChange = (norm: string, val: number) => {
+    setClientStates(prev => {
+      const current = prev[norm] || clientRows.find(r => r.normalizedName === norm);
+      if (!current) return prev;
+      return {
+        ...prev,
+        [norm]: {
+          ...current,
+          newOnlinePrice: val,
+          isModified: true
+        }
+      };
+    });
+  };
+
+  const handleFaceToFacePriceChange = (norm: string, val: number) => {
+    setClientStates(prev => {
+      const current = prev[norm] || clientRows.find(r => r.normalizedName === norm);
+      if (!current) return prev;
+      return {
+        ...prev,
+        [norm]: {
+          ...current,
+          newFaceToFacePrice: val,
           isModified: true
         }
       };
@@ -414,6 +452,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
         // 1. Save rule to settings memory
         updatedCustomPrices[row.normalizedName] = {
           price: row.newPrice,
+          onlinePrice: row.newOnlinePrice,
+          faceToFacePrice: row.newFaceToFacePrice,
           hasBabysitterFee: row.hasBabysitterFee,
           babysitterFeeAmount: row.babysitterFeeAmount,
           hasOfficeRentFee: row.hasOfficeRentFee,
@@ -433,6 +473,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
           row.clientName,
           {
             price: row.newPrice,
+            onlinePrice: row.newOnlinePrice,
+            faceToFacePrice: row.newFaceToFacePrice,
             hasBabysitterFee: row.hasBabysitterFee,
             babysitterFeeAmount: row.babysitterFeeAmount,
             hasOfficeRentFee: row.hasOfficeRentFee,
@@ -606,16 +648,48 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
 
                               {/* Price */}
                               <td className="px-4 py-3.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-slate-400">₺</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="50"
-                                    value={state.newPrice}
-                                    onChange={e => handlePriceChange(row.normalizedName, Number(e.target.value) || 0)}
-                                    className="w-28 px-2.5 py-1.5 text-sm font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                  />
+                                <div className="space-y-1.5">
+                                  {row.onlineCount > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] font-semibold text-sky-700 w-14 shrink-0 flex items-center gap-0.5">🌐 Online:</span>
+                                      <span className="text-xs text-slate-400">₺</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="50"
+                                        value={state.newOnlinePrice}
+                                        onChange={e => handleOnlinePriceChange(row.normalizedName, Number(e.target.value) || 0)}
+                                        className="w-24 px-2 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                      />
+                                    </div>
+                                  )}
+                                  {row.faceToFaceCount > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] font-semibold text-emerald-700 w-14 shrink-0 flex items-center gap-0.5">🏢 Yüzyüze:</span>
+                                      <span className="text-xs text-slate-400">₺</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="50"
+                                        value={state.newFaceToFacePrice}
+                                        onChange={e => handleFaceToFacePriceChange(row.normalizedName, Number(e.target.value) || 0)}
+                                        className="w-24 px-2 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                      />
+                                    </div>
+                                  )}
+                                  {row.onlineCount === 0 && row.faceToFaceCount === 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs text-slate-400">₺</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="50"
+                                        value={state.newPrice}
+                                        onChange={e => handlePriceChange(row.normalizedName, Number(e.target.value) || 0)}
+                                        className="w-24 px-2 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               </td>
 
