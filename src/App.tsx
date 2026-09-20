@@ -104,9 +104,8 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
   </div>
 );
 
-// Auto-correct any session before the user's registration / accounting start date to be 0 TL and marked as 'paid'
-// (because past sessions prior to registration were already accounted for elsewhere),
-// and automatically reconcile smart client prices for all active sessions in the accounting period (on or after registration date)
+// Auto-correct any session before 2026-07-01 to be 0 TL,
+// AND automatically repair/heal any active sessions (from 2026-07-01 onwards) whose price or fees were accidentally zeroed out.
 const autoCorrectPastSessions = (
   sessionList: Session[],
   defaultPrice = 1200,
@@ -115,15 +114,16 @@ const autoCorrectPastSessions = (
   accountingStartDate?: string | null
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
-  const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '2026-07-01';
 
-  // If no cutoff date is provided, fallback to 2026-07-01 (1 Temmuz 2026)
-  if (!cutoffDate) {
-    return sessionList;
-  }
+  // Cutoff date is ONLY for old pre-usage data prior to 2026-07-01
+  const cutoffDate = (accountingStartDate && accountingStartDate < '2026-07-01') 
+    ? accountingStartDate.split('T')[0] 
+    : '2026-07-01';
 
-  const zeroedPast: Session[] = sessionList.map(s => {
+  const healedAndRestored = sessionList.map(s => {
     if (!s) return s;
+
+    // 1. Pre-2026-07-01 historical pre-app data cutoff
     if (s.date && s.date < cutoffDate) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
@@ -134,13 +134,52 @@ const autoCorrectPastSessions = (
           babysitterFeeAmount: 0,
           hasOfficeRentFee: false,
           officeRentFeeAmount: 0,
-          updatedAt: Date.now() // Mark as updated to trigger cloud sync saving
+          updatedAt: Date.now()
         };
       }
+      return s;
+    }
+
+    // 2. FOR ACTIVE SESSIONS (2026-07-01 onwards):
+    // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped!
+    let updated = { ...s };
+    let changed = false;
+
+    if (s.type !== 'cancelled' && s.type !== 'non-session') {
+      // Repair price if zero or missing
+      if (typeof updated.price !== 'number' || updated.price === 0) {
+        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
+        updated.price = smartCosts.price || defaultPrice || 1200;
+        changed = true;
+      }
+
+      // Repair babysitter fee if default is set and fee was stripped
+      if (defaultBabysitterFee > 0) {
+        if (!updated.hasBabysitterFee || typeof updated.babysitterFeeAmount !== 'number' || updated.babysitterFeeAmount === 0) {
+          updated.hasBabysitterFee = true;
+          updated.babysitterFeeAmount = defaultBabysitterFee;
+          changed = true;
+        }
+      }
+
+      // Repair office rent fee if default is set and fee was stripped
+      if (defaultOfficeRentFee > 0 && (updated.type === 'face-to-face' || updated.hasOfficeRentFee)) {
+        if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
+          updated.hasOfficeRentFee = true;
+          updated.officeRentFeeAmount = defaultOfficeRentFee;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      updated.updatedAt = Date.now();
+      return updated;
     }
     return s;
   });
-  return autoHealSmartClientPrices(zeroedPast, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
+
+  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -2830,9 +2869,9 @@ export default function App() {
           replacedOldIds.add(existing.id);
         }
 
-        // Determine if the incoming session is cancelled, non-session, or before the user's registration cutoff
-        const regCutoff = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
-        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff);
+        // Determine if the incoming session is cancelled, non-session, or strictly before 2026-07-01
+        const regCutoff = (registrationCreatedAt && registrationCreatedAt < '2026-07-01') ? registrationCreatedAt.split('T')[0] : '';
+        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff && ns.date < '2026-07-01');
         const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration;
 
         // Auto-match room if not manually edited/set using temp notes
@@ -2850,11 +2889,11 @@ export default function App() {
 
         // Smart price lookup: If existing has a custom price/user edit, preserve it, else smart lookup
         let effectivePrice = existing.price;
-        if (isCancelledOrNonSessionOrBefore && !isAccountingProtected) {
-          effectivePrice = 0;
-        } else if (effectivePrice === 0 || !effectivePrice) {
+        if (effectivePrice === 0 || !effectivePrice) {
           if (!isCancelledOrNonSessionOrBefore) {
-            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
+            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice) || settings.defaultSessionPrice || 1200;
+          } else {
+            effectivePrice = 0;
           }
         }
 
@@ -2875,6 +2914,22 @@ export default function App() {
 
         const effectivePaymentMethod = existing.paymentMethod || ns.paymentMethod;
 
+        // Preserve babysitter fee
+        const effectiveHasBabysitterFee = (ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
+          ? false
+          : (existing.hasBabysitterFee ?? ns.hasBabysitterFee ?? true);
+        const effectiveBabysitterFeeAmount = (effectiveHasBabysitterFee)
+          ? (existing.babysitterFeeAmount || ns.babysitterFeeAmount || settings.defaultBabysitterFee || 250)
+          : 0;
+
+        // Preserve office rent fee
+        const effectiveHasOfficeRentFee = (ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
+          ? false
+          : (existing.hasOfficeRentFee ?? ns.hasOfficeRentFee ?? (resolvedType === 'face-to-face'));
+        const effectiveOfficeRentFeeAmount = (effectiveHasOfficeRentFee)
+          ? (existing.officeRentFeeAmount || ns.officeRentFeeAmount || settings.defaultOfficeRentFee || 200)
+          : 0;
+
         // Merge changed calendar fields (clientName, date, time, duration, type), 
         // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
         const updated: Session = {
@@ -2891,10 +2946,10 @@ export default function App() {
           paymentStatus: effectivePaymentStatus,
           paidAmount: effectivePaidAmount,
           paymentMethod: effectivePaymentMethod,
-          hasBabysitterFee: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? false : (existing.isManuallyEdited ? existing.hasBabysitterFee : ns.hasBabysitterFee),
-          babysitterFeeAmount: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? 0 : (existing.isManuallyEdited ? existing.babysitterFeeAmount : ns.babysitterFeeAmount),
-          hasOfficeRentFee: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? false : (existing.isManuallyEdited ? existing.hasOfficeRentFee : ns.hasOfficeRentFee),
-          officeRentFeeAmount: isCancelledOrNonSessionOrBefore && !isAccountingProtected ? 0 : (existing.isManuallyEdited ? existing.officeRentFeeAmount : ns.officeRentFeeAmount),
+          hasBabysitterFee: effectiveHasBabysitterFee,
+          babysitterFeeAmount: effectiveBabysitterFeeAmount,
+          hasOfficeRentFee: effectiveHasOfficeRentFee,
+          officeRentFeeAmount: effectiveOfficeRentFeeAmount,
           isSyncedFromCalendar: true,
           syncedCalendarType: ns.syncedCalendarType || existing.syncedCalendarType,
           isManuallyEdited: existing.isManuallyEdited

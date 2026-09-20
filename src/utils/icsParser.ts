@@ -560,10 +560,11 @@ export function parseICS(
     }
 
     // Create session for each occurrence
-    const membershipCutoff = membershipDate ? membershipDate.split('T')[0] : '';
+    const membershipCutoff = (membershipDate && membershipDate < '2026-07-01') ? membershipDate.split('T')[0] : '';
 
     for (const occ of occurrences) {
-      const isBeforeRegistration = Boolean(membershipCutoff && occ.dateStr < membershipCutoff);
+      // Only treat events strictly before 2026-07-01 (or explicit pre-2026 membership cutoff) as pre-usage zeroed events
+      const isBeforeRegistration = Boolean(occ.dateStr && occ.dateStr < '2026-07-01' && (membershipCutoff ? occ.dateStr < membershipCutoff : true));
 
       // Determine financial parameters based on session type
       let price = defaultPrice;
