@@ -63,6 +63,7 @@ import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
 import { ClientPricingManagerModal } from './components/ClientPricingManagerModal';
 import { ClientHistoryModal } from './components/ClientHistoryModal';
+import { ClientDetailPage } from './components/ClientDetailPage';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
@@ -1580,7 +1581,7 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit'>(() => {
+  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client'>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_settings');
       if (saved) {
@@ -1602,12 +1603,25 @@ export default function App() {
   });
   const hasManuallyChangedTabRef = useRef(false);
 
-  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | ((prev: any) => any)) => {
+  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client' | ((prev: any) => any)) => {
     hasManuallyChangedTabRef.current = true;
     setActiveTabInternal(tab);
   }, []);
 
   const activeTab = activeTabInternal;
+
+  // Selected client for dedicated ClientDetailPage view
+  const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
+  const [previousTab, setPreviousTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit'>('agenda');
+
+  const handleOpenClientPage = useCallback((name: string) => {
+    if (!name) return;
+    if (activeTabInternal !== 'client') {
+      setPreviousTab(activeTabInternal as any);
+    }
+    setSelectedClientName(name);
+    setActiveTab('client');
+  }, [activeTabInternal, setActiveTab]);
 
   // Set initial active tab when settings are loaded/synced, if user hasn't interacted with tabs yet
   useEffect(() => {
@@ -4847,10 +4861,10 @@ export default function App() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setHistoryModalClientName(session.clientName);
+                                      handleOpenClientPage(session.clientName);
                                     }}
                                     className="text-sm font-bold text-slate-800 hover:text-emerald-700 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer group text-left"
-                                    title={`${session.clientName} danışanının tüm seans geçmişini ve bakiyesini gör`}
+                                    title={`${session.clientName} danışanının detay sayfasını aç`}
                                     id={`open-history-agenda-${session.id}`}
                                   >
                                     <span>{isTenantSession ? `Terapist: ${formatClientName(session.clientName)}` : formatClientName(session.clientName)}</span>
@@ -5315,11 +5329,11 @@ export default function App() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (session.type !== 'non-session') {
-                                        setHistoryModalClientName(session.clientName);
+                                        handleOpenClientPage(session.clientName);
                                       }
                                     }}
                                     className="font-bold text-slate-900 mt-1 truncate block w-full text-left hover:text-emerald-700 hover:underline cursor-pointer"
-                                    title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                                    title={`${session.clientName} danışanının detay sayfasını aç`}
                                   >
                                     {session.clientName}
                                   </button>
@@ -5565,11 +5579,11 @@ export default function App() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (session.type !== 'non-session') {
-                                  setHistoryModalClientName(session.clientName);
+                                  handleOpenClientPage(session.clientName);
                                 }
                               }}
                               className="font-bold text-slate-900 text-xs mt-1.5 block w-full text-left hover:text-emerald-700 hover:underline cursor-pointer"
-                              title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                              title={`${session.clientName} danışanının detay sayfasını aç`}
                             >
                               {session.clientName}
                             </button>
@@ -5778,9 +5792,9 @@ export default function App() {
                             <div>
                               <button
                                 type="button"
-                                onClick={() => setHistoryModalClientName(debtor.clientName)}
+                                onClick={() => handleOpenClientPage(debtor.clientName)}
                                 className="font-bold text-slate-800 text-base hover:text-emerald-700 hover:underline flex items-center gap-1.5 cursor-pointer text-left group"
-                                title={`${debtor.clientName} danışanının tüm seans geçmişini ve detaylarını gör`}
+                                title={`${debtor.clientName} danışanının detay sayfasını aç`}
                               >
                                 <span>{debtor.clientName}</span>
                                 <History className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 opacity-60 group-hover:opacity-100 transition-opacity" />
@@ -5904,6 +5918,7 @@ export default function App() {
                 showToast={showToast}
                 isPrivacyMode={isPrivacyMode}
                 isHideClientNames={isHideClientNames}
+                onOpenClientHistory={(name) => handleOpenClientPage(name)}
               />
             </motion.div>
           )}
@@ -6448,11 +6463,11 @@ export default function App() {
                                     type="button"
                                     onClick={() => {
                                       if (session.type !== 'non-session') {
-                                        setHistoryModalClientName(session.clientName);
+                                        handleOpenClientPage(session.clientName);
                                       }
                                     }}
                                     className="font-bold text-sm text-slate-800 hover:text-emerald-700 hover:underline flex items-center gap-1.5 cursor-pointer text-left group"
-                                    title={`${session.clientName} danışanının tüm seans geçmişini gör`}
+                                    title={`${session.clientName} danışanının detay sayfasını aç`}
                                   >
                                     <span>{session.clientName}</span>
                                     {session.type !== 'non-session' && (
@@ -6573,6 +6588,75 @@ export default function App() {
               <AdminPanel showToast={showToast} />
             </motion.div>
           )}
+
+          {activeTab === 'client' && selectedClientName && (
+            <motion.div
+              key="client-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ClientDetailPage
+                clientName={selectedClientName}
+                sessions={sessions}
+                settings={settings}
+                previousTabName={
+                  previousTab === 'agenda' ? 'Ajanda' :
+                  previousTab === 'debts' ? 'Borç Takibi' :
+                  previousTab === 'search' ? 'Arama' :
+                  previousTab === 'audit' ? 'Denetim' :
+                  previousTab === 'stats' ? 'İstatistik' : 'Geri'
+                }
+                onBack={() => {
+                  setActiveTab(previousTab || 'agenda');
+                }}
+                onSaveSession={handleSaveSession}
+                onDeleteSession={handleDeleteSession}
+                onOpenEditModal={(session) => {
+                  setEditingSession(session);
+                  setIsSessionModalOpen(true);
+                }}
+                onAddNewSession={(name) => {
+                  setEditingSession({
+                    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`,
+                    clientName: name,
+                    date: selectedDate || getTodayLocalDate(),
+                    time: '12:00',
+                    duration: 50,
+                    price: settings.defaultSessionPrice || 1000,
+                    type: 'online',
+                    hasBabysitterFee: false,
+                    babysitterFeeAmount: settings.defaultBabysitterFee || 0,
+                    hasOfficeRentFee: false,
+                    officeRentFeeAmount: settings.defaultOfficeRentFee || 0,
+                    paymentStatus: 'unpaid',
+                    updatedAt: Date.now()
+                  });
+                  setIsSessionModalOpen(true);
+                }}
+                onJumpToDate={(date) => {
+                  setSelectedDate(date);
+                  setActiveTab('agenda');
+                }}
+                onMarkAllPaid={(name) => {
+                  const unpaidAmount = sessions
+                    .filter(s => {
+                      const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
+                      const tNorm = getNormalizedClientName(name).toLocaleLowerCase('tr-TR');
+                      return (sNorm === tNorm || s.clientName === name) && s.paymentStatus !== 'paid' && s.type !== 'cancelled';
+                    })
+                    .reduce((acc, s) => acc + (s.price - (s.paidAmount || 0)), 0);
+
+                  setDebtConfirmState({
+                    isOpen: true,
+                    clientName: name,
+                    totalAmount: unpaidAmount
+                  });
+                }}
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -6685,7 +6769,10 @@ export default function App() {
         enableKDV={settings.enableKDV}
         defaultKdvRate={settings.defaultKdvRate}
         defaultIsKdvInclusive={settings.defaultIsKdvInclusive}
-        onOpenClientHistory={(name) => setHistoryModalClientName(name)}
+        onOpenClientHistory={(name) => {
+          setIsSessionModalOpen(false);
+          handleOpenClientPage(name);
+        }}
       />
 
       {/* FAQ Modal Component */}

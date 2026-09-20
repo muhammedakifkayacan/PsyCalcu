@@ -48,6 +48,7 @@ interface SessionAuditTableProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   isPrivacyMode?: boolean;
   isHideClientNames?: boolean;
+  onOpenClientHistory?: (clientName: string) => void;
 }
 
 type PeriodPreset = 'last30' | 'thisMonth' | 'lastMonth' | 'last7' | 'all' | 'custom';
@@ -94,6 +95,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   showToast,
   isPrivacyMode = false,
   isHideClientNames = false,
+  onOpenClientHistory,
 }) => {
   // Collapsible Filters State (DEFAULT FALSE: hidden on load until user clicks "Filtrele")
   const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(false);
@@ -1395,9 +1397,20 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                       {visibleColumns.clientName && (
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
-                            <span className={`font-semibold ${isNonSession ? 'text-slate-500 italic' : 'text-slate-900'}`}>
-                              {formatClientName(session.clientName)}
-                            </span>
+                            {isNonSession || !onOpenClientHistory ? (
+                              <span className={`font-semibold ${isNonSession ? 'text-slate-500 italic' : 'text-slate-900'}`}>
+                                {formatClientName(session.clientName)}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onOpenClientHistory(session.clientName)}
+                                className="font-semibold text-slate-900 hover:text-emerald-700 hover:underline cursor-pointer text-left transition-colors inline-flex items-center gap-1 group"
+                                title={`${session.clientName} danışanının detay sayfasını aç`}
+                              >
+                                <span>{formatClientName(session.clientName)}</span>
+                              </button>
+                            )}
                             {session.isSyncedFromCalendar && (
                               <span 
                                 className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-mono"
