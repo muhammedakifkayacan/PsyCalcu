@@ -8,7 +8,9 @@ import {
   query, 
   orderBy,
   setDoc,
-  getDocs
+  getDoc,
+  getDocs,
+  arrayUnion
 } from 'firebase/firestore';
 import { db, auth, sendPasswordResetEmail } from '../lib/firebase';
 import { 
@@ -68,6 +70,105 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   const [openSettingsUserId, setOpenSettingsUserId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState<{ [userId: string]: string }>({});
   const [sendingResetUserId, setSendingResetUserId] = useState<string | null>(null);
+
+  // Calendar History Modal State
+  const [calendarHistoryModalUser, setCalendarHistoryModalUser] = useState<Registration | null>(null);
+  const [userCalendarData, setUserCalendarData] = useState<{
+    onlineUrl?: string;
+    faceToFaceUrl?: string;
+    history?: Array<{
+      id?: string;
+      timestamp?: string;
+      onlineCalendarWebcalUrl?: string;
+      faceToFaceCalendarWebcalUrl?: string;
+      ownerCalendars?: any[];
+      therapistName?: string;
+      note?: string;
+    }>;
+    backup?: any;
+  } | null>(null);
+  const [loadingCalendarHistory, setLoadingCalendarHistory] = useState(false);
+  const [manualOnlineUrl, setManualOnlineUrl] = useState('');
+  const [manualFaceUrl, setManualFaceUrl] = useState('');
+  const [manualDateNote, setManualDateNote] = useState('');
+
+  const openCalendarHistoryModal = async (reg: Registration) => {
+    setCalendarHistoryModalUser(reg);
+    setLoadingCalendarHistory(true);
+    setManualDateNote('');
+    try {
+      const userDocRef = doc(db, 'users', reg.userId);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        const settings = data.settings || {};
+        const backup = data.calendarBackup || {};
+        const historyList = data.calendarHistory || [];
+        
+        setUserCalendarData({
+          onlineUrl: settings.onlineCalendarWebcalUrl || backup.onlineCalendarWebcalUrl || '',
+          faceToFaceUrl: settings.faceToFaceCalendarWebcalUrl || backup.faceToFaceCalendarWebcalUrl || '',
+          history: historyList,
+          backup
+        });
+        setManualOnlineUrl(settings.onlineCalendarWebcalUrl || backup.onlineCalendarWebcalUrl || '');
+        setManualFaceUrl(settings.faceToFaceCalendarWebcalUrl || backup.faceToFaceCalendarWebcalUrl || '');
+      } else {
+        setUserCalendarData(null);
+        setManualOnlineUrl('');
+        setManualFaceUrl('');
+      }
+    } catch (err) {
+      console.error("Error loading calendar history:", err);
+      showToast("Takvim geçmişi çekilirken bir sorun oluştu.", "error");
+    } finally {
+      setLoadingCalendarHistory(false);
+    }
+  };
+
+  const handleRestoreLink = async (targetOnlineUrl: string, targetFaceUrl: string, dateLabel: string) => {
+    if (!calendarHistoryModalUser) return;
+    try {
+      const userDocRef = doc(db, 'users', calendarHistoryModalUser.userId);
+      const userSnap = await getDoc(userDocRef);
+      const existingData = userSnap.exists() ? userSnap.data() : {};
+      const existingSettings = existingData.settings || {};
+
+      const updatedSettings = {
+        ...existingSettings,
+        onlineCalendarWebcalUrl: targetOnlineUrl,
+        faceToFaceCalendarWebcalUrl: targetFaceUrl,
+        calendarSyncEnabled: true
+      };
+
+      const newHistoryItem = {
+        id: 'admin_restore_' + Date.now(),
+        timestamp: new Date().toISOString(),
+        onlineCalendarWebcalUrl: targetOnlineUrl,
+        faceToFaceCalendarWebcalUrl: targetFaceUrl,
+        therapistName: existingSettings.therapistName || calendarHistoryModalUser.displayName,
+        note: `Admin Tarafından Geri Yüklendi (${dateLabel || 'Seçilen Tarih'})`
+      };
+
+      await setDoc(userDocRef, {
+        settings: updatedSettings,
+        calendarBackup: newHistoryItem,
+        calendarHistory: arrayUnion(newHistoryItem)
+      }, { merge: true });
+
+      showToast(`${calendarHistoryModalUser.displayName} için takvim linki (${dateLabel || 'Seçilen Tarih'}) başarıyla geri yüklendi!`, 'success');
+      
+      setUserCalendarData(prev => ({
+        ...prev,
+        onlineUrl: targetOnlineUrl,
+        faceToFaceUrl: targetFaceUrl,
+        history: [newHistoryItem, ...(prev?.history || [])]
+      }));
+    } catch (err: any) {
+      console.error("Restore calendar link error:", err);
+      showToast("Link geri yüklenirken bir sorun oluştu.", "error");
+    }
+  };
 
   // Confirmation Modal with countdown state
   const [confirmModal, setConfirmModal] = useState<{
@@ -617,6 +718,16 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                     </button>
                   )}
 
+                  {/* Calendar History Button */}
+                  <button
+                    onClick={() => openCalendarHistoryModal(reg)}
+                    className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    title="Takvim Link Geçmişi ve Geri Yükleme"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                    <span className="hidden md:inline">Takvim Geçmişi</span>
+                  </button>
+
                   {/* Settings Gear Button with Hover Effect */}
                   <button
                     onClick={() => setOpenSettingsUserId(openSettingsUserId === reg.userId ? null : reg.userId)}
@@ -1020,6 +1131,166 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                   >
                     Vazgeç / İptal Et
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Calendar Link History & Restore Modal */}
+      <AnimatePresence>
+        {calendarHistoryModalUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-2xl max-w-xl w-full p-6 sm:p-8 overflow-hidden space-y-6 max-h-[90vh] flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-[#f5f5f0] shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100">
+                    <Calendar className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-lg font-bold text-slate-800">
+                      Takvim Geçmişi & Link Geri Yükle
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      {calendarHistoryModalUser.displayName} ({calendarHistoryModalUser.email})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setCalendarHistoryModalUser(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrollable Content Body */}
+              <div className="overflow-y-auto space-y-6 pr-1 custom-scrollbar shrink">
+                {/* Active Link Status Box */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-[#e5e1d8] space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Şu Anki Aktif Takvim Linkleri
+                  </span>
+                  <div className="text-xs font-mono text-slate-700 break-all bg-white p-2.5 rounded-xl border border-slate-200">
+                    {userCalendarData?.onlineUrl ? (
+                      <span className="text-emerald-700 font-medium">🔗 Online: {userCalendarData.onlineUrl}</span>
+                    ) : (
+                      <span className="text-amber-600 italic">⚠️ Aktif online takvim linki atanmamış</span>
+                    )}
+                  </div>
+                  {userCalendarData?.faceToFaceUrl && (
+                    <div className="text-xs font-mono text-slate-700 break-all bg-white p-2.5 rounded-xl border border-slate-200">
+                      <span className="text-blue-700 font-medium">📍 Yüz Yüze: {userCalendarData.faceToFaceUrl}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* History List Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                      Geçmiş Kayıtlı Linkler ({userCalendarData?.history?.length || 0})
+                    </h4>
+                  </div>
+
+                  {loadingCalendarHistory ? (
+                    <div className="py-8 text-center text-xs text-slate-400 italic flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                      Takvim geçmişi yükleniyor...
+                    </div>
+                  ) : !userCalendarData?.history || userCalendarData.history.length === 0 ? (
+                    <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-100 text-xs text-amber-800 text-center">
+                      Henüz geçmiş bir takvim linki kaydı bulunamadı. Aşağıdaki alandan doğrudan manuel link ekleyebilir veya geri yükleyebilirsiniz.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                      {userCalendarData.history.map((hist, idx) => {
+                        const dateFormatted = hist.timestamp 
+                          ? new Date(hist.timestamp).toLocaleString('tr-TR', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : `Kayıt #${idx + 1}`;
+                        
+                        return (
+                          <div 
+                            key={hist.id || idx}
+                            className="bg-white p-3.5 rounded-2xl border border-[#e5e1d8] hover:border-indigo-200 transition-all space-y-2"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                                📅 {dateFormatted}
+                              </span>
+                              {hist.note && (
+                                <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+                                  {hist.note}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <p className="text-[11px] font-mono text-slate-600 break-all bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              {hist.onlineCalendarWebcalUrl || hist.faceToFaceCalendarWebcalUrl || 'Link Yok'}
+                            </p>
+
+                            <div className="flex justify-end pt-1">
+                              <button
+                                onClick={() => handleRestoreLink(
+                                  hist.onlineCalendarWebcalUrl || '', 
+                                  hist.faceToFaceCalendarWebcalUrl || '',
+                                  dateFormatted
+                                )}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                Bu Tarihteki Linki Geri Yükle
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual Link Restore Entry Form */}
+                <div className="pt-4 border-t border-[#f5f5f0] space-y-3">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    ✏️ Manuel Link Geri Yükleme / Güncelleme
+                  </h4>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Geri yüklenecek takvim webcal/https URL adresi..."
+                      value={manualOnlineUrl}
+                      onChange={(e) => setManualOnlineUrl(e.target.value)}
+                      className="w-full text-xs font-mono px-3.5 py-2.5 rounded-xl border border-[#e5e1d8] bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="İsteğe bağlı tarih / açıklama notu (örn: 15 Temmuz 2026 orijinal linki)..."
+                      value={manualDateNote}
+                      onChange={(e) => setManualDateNote(e.target.value)}
+                      className="w-full text-xs px-3.5 py-2 rounded-xl border border-[#e5e1d8] bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <button
+                      disabled={!manualOnlineUrl.trim()}
+                      onClick={() => handleRestoreLink(manualOnlineUrl.trim(), manualFaceUrl.trim(), manualDateNote.trim() || 'Manuel Admin Girişi')}
+                      className="w-full py-2.5 bg-[#6b705c] hover:bg-[#585c4c] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+                    >
+                      🚀 Girilen Linki Kullanıcının Hesabına Geri Yükle & Kaydet
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>

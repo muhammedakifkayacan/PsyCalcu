@@ -5758,7 +5758,15 @@ export default function App() {
                   defaultBabysitterFee={settings.defaultBabysitterFee}
                   defaultOfficeRentFee={settings.defaultOfficeRentFee}
                   settings={settings}
-                  onSaveSettings={(updated) => setSettings(updated)}
+                  onSaveSettings={(updated) => {
+                    setSettings(updated);
+                    if (user) {
+                      safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
+                      saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+                        console.error("Error saving updated settings from CalendarSyncGuide:", err);
+                      });
+                    }
+                  }}
                   showToast={showToast}
                   sessions={sessions}
                   onDeleteSessions={(ids) => {
@@ -6392,12 +6400,18 @@ export default function App() {
         settings={settings}
         onSave={async (updated) => {
           setSettings(updated);
-          if (user && updated.userRole !== settings.userRole) {
-            try {
-              const regRef = doc(db, 'registrations', user.uid);
-              await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
-            } catch (err) {
-              console.error("Error setting role in registrations:", err);
+          if (user) {
+            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
+            saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+              console.error("Error saving updated settings from SettingsModal:", err);
+            });
+            if (updated.userRole !== settings.userRole) {
+              try {
+                const regRef = doc(db, 'registrations', user.uid);
+                await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
+              } catch (err) {
+                console.error("Error setting role in registrations:", err);
+              }
             }
           }
         }}

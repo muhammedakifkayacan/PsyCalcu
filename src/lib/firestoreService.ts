@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, setDoc, getDoc, disableNetwork } from 'firebase/firestore';
+import { doc, setDoc, getDoc, disableNetwork, arrayUnion } from 'firebase/firestore';
 import { Session, AppSettings, Expense } from '../types';
 
 interface UserData {
@@ -46,9 +46,26 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
+      const settings = (data.settings || {}) as AppSettings;
+      const calendarBackup = data.calendarBackup || {};
+
+      // Auto-recover calendar URLs and therapist details from backup if missing in settings
+      if (!settings.onlineCalendarWebcalUrl && calendarBackup.onlineCalendarWebcalUrl) {
+        settings.onlineCalendarWebcalUrl = calendarBackup.onlineCalendarWebcalUrl;
+      }
+      if (!settings.faceToFaceCalendarWebcalUrl && calendarBackup.faceToFaceCalendarWebcalUrl) {
+        settings.faceToFaceCalendarWebcalUrl = calendarBackup.faceToFaceCalendarWebcalUrl;
+      }
+      if ((!settings.ownerCalendars || settings.ownerCalendars.length === 0) && calendarBackup.ownerCalendars && calendarBackup.ownerCalendars.length > 0) {
+        settings.ownerCalendars = calendarBackup.ownerCalendars;
+      }
+      if ((!settings.therapistName || settings.therapistName === 'Dr. Melis Kaya') && calendarBackup.therapistName) {
+        settings.therapistName = calendarBackup.therapistName;
+      }
+
       return {
-        settings: data.settings as AppSettings,
-        sessions: data.sessions as Session[],
+        settings,
+        sessions: (data.sessions as Session[]) || [],
         expenses: (data.expenses as Expense[]) || []
       };
     }
@@ -81,7 +98,28 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
       return s;
     });
     const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
-    await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions, expenses: cleanedExpenses }, { merge: true });
+    
+    const payload: any = { 
+      settings: cleanedSettings, 
+      sessions: cleanedSessions, 
+      expenses: cleanedExpenses 
+    };
+
+    // Keep a persistent calendarBackup and history log inside the user document whenever URLs exist
+    if (settings?.onlineCalendarWebcalUrl || settings?.faceToFaceCalendarWebcalUrl || (settings?.ownerCalendars && settings.ownerCalendars.length > 0)) {
+      const historyRecord = {
+        id: 'link_' + Date.now(),
+        timestamp: new Date().toISOString(),
+        onlineCalendarWebcalUrl: settings.onlineCalendarWebcalUrl || '',
+        faceToFaceCalendarWebcalUrl: settings.faceToFaceCalendarWebcalUrl || '',
+        ownerCalendars: settings.ownerCalendars || [],
+        therapistName: settings.therapistName || ''
+      };
+      payload.calendarBackup = historyRecord;
+      payload.calendarHistory = arrayUnion(historyRecord);
+    }
+
+    await setDoc(docRef, payload, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
     try {
