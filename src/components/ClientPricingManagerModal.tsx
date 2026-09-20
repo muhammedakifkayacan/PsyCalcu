@@ -20,7 +20,7 @@ import {
   Layers,
   Check
 } from 'lucide-react';
-import { Session, AppSettings, Expense, DataBackupSnapshot, ClientPricingRule, getNormalizedClientName, bulkApplyClientRule } from '../types';
+import { Session, AppSettings, Expense, DataBackupSnapshot, ClientPricingRule, getNormalizedClientName, bulkApplyClientRule, findClientCustomRule } from '../types';
 
 interface ClientPricingManagerModalProps {
   isOpen: boolean;
@@ -107,7 +107,7 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
       const key = norm.toLocaleLowerCase('tr-TR');
 
       if (!map.has(key)) {
-        const customRule = customPrices[norm] || customPrices[key];
+        const customRule = findClientCustomRule(customPrices, norm) || customPrices[norm] || customPrices[key];
         const defaultGeneralPrice = customRule?.price ?? (s.price > 0 ? s.price : settings.defaultSessionPrice ?? 1200);
         const onlineRulePrice = customRule?.onlinePrice ?? customRule?.price ?? settings.defaultOnlinePrice ?? defaultGeneralPrice;
         const faceRulePrice = customRule?.faceToFacePrice ?? customRule?.price ?? settings.defaultFaceToFacePrice ?? defaultGeneralPrice;

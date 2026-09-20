@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, areClientNamesEquivalent, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, areClientNamesEquivalent, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule, findClientCustomRule } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -118,7 +118,8 @@ const autoCorrectPastSessions = (
   defaultOfficeRentFee = 200,
   accountingStartDate?: string | null,
   defaultOnlinePrice?: number,
-  defaultFaceToFacePrice?: number
+  defaultFaceToFacePrice?: number,
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
 
@@ -130,8 +131,8 @@ const autoCorrectPastSessions = (
   const healedAndRestored = sessionList.map(s => {
     if (!s) return s;
 
-    // 1. Pre-2026-07-01 historical pre-app data cutoff
-    if (s.date && s.date < cutoffDate) {
+    // 1. Pre-2026-07-01 historical pre-app data cutoff (preserve if manually edited by user)
+    if (s.date && s.date < cutoffDate && !s.isManuallyEdited) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
           ...s,
@@ -157,27 +158,42 @@ const autoCorrectPastSessions = (
         ? (defaultOnlinePrice || defaultPrice)
         : (s.type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
 
+      // Check client custom rule
+      const customRule = findClientCustomRule(clientCustomPrices, s.clientName);
+
       // Repair price if zero or missing
       if (typeof updated.price !== 'number' || updated.price === 0) {
-        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, undefined, s.type);
+        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, s.type);
         updated.price = smartCosts.price || typeDefault || 1200;
         changed = true;
       }
 
-      // Repair babysitter fee if default is set and fee was stripped
-      if (defaultBabysitterFee > 0) {
+      // Repair babysitter fee
+      if (customRule && customRule.hasBabysitterFee === false) {
+        if (updated.hasBabysitterFee || updated.babysitterFeeAmount > 0) {
+          updated.hasBabysitterFee = false;
+          updated.babysitterFeeAmount = 0;
+          changed = true;
+        }
+      } else if (defaultBabysitterFee > 0 && !updated.isManuallyEdited) {
         if (!updated.hasBabysitterFee || typeof updated.babysitterFeeAmount !== 'number' || updated.babysitterFeeAmount === 0) {
           updated.hasBabysitterFee = true;
-          updated.babysitterFeeAmount = defaultBabysitterFee;
+          updated.babysitterFeeAmount = customRule?.babysitterFeeAmount ?? defaultBabysitterFee;
           changed = true;
         }
       }
 
-      // Repair office rent fee if default is set and fee was stripped
-      if (defaultOfficeRentFee > 0 && (updated.type === 'face-to-face' || updated.hasOfficeRentFee)) {
+      // Repair office rent fee
+      if (customRule && customRule.hasOfficeRentFee === false && updated.type !== 'face-to-face') {
+        if (updated.hasOfficeRentFee || updated.officeRentFeeAmount > 0) {
+          updated.hasOfficeRentFee = false;
+          updated.officeRentFeeAmount = 0;
+          changed = true;
+        }
+      } else if (defaultOfficeRentFee > 0 && (updated.type === 'face-to-face' || updated.hasOfficeRentFee) && !updated.isManuallyEdited) {
         if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
           updated.hasOfficeRentFee = true;
-          updated.officeRentFeeAmount = defaultOfficeRentFee;
+          updated.officeRentFeeAmount = customRule?.officeRentFeeAmount ?? defaultOfficeRentFee;
           changed = true;
         }
       }
@@ -190,7 +206,7 @@ const autoCorrectPastSessions = (
     return s;
   });
 
-  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice);
+  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -953,7 +969,10 @@ export default function App() {
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            effectiveCutoff
+            effectiveCutoff,
+            cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
+            cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
+            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
           );
           
           if (shouldMigrate) {
@@ -989,7 +1008,10 @@ export default function App() {
               cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
               cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
               cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-              effectiveCutoff
+              effectiveCutoff,
+              cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
+              cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
+              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
             );
             
             setSessions(finalSessions);
@@ -1074,7 +1096,10 @@ export default function App() {
             settingsToSave.defaultSessionPrice,
             settingsToSave.defaultBabysitterFee,
             settingsToSave.defaultOfficeRentFee,
-            effectiveCutoff
+            effectiveCutoff,
+            settingsToSave.defaultOnlinePrice,
+            settingsToSave.defaultFaceToFacePrice,
+            settingsToSave.clientCustomPrices
           );
           
           let hasRealLocalSessions = false;
@@ -2982,7 +3007,7 @@ export default function App() {
         let effectivePrice = existing.price;
         if (effectivePrice === 0 || !effectivePrice) {
           if (!isCancelledOrNonSessionOrBefore) {
-            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice) || settings.defaultSessionPrice || 1200;
+            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice, settings.clientCustomPrices, ns.type) || settings.defaultSessionPrice || 1200;
           } else {
             effectivePrice = 0;
           }
@@ -3070,7 +3095,9 @@ export default function App() {
             sessions,
             settings.defaultSessionPrice,
             settings.defaultBabysitterFee,
-            settings.defaultOfficeRentFee
+            settings.defaultOfficeRentFee,
+            settings.clientCustomPrices,
+            ns.type
           );
           finalPrice = matchedCosts.price;
           if (ns.hasBabysitterFee) {
@@ -3158,7 +3185,16 @@ export default function App() {
 
         const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
-        return autoCorrectPastSessions(Array.from(prevMap.values()), settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, registrationCreatedAt);
+        return autoCorrectPastSessions(
+          Array.from(prevMap.values()),
+          settings.defaultSessionPrice,
+          settings.defaultBabysitterFee,
+          settings.defaultOfficeRentFee,
+          registrationCreatedAt,
+          settings.defaultOnlinePrice,
+          settings.defaultFaceToFacePrice,
+          settings.clientCustomPrices
+        );
       });
     }
 
@@ -3411,7 +3447,10 @@ export default function App() {
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            effectiveCutoff
+            effectiveCutoff,
+            cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
+            cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
+            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
           );
           setSessions(cloudSessions);
           setSettings(cloudData.settings);

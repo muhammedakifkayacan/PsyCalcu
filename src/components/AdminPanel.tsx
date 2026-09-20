@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClientPricingManagerModal } from './ClientPricingManagerModal';
-import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
+import { Session, AppSettings, Expense, DataBackupSnapshot, getSmartClientCosts } from '../types';
 import { saveUserData } from '../lib/firestoreService';
 
 interface Registration {
@@ -203,17 +203,18 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
         
         let changed = false;
         const updated: Session = { ...s };
+        const smartCosts = getSmartClientCosts(s.clientName, s.date, existingSessions, defPrice, defBaby, defRent, settings.clientCustomPrices, s.type);
 
         // Repair price
         if (!updated.price || Number(updated.price) <= 0) {
-          updated.price = defPrice;
+          updated.price = smartCosts.price || defPrice;
           changed = true;
         }
 
         // Repair babysitter
         if (!updated.hasBabysitterFee || !updated.babysitterFeeAmount || Number(updated.babysitterFeeAmount) <= 0) {
           updated.hasBabysitterFee = true;
-          updated.babysitterFeeAmount = defBaby;
+          updated.babysitterFeeAmount = smartCosts.babysitterFeeAmount || defBaby;
           changed = true;
         }
 
@@ -221,7 +222,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
         if (updated.type === 'face-to-face') {
           if (!updated.hasOfficeRentFee || !updated.officeRentFeeAmount || Number(updated.officeRentFeeAmount) <= 0) {
             updated.hasOfficeRentFee = true;
-            updated.officeRentFeeAmount = defRent;
+            updated.officeRentFeeAmount = smartCosts.officeRentFeeAmount || defRent;
             changed = true;
           }
         }
