@@ -2474,8 +2474,9 @@ export default function App() {
     let clearedCount = 0;
     const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; price: number; paidAmount?: number }> = {};
 
+    let updatedSessionsList: Session[] = [];
     setSessions(prev => {
-      return prev.map(s => {
+      const updated = prev.map(s => {
         if (!s) return s;
         if (s.date && s.date < cutoffDateStr && (s.paymentStatus !== 'paid' || s.price !== 0)) {
           clearedCount++;
@@ -2499,6 +2500,8 @@ export default function App() {
         }
         return s;
       });
+      updatedSessionsList = updated;
+      return updated;
     });
 
     const newSettings = { ...settings, accountingStartDate: cutoffDateStr };
@@ -2506,6 +2509,19 @@ export default function App() {
     if (user) {
       const userSettingsKey = `psycalcu_settings_${user.uid}`;
       localStorage.setItem(userSettingsKey, JSON.stringify(newSettings));
+      const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+      localStorage.setItem(userSessionsKey, JSON.stringify(updatedSessionsList));
+
+      // Direct persist to Firestore
+      saveUserData(user.uid, newSettings, updatedSessionsList, expenses).then(() => {
+        lastSavedRef.current = {
+          settings: JSON.stringify(newSettings),
+          sessions: JSON.stringify(updatedSessionsList),
+          expenses: JSON.stringify(expenses)
+        };
+      }).catch(err => {
+        console.error("Direct save to Firestore in handleClearDebtsBeforeDate:", err);
+      });
     }
 
     const undoFn = () => {
