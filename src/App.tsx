@@ -79,6 +79,7 @@ import { HeaderNavigation } from './components/HeaderNavigation';
 import PullToRefresh from './components/PullToRefresh';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
+import { safeStorage, pruneStorage } from './utils/storage';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -97,7 +98,7 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
     </div>
     <div className="pt-3 border-t border-slate-100 w-full text-center">
       <p className="text-xs text-slate-400 font-medium">
-        Bu özellik yöneticiniz tarafından geçici olarak sınırlandırılmıştır. Bilgi almak veya aktifleştirmek için lütfen <span className="font-semibold text-[#6b705c]">muhammedakifkayacan@gmail.com</span> ile iletişime geçin.
+        Bu özellik yöneticiniz tarafından geçici olarak sınırlandırılmıştır. Bilgi almak veya aktifleştirmek için lütfen <span className="font-semibold text-[#6b705c]">sistem yöneticisi</span> ile iletişime geçin.
       </p>
     </div>
   </div>
@@ -114,11 +115,9 @@ const autoCorrectPastSessions = (
   accountingStartDate?: string | null
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
-  const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+  const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '2026-07-01';
 
-  // CRITICAL SAFETY GUARD:
-  // If no cutoff date is known, DO NOT alter sessions or blindly heal prices!
-  // This prevents unauthenticated or initial loads from corrupting historical zeroed sessions.
+  // If no cutoff date is provided, fallback to 2026-07-01 (1 Temmuz 2026)
   if (!cutoffDate) {
     return sessionList;
   }
@@ -168,10 +167,9 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export default function App() {
   const { formatMoney, formatClientName, isPrivacyMode, isHideClientNames } = usePrivacy();
-  // Load settings from localStorage or set defaults
+  // Load settings from safeStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('psycalcu_sessions'); // note: settings key below
-    const savedSettings = localStorage.getItem('psycalcu_settings');
+    const savedSettings = safeStorage.getItem('psycalcu_settings');
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
@@ -201,9 +199,9 @@ export default function App() {
     return DEFAULT_SETTINGS;
   });
 
-  // Load sessions from localStorage or use empty array
+  // Load sessions from safeStorage or use empty array
   const [sessions, setSessions] = useState<Session[]>(() => {
-    const saved = localStorage.getItem('psycalcu_sessions');
+    const saved = safeStorage.getItem('psycalcu_sessions');
     if (saved) {
       try {
         return autoCorrectPastSessions(JSON.parse(saved));
@@ -212,9 +210,9 @@ export default function App() {
     return [];
   });
 
-  // Load clinic expenses from localStorage or use empty array
+  // Load clinic expenses from safeStorage or use empty array
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem('psycalcu_expenses');
+    const saved = safeStorage.getItem('psycalcu_expenses');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -282,12 +280,14 @@ export default function App() {
 
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
+  const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>(() => {
+    return (safeStorage.getItem('psycalcu_cached_reg_status') as any) || 'checking';
+  });
   const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(() => {
-    return localStorage.getItem('psycalcu_registration_created_at') || null;
+    return safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z';
   });
   const [isDebtCutoffModalOpen, setIsDebtCutoffModalOpen] = useState(false);
-  const [debtCutoffDate, setDebtCutoffDate] = useState<string>('');
+  const [debtCutoffDate, setDebtCutoffDate] = useState<string>('2026-07-01');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [maxSessionsLimit, setMaxSessionsLimit] = useState<string | number>('unlimited');
   const [featuresAIAllowed, setFeaturesAIAllowed] = useState<boolean>(true);
@@ -327,21 +327,21 @@ export default function App() {
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string; expenses: string }>((() => {
-    const savedSessions = localStorage.getItem('psycalcu_sessions');
+    const savedSessions = safeStorage.getItem('psycalcu_sessions');
     let initialSessionsStr = '[]';
     if (savedSessions) {
       try {
         initialSessionsStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions)));
       } catch (e) {}
     }
-    const savedSettingsStr = localStorage.getItem('psycalcu_settings') || '';
-    const savedExpensesStr = localStorage.getItem('psycalcu_expenses') || '[]';
+    const savedSettingsStr = safeStorage.getItem('psycalcu_settings') || '';
+    const savedExpensesStr = safeStorage.getItem('psycalcu_expenses') || '[]';
     return { settings: savedSettingsStr, sessions: initialSessionsStr, expenses: savedExpensesStr };
   })());
 
   // Notification States
   const [localNotifications, setLocalNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('psycalcu_local_notifications');
+    const saved = safeStorage.getItem('psycalcu_local_notifications');
     try {
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
@@ -351,7 +351,7 @@ export default function App() {
 
   const [announcements, setAnnouncements] = useState<AppNotification[]>([]);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('psycalcu_read_announcement_ids');
+    const saved = safeStorage.getItem('psycalcu_read_announcement_ids');
     try {
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
@@ -634,9 +634,9 @@ export default function App() {
         setIsCloudSaving(false);
         setIsAuthSyncing(false);
         activeSavesCountRef.current = 0;
-        // Load local storage if they log out
-        const savedSessions = localStorage.getItem('psycalcu_sessions');
-        const savedSettings = localStorage.getItem('psycalcu_settings');
+        // Load safe storage if they log out
+        const savedSessions = safeStorage.getItem('psycalcu_sessions');
+        const savedSettings = safeStorage.getItem('psycalcu_settings');
         if (savedSessions) {
           try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
         } else {
@@ -649,8 +649,8 @@ export default function App() {
         // Immediately load user-specific cached data for a seamless instant UI transition on different devices
         const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
         const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
-        const savedSessions = localStorage.getItem(userSessionsKey);
-        const savedSettings = localStorage.getItem(userSettingsKey);
+        const savedSessions = safeStorage.getItem(userSessionsKey);
+        const savedSettings = safeStorage.getItem(userSettingsKey);
         
         if (savedSessions) {
           try { 
@@ -688,7 +688,7 @@ export default function App() {
         
         // Also initialize lastSavedRef to prevent immediate auto-saving before sync
         const userExpensesKey = `psycalcu_expenses_${currentUser.uid}`;
-        const savedExpenses = localStorage.getItem(userExpensesKey);
+        const savedExpenses = safeStorage.getItem(userExpensesKey);
         lastSavedRef.current = {
           settings: savedSettings || '',
           sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]',
@@ -717,7 +717,12 @@ export default function App() {
       setRegistrationStatus('approved');
       setRegistrationError(null);
     } else {
-      setRegistrationStatus('checking');
+      const cachedStatus = safeStorage.getItem(`psycalcu_cached_reg_${user.uid}`);
+      if (cachedStatus === 'approved') {
+        setRegistrationStatus('approved');
+      } else {
+        setRegistrationStatus('checking');
+      }
       setRegistrationError(null);
     }
     
@@ -728,7 +733,14 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
-            setRegistrationStatus(data.status || 'pending');
+            const nextStatus = data.status || 'pending';
+            setRegistrationStatus(nextStatus);
+            safeStorage.setItem(`psycalcu_cached_reg_${user.uid}`, nextStatus, user.uid);
+            if (nextStatus === 'approved') {
+              safeStorage.setItem('psycalcu_cached_reg_status', 'approved', user.uid);
+            } else {
+              safeStorage.removeItem('psycalcu_cached_reg_status');
+            }
           }
           setMaxSessionsLimit(data.maxSessionsLimit ?? 'unlimited');
           setFeaturesAIAllowed(data.featuresAIAllowed !== false);
@@ -748,10 +760,10 @@ export default function App() {
                 userRole: data.userRole as 'tenant' | 'owner',
                 ownerCalendars: data.userRole === 'owner' ? (prev.ownerCalendars ?? []) : undefined
               };
-              // Save to localStorage
+              // Save to safeStorage
               const userSettingsKey = `psycalcu_settings_${user.uid}`;
-              localStorage.setItem(userSettingsKey, JSON.stringify(updated));
-              localStorage.setItem('psycalcu_settings', JSON.stringify(updated));
+              safeStorage.setItem(userSettingsKey, JSON.stringify(updated), user.uid);
+              safeStorage.setItem('psycalcu_settings', JSON.stringify(updated), user.uid);
               
               // Save to Firestore
               saveUserData(user.uid, updated, sessionsRef.current || []).catch(err => {
@@ -771,7 +783,7 @@ export default function App() {
           }
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
-            localStorage.setItem('psycalcu_registration_created_at', regCreated);
+            safeStorage.setItem('psycalcu_registration_created_at', regCreated, user.uid);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, regCreated));
           }
           
@@ -791,7 +803,7 @@ export default function App() {
               setRegistrationStatus('pending');
             }
             setRegistrationCreatedAt(newReg.createdAt);
-            localStorage.setItem('psycalcu_registration_created_at', newReg.createdAt);
+            safeStorage.setItem('psycalcu_registration_created_at', newReg.createdAt, user.uid);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, newReg.createdAt));
             setRegistrationError(null);
 
@@ -842,7 +854,7 @@ export default function App() {
         const cloudData = await fetchUserData(user.uid);
         
         // Check if there was an explicit request to migrate anonymous local data
-        const shouldMigrate = localStorage.getItem('psycalcu_should_migrate') === 'true';
+        const shouldMigrate = safeStorage.getItem('psycalcu_should_migrate') === 'true';
         
         if (cloudData) {
           // Resolve effective accounting / registration cutoff date before correcting sessions
@@ -855,7 +867,7 @@ export default function App() {
                 effectiveCutoff = regSnap.data()?.createdAt || null;
                 if (effectiveCutoff) {
                   setRegistrationCreatedAt(effectiveCutoff);
-                  localStorage.setItem('psycalcu_registration_created_at', effectiveCutoff);
+                  safeStorage.setItem('psycalcu_registration_created_at', effectiveCutoff, user.uid);
                 }
               }
             } catch (e) {
@@ -863,7 +875,7 @@ export default function App() {
             }
           }
           if (!effectiveCutoff) {
-            effectiveCutoff = localStorage.getItem('psycalcu_registration_created_at');
+            effectiveCutoff = safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z';
           }
 
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
@@ -878,7 +890,7 @@ export default function App() {
           if (shouldMigrate) {
             // User explicitly requested to migrate anonymous data into their existing cloud account
             let localSessions: Session[] = [];
-            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+            const savedSessionsStr = safeStorage.getItem('psycalcu_sessions');
             if (savedSessionsStr) {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
@@ -922,9 +934,9 @@ export default function App() {
             };
 
             // Wipe anonymous local storage
-            localStorage.removeItem('psycalcu_sessions');
-            localStorage.removeItem('psycalcu_settings');
-            localStorage.removeItem('psycalcu_should_migrate');
+            safeStorage.removeItem('psycalcu_sessions');
+            safeStorage.removeItem('psycalcu_settings');
+            safeStorage.removeItem('psycalcu_should_migrate');
             showToast('Yerel seanslarınız mevcut bulut hesabınızla başarıyla birleştirildi!', 'success');
           } else {
             // Standard flow: Cloud is the absolute source of truth!
@@ -944,9 +956,9 @@ export default function App() {
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
             const userExpensesKey = `psycalcu_expenses_${user.uid}`;
-            localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
-            localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
-            localStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []));
+            safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
+            safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
+            safeStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []), user.uid);
 
             lastSavedRef.current = {
               settings: JSON.stringify(cloudData.settings),
@@ -962,8 +974,8 @@ export default function App() {
           
           if (shouldMigrate) {
             // Sync existing local data to their new cloud database if they checked migrate
-            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
-            const savedSettingsStr = localStorage.getItem('psycalcu_settings');
+            const savedSessionsStr = safeStorage.getItem('psycalcu_sessions');
+            const savedSettingsStr = safeStorage.getItem('psycalcu_settings');
             
             if (savedSessionsStr) {
               try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
@@ -1003,9 +1015,9 @@ export default function App() {
           }
           
           // Wipe anonymous local storage
-          localStorage.removeItem('psycalcu_sessions');
-          localStorage.removeItem('psycalcu_settings');
-          localStorage.removeItem('psycalcu_should_migrate');
+          safeStorage.removeItem('psycalcu_sessions');
+          safeStorage.removeItem('psycalcu_settings');
+          safeStorage.removeItem('psycalcu_should_migrate');
         }
       } catch (error: any) {
         console.error("Bulut verisi çekilirken hata:", error);
@@ -1026,13 +1038,13 @@ export default function App() {
         const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
         // Initialize lastSavedRef on failure to prevent infinite failing save retries
-        const finalSavedSessions = localStorage.getItem(localSessionsKey) || '[]';
+        const finalSavedSessions = safeStorage.getItem(localSessionsKey) || '[]';
         let correctedSavedStr = '[]';
         try {
           correctedSavedStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(finalSavedSessions)));
         } catch (e) {}
-        const finalSavedSettings = localStorage.getItem(localSettingsKey) || '';
-        const finalSavedExpenses = localStorage.getItem(localExpensesKey) || '[]';
+        const finalSavedSettings = safeStorage.getItem(localSettingsKey) || '';
+        const finalSavedExpenses = safeStorage.getItem(localExpensesKey) || '[]';
         lastSavedRef.current = {
           settings: finalSavedSettings,
           sessions: correctedSavedStr,
@@ -1040,8 +1052,8 @@ export default function App() {
         };
  
         // Graceful fallback to local storage on offline/network errors
-        const savedSessions = localStorage.getItem(localSessionsKey);
-        const savedSettings = localStorage.getItem(localSettingsKey);
+        const savedSessions = safeStorage.getItem(localSessionsKey);
+        const savedSettings = safeStorage.getItem(localSettingsKey);
         if (savedSessions) {
           try { setSessions(autoCorrectPastSessions(JSON.parse(savedSessions))); } catch (e) {}
         } else if (user) {
@@ -1107,9 +1119,9 @@ export default function App() {
     const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
     const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
-    localStorage.setItem(localSettingsKey, JSON.stringify(settings));
-    localStorage.setItem(localSessionsKey, JSON.stringify(sessions));
-    localStorage.setItem(localExpensesKey, JSON.stringify(expenses));
+    safeStorage.setItem(localSettingsKey, JSON.stringify(settings), user ? user.uid : undefined);
+    safeStorage.setItem(localSessionsKey, JSON.stringify(sessions), user ? user.uid : undefined);
+    safeStorage.setItem(localExpensesKey, JSON.stringify(expenses), user ? user.uid : undefined);
 
     if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
       return;
@@ -2155,7 +2167,7 @@ export default function App() {
     if (!existing && maxSessionsLimit !== 'unlimited') {
       const limitNum = typeof maxSessionsLimit === 'string' ? parseInt(maxSessionsLimit, 10) : maxSessionsLimit;
       if (!isNaN(limitNum) && sessions.length >= limitNum) {
-        showToast(`Yöneticiniz tarafından belirlenen maksimum seans limitine (${limitNum}) ulaştınız. Daha fazla seans eklemek için lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.`, 'error');
+        showToast(`Yöneticiniz tarafından belirlenen maksimum seans limitine (${limitNum}) ulaştınız. Daha fazla seans eklemek için lütfen sistem yöneticisi ile iletişime geçin.`, 'error');
         return;
       }
     }
@@ -2554,7 +2566,7 @@ export default function App() {
 
   const handleGenerateSummary = async () => {
     if (featuresAIAllowed === false) {
-      showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
       return;
     }
     setIsSummaryLoading(true);
@@ -3259,7 +3271,7 @@ export default function App() {
   // Google Sheets Export Logic (Valid CSV format with UTF-8 BOM)
   const handleExportCSV = () => {
     if (featuresExportAllowed === false) {
-      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
       return;
     }
     let csvContent = "\uFEFF"; // BOM for Excel/Sheets compatibility
@@ -3318,7 +3330,7 @@ export default function App() {
 
   const handleCopySessionsToClipboard = () => {
     if (featuresExportAllowed === false) {
-      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
       return;
     }
     let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tÖdeme Durumu\tTahsil Edilen (₺)\tÖdeme Yöntemi\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
@@ -3651,7 +3663,7 @@ export default function App() {
             )}
             
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Herhangi bir sorun yaşarsanız kurucu yöneticiye (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) e-posta gönderebilirsiniz.
+              Herhangi bir sorun yaşarsanız sistem yöneticisi ile iletişime geçebilirsiniz.
             </p>
           </div>
 
@@ -3703,11 +3715,11 @@ export default function App() {
           </div>
           <div className="space-y-3 text-slate-500 leading-relaxed text-xs">
             <p>
-              Hesabınız başarıyla oluşturulmuş ve bulut veritabanımıza işlenmiştir. Ancak PsyCalcu seans ve bütçe ajandasına erişebilmek için kurucu yöneticinin (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) onayı gerekmektedir.
+              Hesabınız başarıyla oluşturulmuş ve bulut veritabanımıza işlenmiştir. Ancak PsyCalcu seans ve bütçe ajandasına erişebilmek için yöneticinin onayı gerekmektedir.
             </p>
             <p className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] text-left text-[11px] leading-relaxed">
               🙋‍♂️ <strong className="text-[#6b705c]">Ne Yapabilirsiniz?</strong><br />
-              Yöneticiyi şahsen tanıyorsanız onay vermesi için kendisine söyleyebilir, bilgi almak veya onay talebinizi hızlandırmak için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> adresine e-posta gönderebilir veya iletişime geçebilirsiniz.
+              Yöneticiyi şahsen tanıyorsanız onay vermesi için kendisine iletebilir veya doğrudan iletişime geçebilirsiniz.
             </p>
             <p className="text-[11px] text-slate-400 font-medium">
               💡 Yönetici onay verdiğinde bu sayfa <strong className="text-emerald-700 font-bold">otomatik olarak güncellenecek</strong> ve uygulamaya girişiniz sağlanacaktır.
@@ -3758,7 +3770,7 @@ export default function App() {
             <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
           </div>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Bu hesabın PsyCalcu uygulamasını kullanma yetkisi yönetici tarafından sınırlandırılmıştır. Sorularınız için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> ile iletişime geçebilirsiniz.
+            Bu hesabın PsyCalcu uygulamasını kullanma yetkisi yönetici tarafından sınırlandırılmıştır. Sorularınız için sistem yöneticisi ile iletişime geçebilirsiniz.
           </p>
           <div className="pt-2">
             <button
@@ -5502,26 +5514,24 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setDebtCutoffDate(debtsData.effectiveAccountingStart || new Date().toISOString().split('T')[0]);
+                      handleClearDebtsBeforeDate('2026-07-01');
+                    }}
+                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                    title="1 Temmuz 2026 öncesindeki tüm eski seansları otomatik kapatır ve borçları düzeltir"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>1 Temmuz 2026 İtibariyle Borçları Düzelt</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebtCutoffDate(debtsData.effectiveAccountingStart || '2026-07-01');
                       setIsDebtCutoffModalOpen(true);
                     }}
                     className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
                   >
                     <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
-                    <span>Başlangıç Tarihini Ayarla</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const defaultCutoff = debtsData.effectiveAccountingStart || new Date().toISOString().split('T')[0];
-                      setDebtCutoffDate(defaultCutoff);
-                      setIsDebtCutoffModalOpen(true);
-                    }}
-                    className="px-3.5 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
-                    title="Seçilen tarihten önceki tüm seansları ödendi kabul edip borç listesinden kaldırır"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Eski Seansları Borçtan Düş</span>
+                    <span>Özel Tarih Belirle</span>
                   </button>
                 </div>
               </div>
@@ -6462,8 +6472,32 @@ export default function App() {
                 Bu tarihten önceki tüm seanslar <strong>kapanmış / ödendi</strong> kabul edilecek ve borç takip listesinden kaldırılacaktır.
               </p>
 
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-700 block">Başlangıç Tarihi</label>
+                <div className="flex gap-2 mb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDebtCutoffDate('2026-07-01')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      debtCutoffDate === '2026-07-01'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    📅 1 Temmuz 2026 (Önerilen)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDebtCutoffDate(new Date().toISOString().split('T')[0])}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      debtCutoffDate === new Date().toISOString().split('T')[0]
+                        ? 'bg-[#6b705c]/10 border-[#6b705c] text-[#6b705c]'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    📅 Bugün
+                  </button>
+                </div>
                 <input
                   type="date"
                   value={debtCutoffDate}
