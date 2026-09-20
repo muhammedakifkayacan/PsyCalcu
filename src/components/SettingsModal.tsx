@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar } from 'lucide-react';
 import { AppSettings } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -14,6 +14,7 @@ interface SettingsModalProps {
   featuresSmartPriceMatchingAllowed?: boolean;
   requestedRole?: 'tenant' | 'owner' | null;
   onRequestRoleChange?: (targetRole: 'tenant' | 'owner' | null) => Promise<void>;
+  onOpenClientPricingModal?: () => void;
 }
 
 export default function SettingsModal({ 
@@ -25,7 +26,8 @@ export default function SettingsModal({
   onToggleExplanations,
   featuresSmartPriceMatchingAllowed = true,
   requestedRole = null,
-  onRequestRoleChange
+  onRequestRoleChange,
+  onOpenClientPricingModal
 }: SettingsModalProps) {
   useBodyScrollLock(isOpen);
   const [therapistName, setTherapistName] = useState(settings.therapistName);
@@ -40,6 +42,7 @@ export default function SettingsModal({
   const [autoMarkShortEventsAsNonSession, setAutoMarkShortEventsAsNonSession] = useState(settings.autoMarkShortEventsAsNonSession ?? true);
   const [defaultLandingPage, setDefaultLandingPage] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'search' | 'audit'>(settings.defaultLandingPage || 'agenda');
   const [userRole, setUserRole] = useState<'tenant' | 'owner' | undefined>(settings.userRole);
+  const [accountingStartDate, setAccountingStartDate] = useState(settings.accountingStartDate || '');
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(5);
@@ -70,6 +73,7 @@ export default function SettingsModal({
       setAutoMarkShortEventsAsNonSession(settings.autoMarkShortEventsAsNonSession ?? true);
       setDefaultLandingPage(settings.defaultLandingPage || 'agenda');
       setUserRole(settings.userRole);
+      setAccountingStartDate(settings.accountingStartDate || '');
       setPendingSmartPriceToggle(null);
     }
   }, [isOpen, settings]);
@@ -90,6 +94,7 @@ export default function SettingsModal({
       autoMarkShortEventsAsNonSession,
       defaultLandingPage,
       userRole,
+      accountingStartDate: accountingStartDate ? accountingStartDate : undefined,
     });
     onClose();
   };
@@ -132,6 +137,34 @@ export default function SettingsModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto font-sans">
+          
+          {/* Danışan Özel Fiyat & Muhasebe Kurtarma Banner */}
+          {onOpenClientPricingModal && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-3xs">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <h4 className="text-xs font-bold text-slate-800">Danışan Özel Fiyat & Muhasebe Kurtarma</h4>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">84 Gün</span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Her danışanınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek sayfadan düzenleyin; tüm geçmiş 84 güne uygulansın.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenClientPricingModal();
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Fiyatları Yönet</span>
+                <Sparkles className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Therapist Name */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Psikolog / Klinik Adı</label>
@@ -310,6 +343,25 @@ export default function SettingsModal({
             </div>
             {showExplanations && (
               <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
+            )}
+          </div>
+
+          {/* Accounting & Debt Tracking Start Date */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#cb997e]" />
+              <span>Muhasebe & Borç Takip Başlangıç Tarihi</span>
+            </label>
+            <input
+              type="date"
+              value={accountingStartDate}
+              onChange={(e) => setAccountingStartDate(e.target.value)}
+              className="w-full px-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+            />
+            {showExplanations && (
+              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
+                Bu tarihten önceki takvim seansları geçmiş/kapanmış dönem kabul edilir ve borç takip listesinde ödenmemiş olarak birikmez.
+              </p>
             )}
           </div>
 

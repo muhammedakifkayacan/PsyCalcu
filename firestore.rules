@@ -53,7 +53,7 @@ service cloud.firestore {
       // (Exception: Büşra can auto-update her specific legacy createdAt date safely).
       allow update: if isAdmin() || (
         isOwner(userId) && 
-        request.auth.token.email == 'uzmpsikologbusra@gmail.com' &&
+        (request.auth.token.email == 'uzmanpsikologbusra@gmail.com' || request.auth.token.email == 'uzmpsikologbusra@gmail.com') &&
         request.resource.data.status == resource.data.status &&
         request.resource.data.userId == resource.data.userId &&
         request.resource.data.email == resource.data.email

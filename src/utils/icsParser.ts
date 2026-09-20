@@ -280,30 +280,41 @@ function generateOccurrences(
 }
 
 /**
- * Checks whether an event title/summary or description corresponds to a non-session (personal activity, errand, sport, etc.)
+ * Checks whether an event title/summary corresponds to a non-session (personal activity, errand, sport, etc.)
+ * Note: Keywords are strictly checked against the title/summary only, so that client notes in description don't falsely trigger non-session.
  */
 export function isNonSessionSummary(summary?: string, description?: string): boolean {
-  if (!summary && !description) return false;
-  const rawText = `${summary || ''} ${description || ''}`.trim();
-  if (!rawText) return false;
+  const titleText = (summary || '').trim();
+  const descText = (description || '').trim();
+  if (!titleText && !descText) return false;
 
-  // Direct hashtag check (supports #seansdeğil, #seansdegil, #seansdisi, #seansdışı, #kisisel, #ozel, etc.)
-  const rawLower = rawText.toLocaleLowerCase('tr-TR');
-  if (
-    rawLower.includes('#seansdeğil') ||
-    rawLower.includes('#seansdegil') ||
-    rawLower.includes('#seans-degil') ||
-    rawLower.includes('#seans_degil') ||
-    rawLower.includes('#seansdisi') ||
-    rawLower.includes('#seansdışı') ||
-    rawLower.includes('#seans-disi') ||
-    rawLower.includes('#seans_disi') ||
-    rawLower.includes('#kisisel') ||
-    rawLower.includes('#kişisel') ||
-    rawLower.includes('#nonsession')
-  ) {
+  // Direct hashtag check (supports #seansdeğil, #seansdegil, #seansdisi, #seansdışı in title or description)
+  const titleLower = titleText.toLocaleLowerCase('tr-TR');
+  const descLower = descText.toLocaleLowerCase('tr-TR');
+  const hasExplicitHashtag =
+    titleLower.includes('#seansdeğil') ||
+    titleLower.includes('#seansdegil') ||
+    titleLower.includes('#seans-degil') ||
+    titleLower.includes('#seans_degil') ||
+    titleLower.includes('#seansdisi') ||
+    titleLower.includes('#seansdışı') ||
+    titleLower.includes('#seans-disi') ||
+    titleLower.includes('#seans_disi') ||
+    titleLower.includes('#kisisel') ||
+    titleLower.includes('#kişisel') ||
+    titleLower.includes('#nonsession') ||
+    descLower.includes('#seansdeğil') ||
+    descLower.includes('#seansdegil') ||
+    descLower.includes('#seansdisi') ||
+    descLower.includes('#seansdışı') ||
+    descLower.includes('#nonsession');
+
+  if (hasExplicitHashtag) {
     return true;
   }
+
+  // All other keyword and phrase matching is STRICTLY applied to title/summary only!
+  if (!titleText) return false;
 
   const normalize = (str: string) =>
     str
@@ -318,10 +329,10 @@ export function isNonSessionSummary(summary?: string, description?: string): boo
       .replace(/\s+/g, ' ')
       .trim();
 
-  const normalized = normalize(rawText);
+  const normalized = normalize(titleText);
   const words = normalized.split(' ');
 
-  // Multi-word exact phrases
+  // Multi-word exact phrases (checked on title only)
   const exactPhrases = [
     'seans degil',
     'seans disi',
@@ -345,7 +356,7 @@ export function isNonSessionSummary(summary?: string, description?: string): boo
     if (normalized.includes(phrase)) return true;
   }
 
-  // Keywords representing non-session personal activities / errands
+  // Keywords representing non-session personal activities / errands (checked on title only)
   const nonSessionKeywords = new Set([
     // Spor & Egzersiz
     'spor', 'fitness', 'gym', 'pilates', 'yoga', 'antrenman', 'idman', 'yuruyus', 'kosu', 'yuzme', 'crossfit', 'boks', 'tenis', 'padel', 'mac',
@@ -431,6 +442,7 @@ export function parseICS(
     locationRaw?: string;
     noteRaw?: string;
     rruleRaw?: string;
+    recurrenceIdRaw?: string;
     exdates: Set<string>;
     statusRaw?: string;
   }
@@ -482,6 +494,8 @@ export function parseICS(
           currentRaw.locationRaw = cleanVal;
         } else if (key === 'RRULE') {
           currentRaw.rruleRaw = line;
+        } else if (key === 'RECURRENCE-ID') {
+          currentRaw.recurrenceIdRaw = line;
         } else if (key === 'EXDATE') {
           const exParsed = parseIcsDateTimeToLocal(line, calTimezone);
           if (exParsed) {
@@ -514,7 +528,12 @@ export function parseICS(
       (raw.noteRaw || '')
     ).toLowerCase();
 
-    const isCancelled = searchSource.includes('iptal') || searchSource.includes('cancel');
+    const summaryLower = (raw.summary || '').toLowerCase();
+    const isCancelled = raw.statusRaw === 'CANCELLED' || 
+      summaryLower.includes('iptal') || 
+      summaryLower.includes('cancel') ||
+      summaryLower.includes('#iptal') ||
+      searchSource.includes('#iptal');
     const isNonSession = isNonSessionSummary(raw.summary, `${raw.descriptionRaw || ''} ${raw.noteRaw || ''}`);
 
     if (isCancelled) {
@@ -557,10 +576,11 @@ export function parseICS(
     }
 
     // Create session for each occurrence
-    const membershipCutoff = membershipDate ? membershipDate.split('T')[0] : '';
+    const membershipCutoff = (membershipDate && membershipDate < '2026-07-01') ? membershipDate.split('T')[0] : '';
 
     for (const occ of occurrences) {
-      const isBeforeRegistration = Boolean(membershipCutoff && occ.dateStr < membershipCutoff);
+      // Only treat events strictly before 2026-07-01 (or explicit pre-2026 membership cutoff) as pre-usage zeroed events
+      const isBeforeRegistration = Boolean(occ.dateStr && occ.dateStr < '2026-07-01' && (membershipCutoff ? occ.dateStr < membershipCutoff : true));
 
       // Determine financial parameters based on session type
       let price = defaultPrice;
@@ -592,7 +612,9 @@ export function parseICS(
       }
 
       // Generate deterministic ID per occurrence to prevent duplicate session accumulation
-      const sessionId = occurrences.length > 1
+      // If the event has RRULE, RECURRENCE-ID, or multiple occurrences, always append the occurrence date
+      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
+      const sessionId = hasRecurrence
         ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
         : `ics_${raw.uid}`;
 

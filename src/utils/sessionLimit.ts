@@ -1,3 +1,5 @@
+import { safeStorage } from './storage';
+
 /**
  * Session limit control utility to prevent database spam and ensure performance/quota limits.
  */
@@ -30,7 +32,7 @@ export function getWeeklyManualActionCount(userId?: string): number {
   
   const weekStartStr = getStartOfWeek();
   const key = userId ? `psycalcu_weekly_manual_actions_${userId}` : 'psycalcu_weekly_manual_actions';
-  const stored = localStorage.getItem(key);
+  const stored = safeStorage.getItem(key);
   
   if (stored) {
     try {
@@ -58,10 +60,10 @@ export function incrementWeeklyManualActionCount(amount: number = 1, userId?: st
   const nextCount = currentCount + amount;
   
   const key = userId ? `psycalcu_weekly_manual_actions_${userId}` : 'psycalcu_weekly_manual_actions';
-  localStorage.setItem(key, JSON.stringify({
+  safeStorage.setItem(key, JSON.stringify({
     weekStart: weekStartStr,
     count: nextCount
-  }));
+  }), userId);
 }
 
 /**

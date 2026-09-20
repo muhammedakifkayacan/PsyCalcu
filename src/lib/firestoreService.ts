@@ -1,11 +1,14 @@
 import { db } from './firebase';
-import { doc, setDoc, getDoc, disableNetwork } from 'firebase/firestore';
-import { Session, AppSettings, Expense } from '../types';
+import { doc, setDoc, getDoc, disableNetwork, arrayUnion } from 'firebase/firestore';
+import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
 
 interface UserData {
   settings: AppSettings;
   sessions: Session[];
   expenses?: Expense[];
+  backupSnapshots?: DataBackupSnapshot[];
+  calendarHistory?: any[];
+  calendarBackup?: any;
 }
 
 export let isFirestoreQuotaExceeded = false;
@@ -46,10 +49,30 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
+      const settings = (data.settings || {}) as AppSettings;
+      const calendarBackup = data.calendarBackup || {};
+
+      // Auto-recover calendar URLs and therapist details from backup if missing in settings
+      if (!settings.onlineCalendarWebcalUrl && calendarBackup.onlineCalendarWebcalUrl) {
+        settings.onlineCalendarWebcalUrl = calendarBackup.onlineCalendarWebcalUrl;
+      }
+      if (!settings.faceToFaceCalendarWebcalUrl && calendarBackup.faceToFaceCalendarWebcalUrl) {
+        settings.faceToFaceCalendarWebcalUrl = calendarBackup.faceToFaceCalendarWebcalUrl;
+      }
+      if ((!settings.ownerCalendars || settings.ownerCalendars.length === 0) && calendarBackup.ownerCalendars && calendarBackup.ownerCalendars.length > 0) {
+        settings.ownerCalendars = calendarBackup.ownerCalendars;
+      }
+      if ((!settings.therapistName || settings.therapistName === 'Dr. Melis Kaya') && calendarBackup.therapistName) {
+        settings.therapistName = calendarBackup.therapistName;
+      }
+
       return {
-        settings: data.settings as AppSettings,
-        sessions: data.sessions as Session[],
-        expenses: (data.expenses as Expense[]) || []
+        settings,
+        sessions: (data.sessions as Session[]) || [],
+        expenses: (data.expenses as Expense[]) || [],
+        backupSnapshots: (data.backupSnapshots as DataBackupSnapshot[]) || [],
+        calendarHistory: data.calendarHistory || [],
+        calendarBackup: data.calendarBackup
       };
     }
     return null;
@@ -64,9 +87,47 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
 }
 
 /**
- * Save all user data (sessions and settings) to Firestore
+ * Helper to build a clean snapshot object
  */
-export async function saveUserData(userId: string, settings: AppSettings, sessions: Session[], expenses?: Expense[]): Promise<void> {
+export function createSnapshotObject(
+  label: string,
+  settings: AppSettings,
+  sessions: Session[],
+  expenses: Expense[] = []
+): DataBackupSnapshot {
+  const activeSessions = (sessions || []).filter(s => s.type !== 'cancelled' && s.type !== 'non-session');
+  const paidSessions = activeSessions.filter(s => s.paymentStatus === 'paid');
+  const unpaidSessions = activeSessions.filter(s => s.paymentStatus !== 'paid');
+  const totalGross = activeSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const totalExpenses = (expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0) +
+    activeSessions.reduce((sum, s) => sum + (s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0) + (s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0), 0);
+
+  return {
+    id: 'snap_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    timestamp: new Date().toISOString(),
+    label,
+    sessionCount: sessions.length,
+    expenseCount: expenses.length,
+    totalGrossIncome: totalGross,
+    totalNetIncome: totalGross - totalExpenses,
+    paidSessionsCount: paidSessions.length,
+    unpaidSessionsCount: unpaidSessions.length,
+    sessions: JSON.parse(JSON.stringify(sessions)),
+    settings: JSON.parse(JSON.stringify(settings)),
+    expenses: JSON.parse(JSON.stringify(expenses))
+  };
+}
+
+/**
+ * Save all user data (sessions and settings) to Firestore and maintain versioned snapshots
+ */
+export async function saveUserData(
+  userId: string, 
+  settings: AppSettings, 
+  sessions: Session[], 
+  expenses?: Expense[],
+  snapshotReason?: string
+): Promise<void> {
   if (isFirestoreQuotaExceeded) {
     throw new Error('quota-exceeded');
   }
@@ -81,7 +142,48 @@ export async function saveUserData(userId: string, settings: AppSettings, sessio
       return s;
     });
     const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
-    await setDoc(docRef, { settings: cleanedSettings, sessions: cleanedSessions, expenses: cleanedExpenses }, { merge: true });
+    
+    const payload: any = { 
+      settings: cleanedSettings, 
+      sessions: cleanedSessions, 
+      expenses: cleanedExpenses,
+      lastUpdatedAt: new Date().toISOString()
+    };
+
+    // Auto-create snapshot if sessions exist and it's a significant event or requested
+    if (sessions && sessions.length > 0 && snapshotReason) {
+      const snap = createSnapshotObject(snapshotReason, cleanedSettings, cleanedSessions, cleanedExpenses);
+      payload.backupSnapshots = arrayUnion(snap);
+      
+      // Also cache snapshot in localStorage
+      try {
+        const localKey = `psycalcu_snapshots_${userId}`;
+        const existingLocalStr = localStorage.getItem(localKey);
+        let localSnaps: DataBackupSnapshot[] = [];
+        if (existingLocalStr) {
+          try { localSnaps = JSON.parse(existingLocalStr); } catch (e) {}
+        }
+        localSnaps.unshift(snap);
+        if (localSnaps.length > 30) localSnaps = localSnaps.slice(0, 30);
+        localStorage.setItem(localKey, JSON.stringify(localSnaps));
+      } catch (localErr) {}
+    }
+
+    // Keep a persistent calendarBackup and history log inside the user document whenever URLs exist
+    if (settings?.onlineCalendarWebcalUrl || settings?.faceToFaceCalendarWebcalUrl || (settings?.ownerCalendars && settings.ownerCalendars.length > 0)) {
+      const historyRecord = {
+        id: 'link_' + Date.now(),
+        timestamp: new Date().toISOString(),
+        onlineCalendarWebcalUrl: settings.onlineCalendarWebcalUrl || '',
+        faceToFaceCalendarWebcalUrl: settings.faceToFaceCalendarWebcalUrl || '',
+        ownerCalendars: settings.ownerCalendars || [],
+        therapistName: settings.therapistName || ''
+      };
+      payload.calendarBackup = historyRecord;
+      payload.calendarHistory = arrayUnion(historyRecord);
+    }
+
+    await setDoc(docRef, payload, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
     try {
@@ -129,5 +231,6 @@ export async function migrateLocalDataToFirestore(
   sessions: Session[], 
   settings: AppSettings
 ): Promise<void> {
-  return saveUserData(userId, settings, sessions);
+  return saveUserData(userId, settings, sessions, [], 'İlk Bulut Eşitlemesi');
 }
+
