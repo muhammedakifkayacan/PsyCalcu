@@ -104,9 +104,10 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
       if (!s || !s.clientName || s.type === 'cancelled' || s.type === 'non-session') return;
       const norm = getNormalizedClientName(s.clientName);
       if (!norm) return;
+      const key = norm.toLocaleLowerCase('tr-TR');
 
-      if (!map.has(norm)) {
-        const customRule = customPrices[norm];
+      if (!map.has(key)) {
+        const customRule = customPrices[norm] || customPrices[key];
         const defaultGeneralPrice = customRule?.price ?? (s.price > 0 ? s.price : settings.defaultSessionPrice ?? 1200);
         const onlineRulePrice = customRule?.onlinePrice ?? customRule?.price ?? settings.defaultOnlinePrice ?? defaultGeneralPrice;
         const faceRulePrice = customRule?.faceToFacePrice ?? customRule?.price ?? settings.defaultFaceToFacePrice ?? defaultGeneralPrice;
@@ -115,8 +116,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
         const hasOfficeRent = customRule?.hasOfficeRentFee ?? (s.type === 'face-to-face' ? (s.hasOfficeRentFee ?? true) : false);
         const officeRentAmount = customRule?.officeRentFeeAmount ?? (s.hasOfficeRentFee ? s.officeRentFeeAmount : settings.defaultOfficeRentFee ?? 200);
 
-        map.set(norm, {
-          clientName: s.clientName, // display name
+        map.set(key, {
+          clientName: norm, // clean normalized display name (e.g. "Zeynep Öküm" instead of "Zeynep Öküm 1")
           normalizedName: norm,
           sessionCount: 0,
           faceToFaceCount: 0,
@@ -134,7 +135,7 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
         });
       }
 
-      const row = map.get(norm)!;
+      const row = map.get(key)!;
       row.sessionCount += 1;
       if (s.type === 'face-to-face') row.faceToFaceCount += 1;
       if (s.type === 'online') row.onlineCount += 1;

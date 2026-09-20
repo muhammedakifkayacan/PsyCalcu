@@ -163,40 +163,91 @@ export function toTurkishUpper(str: string): string {
 
 export function getNormalizedClientName(name: string): string {
   if (!name) return "";
-  // Normalize all multiple whitespace characters (including double/triple spaces, tabs, non-breaking spaces) to a single space
+  // Normalize all whitespace characters (including non-breaking spaces, tabs, multiple spaces)
   let clean = name.replace(/[\s\u00A0]+/g, ' ').trim();
 
-  // 1. Remove leading numbering/session prefixes e.g. "1. Ahmet", "1- Ahmet", "1. seans Ahmet", "#1 Ahmet", "Seans 1: Ahmet"
+  // 1. Remove leading calendar / clinical event labels
+  // e.g. "Seans: Zeynep", "Danışan - Zeynep", "Randevu: Zeynep", "Terapi: Zeynep", "Görüşme: Zeynep", "Oturum - Zeynep"
+  clean = clean.replace(/^(?:seans|danışan|danisan|randevu|terapi|oturum|görüşme|gorusme)\s*[:\-–]\s*/i, '');
+
+  // 2. Remove leading/trailing emojis and calendar symbols
+  clean = clean.replace(/^[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+/gu, '');
+  clean = clean.replace(/[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+$/gu, '');
+
+  // 3. Remove leading session numbering or order prefixes
+  // e.g. "1. Ahmet", "1- Ahmet", "1) Ahmet", "01. Ahmet", "1. seans Ahmet", "#1 Ahmet", "Seans 1: Ahmet"
   clean = clean.replace(/^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i, '');
   clean = clean.replace(/^#\s*\d+\s*(?:[\-\:\/]\s*)?/i, '');
 
-  // 2. Remove session type markers at start or end like "(Online)", "(Yüz Yüze)", " - Online", "[Yüzyüze]", "(Ofis)"
-  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet)[\)\}\]]*$/i, '');
-  clean = clean.replace(/^(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet)[\s\-\:\.\)\(\[\{]+/i, '');
+  // 4. Remove leading time stamps e.g. "14:00 Ahmet" or "(14:00) Ahmet"
+  clean = clean.replace(/^[\(\[\{]*\b\d{1,2}[:.]\d{2}\b[\)\}\]]*[\s\-\:\.\)\(\[\{]+/i, '');
 
-  // 3. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
+  // 5. Remove trailing time stamps e.g. "Ahmet 14:00" or "Ahmet (14:00)"
+  clean = clean.replace(/[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i, '');
+
+  // 6. Remove session type / modality markers at start or end
+  // e.g. "(Online)", "(Yüz Yüze)", " - Online", "[Yüzyüze]", "(Ofis)", "(Zoom)", "(Skype)", "(Meet)", "(Face to face)"
+  const modalityPattern = '(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet|google meet|facetime|face to face|whatsapp)';
+  clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${modalityPattern}[\\)\\}\\]]*$`, 'i'), '');
+  clean = clean.replace(new RegExp(`^${modalityPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
+
+  // 7. Remove clinical session descriptors / status in parentheses or at end
+  // e.g. "(İlk Görüşme)", "(İlk Seans)", "(Değerlendirme)", "(Takip)", "(Bireysel)", "(Çift)", "(Aile)", "(Ergen)", "(Çocuk)", "(Süpervizyon)"
+  const clinicalPattern = '(?:ilk görüşme|ilk gorusme|ilk seans|değerlendirme|degerlendirme|takip|bireysel|çift|cift|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|on görüşme|on gorusme|ön görüşme|yetkinlik)';
+  clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${clinicalPattern}[\\)\\}\\]]*$`, 'i'), '');
+  clean = clean.replace(new RegExp(`^${clinicalPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
+
+  // 8. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
   clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
   
-  // 4. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
+  // 9. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
   clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
 
-  // 5. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
+  // 10. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
   clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
 
-  // 6. Clean up any remaining trailing or leading punctuation/whitespace
-  clean = clean.replace(/^[\s\-_:.,;()/[\]{}#]+|[\s\-_:.,;()/[\]{}#]+$/g, '');
+  // 11. Normalize Turkish honorifics if at the very end
+  // e.g. "Zeynep Hanım" -> "Zeynep", "Zeynep Öküm Hanım" -> "Zeynep Öküm"
+  clean = clean.replace(/\b(?:hanım|bey|hn\.?|by\.?)\b/gi, '');
 
-  // 7. Ensure any leftover multiple spaces in between words are collapsed into a single space
+  // 12. Clean up any remaining trailing or leading punctuation/whitespace
+  clean = clean.replace(/^[\s\-_:.,;()/[\]{}#~|•·]+|[\s\-_:.,;()/[\]{}#~|•·]+$/g, '');
+
+  // 13. Ensure any leftover multiple spaces in between words are collapsed into a single space
   clean = clean.replace(/[\s\u00A0]+/g, ' ').trim();
 
   return clean || name.replace(/[\s\u00A0]+/g, ' ').trim();
 }
 
 /**
- * Checks if two client names are equivalent, taking into account:
+ * Helper to fold Turkish diacritics to ASCII for accent-insensitive comparison
+ * (e.g. "Zeynep Öküm" vs "Zeynep Okum" typed without Turkish keyboard)
+ */
+export function toTurkishAscii(str: string): string {
+  if (!str) return '';
+  return str
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[\s\u00A0]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Checks if two client names are strictly equivalent, taking into account:
  * - Accidental double/multiple spaces ("özlem tirün 2" vs "özlem  tirün    2")
  * - Session numbering prefixes/suffixes ("özlem tirün 1" vs "özlem tirün 2")
  * - Turkish case insensitivity ("İ" / "i", "I" / "ı")
+ * - Turkish diacritics / ASCII tolerance ("Zeynep Öküm" vs "Zeynep Okum")
+ * - Inverted name order with 2+ tokens ("Öküm Zeynep" vs "Zeynep Öküm")
+ * 
+ * CRITICAL RULE: A shorter or single-word name (e.g. "Zeynep") can NEVER match 
+ * a multi-word or compound name (e.g. "Zeynep Öküm"). 
+ * Substring, prefix, or word-subset matches are strictly prohibited!
  */
 export function areClientNamesEquivalent(nameA?: string | null, nameB?: string | null): boolean {
   if (!nameA || !nameB) return false;
@@ -213,19 +264,41 @@ export function areClientNamesEquivalent(nameA?: string | null, nameB?: string |
   }
 
   // 2. Normalized match (session numbers, prefixes, suffixes, extra spaces removed)
-  const normA = getNormalizedClientName(cleanA).toLocaleLowerCase('tr-TR');
-  const normB = getNormalizedClientName(cleanB).toLocaleLowerCase('tr-TR');
+  const normA = getNormalizedClientName(cleanA);
+  const normB = getNormalizedClientName(cleanB);
   
-  if (normA && normB) {
-    if (normA === normB) return true;
-    // Prefix or sub-phrase match if both have at least 3 chars (e.g., partial name)
-    if (normA.length >= 3 && normB.length >= 3) {
-      if (normA.startsWith(normB + ' ') || normB.startsWith(normA + ' ')) {
-        return true;
-      }
+  if (!normA || !normB) return false;
+
+  const lowerNormA = normA.toLocaleLowerCase('tr-TR');
+  const lowerNormB = normB.toLocaleLowerCase('tr-TR');
+
+  if (lowerNormA === lowerNormB) {
+    return true;
+  }
+
+  // 3. Turkish ASCII diacritics match (e.g. "Zeynep Okum" vs "Zeynep Öküm")
+  const asciiA = toTurkishAscii(normA);
+  const asciiB = toTurkishAscii(normB);
+
+  if (asciiA === asciiB) {
+    return true;
+  }
+
+  // 4. Inverted name order token match (e.g. "Öküm, Zeynep" vs "Zeynep Öküm")
+  // STRICT CONSTRAINT: Both names MUST have the EXACT SAME number of tokens (minimum 2 tokens)!
+  // "Zeynep" (1 token) can NEVER match "Zeynep Öküm" (2 tokens)!
+  const tokensA = asciiA.split(/[\s,]+/).filter(Boolean);
+  const tokensB = asciiB.split(/[\s,]+/).filter(Boolean);
+
+  if (tokensA.length >= 2 && tokensA.length === tokensB.length) {
+    const sortedA = [...tokensA].sort();
+    const sortedB = [...tokensB].sort();
+    if (sortedA.every((t, idx) => t === sortedB[idx])) {
+      return true;
     }
   }
 
+  // Strict isolation: Under no circumstances do partial, prefix, or substring matching!
   return false;
 }
 

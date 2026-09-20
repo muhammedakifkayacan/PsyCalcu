@@ -1619,7 +1619,8 @@ export default function App() {
     if (activeTabInternal !== 'client') {
       setPreviousTab(activeTabInternal as any);
     }
-    setSelectedClientName(name);
+    const cleanNorm = getNormalizedClientName(name) || name.trim();
+    setSelectedClientName(cleanNorm);
     setActiveTab('client');
   }, [activeTabInternal, setActiveTab]);
 
