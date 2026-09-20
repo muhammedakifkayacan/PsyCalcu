@@ -21,7 +21,10 @@ import {
   Wallet,
   CalendarDays,
   CreditCard,
-  Building
+  Building,
+  ChevronDown,
+  ChevronUp,
+  BarChart3
 } from 'lucide-react';
 import { Session, AppSettings, getNormalizedClientName } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -54,18 +57,21 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedText, setCopiedText] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
-  // Normalize target client
-  const targetNormalized = useMemo(() => getNormalizedClientName(clientName), [clientName]);
+  // Normalize target client name
+  const targetNormalized = useMemo(() => getNormalizedClientName(clientName).toLocaleLowerCase('tr-TR'), [clientName]);
 
-  // Extract all sessions for this specific client
+  // Extract all sessions for this specific client (both Online and Face-to-Face together)
   const clientSessions = useMemo(() => {
     if (!targetNormalized) return [];
     return sessions.filter(s => {
-      const sNorm = getNormalizedClientName(s.clientName);
-      return sNorm === targetNormalized;
+      if (!s || !s.clientName) return false;
+      const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
+      const rawDirectMatch = s.clientName.trim().toLocaleLowerCase('tr-TR') === clientName.trim().toLocaleLowerCase('tr-TR');
+      return sNorm === targetNormalized || rawDirectMatch || sNorm.includes(targetNormalized) || targetNormalized.includes(sNorm);
     });
-  }, [sessions, targetNormalized]);
+  }, [sessions, targetNormalized, clientName]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -265,67 +271,114 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5 bg-slate-50/60 border-b border-slate-100 text-xs">
-            {/* Completed Sessions */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
-              <span className="text-slate-500 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Tamamlanan
+          {/* Quick Summary & Stats Toggle Bar */}
+          <div className="px-4 sm:px-6 py-2.5 bg-slate-50/90 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200/60 font-semibold shadow-3xs">
+                <Laptop className="w-3.5 h-3.5 text-sky-600" />
+                <span>{stats.onlineCount} Online</span>
               </span>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-lg font-extrabold text-slate-800">{stats.completedCount}</span>
-                <span className="text-[11px] text-slate-400 font-normal">
-                  ({stats.onlineCount} Online, {stats.faceToFaceCount} Yüzyüze)
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-semibold shadow-3xs">
+                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{stats.faceToFaceCount} Yüz Yüze</span>
+              </span>
+              {stats.cancelledCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200/60 font-semibold shadow-3xs">
+                  <Ban className="w-3.5 h-3.5 text-rose-600" />
+                  <span>{stats.cancelledCount} İptal</span>
                 </span>
-              </div>
+              )}
             </div>
 
-            {/* Total Revenue */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
-              <span className="text-slate-500 font-medium flex items-center gap-1">
-                <DollarSign className="w-3.5 h-3.5 text-blue-600" /> Toplam Tutar
-              </span>
-              <div className="mt-1">
-                <span className="text-lg font-extrabold text-blue-900">
-                  {formatMoney(stats.totalBilled)}
-                </span>
-              </div>
-            </div>
-
-            {/* Paid Amount */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
-              <span className="text-slate-500 font-medium flex items-center gap-1">
-                <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Tahsil Edilen
-              </span>
-              <div className="mt-1 flex items-baseline justify-between">
-                <span className="text-lg font-extrabold text-emerald-700">
-                  {formatMoney(stats.totalPaid)}
-                </span>
-                {stats.totalBilled > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                    %{Math.round((stats.totalPaid / stats.totalBilled) * 100)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Unpaid Balance */}
-            <div className={`p-3 rounded-xl border shadow-3xs flex flex-col justify-between ${
-              stats.totalUnpaid > 0 
-                ? 'bg-rose-50/70 border-rose-200 text-rose-900' 
-                : 'bg-white border-slate-200/80'
-            }`}>
-              <span className={`font-medium flex items-center gap-1 ${stats.totalUnpaid > 0 ? 'text-rose-700' : 'text-slate-500'}`}>
-                <AlertCircle className={`w-3.5 h-3.5 ${stats.totalUnpaid > 0 ? 'text-rose-600' : 'text-slate-400'}`} />
-                Kalan Borç / Bekleyen
-              </span>
-              <div className="mt-1">
-                <span className={`text-lg font-extrabold ${stats.totalUnpaid > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
-                  {formatMoney(stats.totalUnpaid)}
-                </span>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowStats(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer ${
+                showStats 
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
+                  : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-100/80'
+              }`}
+              id="toggle-client-financial-stats-btn"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{showStats ? 'Toplamları Gizle' : 'Toplam Fiyat & Finansal Özeti Gör'}</span>
+              {showStats ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
+            </button>
           </div>
+
+          {/* Collapsible Detailed Metrics Bar (Collapsed by default so user sees sessions immediately) */}
+          <AnimatePresence>
+            {showStats && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden border-b border-slate-200/70 bg-slate-50/50"
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5 text-xs">
+                  {/* Completed Sessions */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Tamamlanan Seans
+                    </span>
+                    <div className="mt-1 flex items-baseline gap-1.5">
+                      <span className="text-lg font-extrabold text-slate-800">{stats.completedCount}</span>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        ({stats.onlineCount} Online, {stats.faceToFaceCount} Yüzyüze)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Total Revenue */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5 text-blue-600" /> Toplam Ücret
+                    </span>
+                    <div className="mt-1">
+                      <span className="text-lg font-extrabold text-blue-900">
+                        {formatMoney(stats.totalBilled)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Paid Amount */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-3xs flex flex-col justify-between">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Tahsil Edilen
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg font-extrabold text-emerald-700">
+                        {formatMoney(stats.totalPaid)}
+                      </span>
+                      {stats.totalBilled > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                          %{Math.round((stats.totalPaid / stats.totalBilled) * 100)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Unpaid Balance */}
+                  <div className={`p-3 rounded-xl border shadow-3xs flex flex-col justify-between ${
+                    stats.totalUnpaid > 0 
+                      ? 'bg-rose-50/70 border-rose-200 text-rose-900' 
+                      : 'bg-white border-slate-200/80'
+                  }`}>
+                    <span className={`font-medium flex items-center gap-1 ${stats.totalUnpaid > 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+                      <AlertCircle className={`w-3.5 h-3.5 ${stats.totalUnpaid > 0 ? 'text-rose-600' : 'text-slate-400'}`} />
+                      Kalan Borç / Bekleyen
+                    </span>
+                    <div className="mt-1">
+                      <span className={`text-lg font-extrabold ${stats.totalUnpaid > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
+                        {formatMoney(stats.totalUnpaid)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Filter & Search Toolbar */}
           <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 bg-white">
@@ -350,10 +403,10 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
                 className="py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 id="client-history-type-filter"
               >
-                <option value="all">Tüm Türler</option>
-                <option value="online">Online</option>
-                <option value="face-to-face">Yüz Yüze</option>
-                <option value="cancelled">İptal Edilenler</option>
+                <option value="all">Tüm Türler (Online & Yüzyüze)</option>
+                <option value="online">🌐 Sadece Online</option>
+                <option value="face-to-face">🏢 Sadece Yüz Yüze</option>
+                <option value="cancelled">🚫 İptal Edilenler</option>
               </select>
 
               {/* Payment Filter */}
@@ -364,9 +417,9 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
                 id="client-history-payment-filter"
               >
                 <option value="all">Tüm Ödemeler</option>
-                <option value="paid">Ödenenler</option>
-                <option value="unpaid">Ödenmeyenler</option>
-                <option value="partial">Kısmi Ödenenler</option>
+                <option value="paid">✅ Ödenenler</option>
+                <option value="unpaid">⏳ Ödenmeyenler</option>
+                <option value="partial">⚠️ Kısmi Ödenenler</option>
               </select>
 
               {/* Sort Order Toggle */}

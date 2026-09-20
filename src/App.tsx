@@ -2289,18 +2289,23 @@ export default function App() {
         updatedList = [...prev, withTimestamp];
       }
 
-      // If price > 0, propagate this price to future unpriced/zero-priced sessions of this client MATCHING the session type
+      // If price > 0, propagate this price to future sessions of this client MATCHING the session type
       if (withTimestamp.price > 0 && withTimestamp.type !== 'cancelled' && withTimestamp.type !== 'non-session') {
-        const targetNorm = getNormalizedClientName(withTimestamp.clientName);
+        const targetNorm = getNormalizedClientName(withTimestamp.clientName).toLocaleLowerCase('tr-TR');
         const cutoffDate = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
         updatedList = updatedList.map(s => {
           const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
           // Only propagate to future sessions of the EXACT SAME session type (online -> online, face-to-face -> face-to-face)
           if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type === withTimestamp.type) {
-            if (getNormalizedClientName(s.clientName) === targetNorm && (s.price === 0 || !s.price)) {
+            const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
+            if (sNorm === targetNorm && s.paymentStatus !== 'paid') {
               return {
                 ...s,
                 price: withTimestamp.price,
+                hasBabysitterFee: withTimestamp.hasBabysitterFee !== undefined ? withTimestamp.hasBabysitterFee : s.hasBabysitterFee,
+                babysitterFeeAmount: withTimestamp.babysitterFeeAmount !== undefined ? withTimestamp.babysitterFeeAmount : s.babysitterFeeAmount,
+                hasOfficeRentFee: withTimestamp.hasOfficeRentFee !== undefined ? withTimestamp.hasOfficeRentFee : s.hasOfficeRentFee,
+                officeRentFeeAmount: withTimestamp.officeRentFeeAmount !== undefined ? withTimestamp.officeRentFeeAmount : s.officeRentFeeAmount,
                 updatedAt: Date.now()
               };
             }
@@ -2310,7 +2315,8 @@ export default function App() {
 
         // Also update settings.clientCustomPrices to remember the distinct price per session type
         setSettings(prevSettings => {
-          const existingRule: Partial<ClientPricingRule> = prevSettings.clientCustomPrices?.[targetNorm] || {};
+          const targetKey = getNormalizedClientName(withTimestamp.clientName);
+          const existingRule: Partial<ClientPricingRule> = prevSettings.clientCustomPrices?.[targetKey] || {};
           const updatedRule: ClientPricingRule = {
             price: withTimestamp.price,
             onlinePrice: withTimestamp.type === 'online' ? withTimestamp.price : (existingRule.onlinePrice ?? prevSettings.defaultOnlinePrice ?? withTimestamp.price),
@@ -2323,7 +2329,7 @@ export default function App() {
           };
           const newCustomPrices = {
             ...(prevSettings.clientCustomPrices || {}),
-            [targetNorm]: updatedRule
+            [targetKey]: updatedRule
           };
           const newSettings = { ...prevSettings, clientCustomPrices: newCustomPrices };
           try {

@@ -169,16 +169,20 @@ export function getNormalizedClientName(name: string): string {
   clean = clean.replace(/^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i, '');
   clean = clean.replace(/^#\s*\d+\s*(?:[\-\:\/]\s*)?/i, '');
 
-  // 2. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
+  // 2. Remove session type markers at start or end like "(Online)", "(Yüz Yüze)", " - Online", "[Yüzyüze]", "(Ofis)"
+  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet)[\)\}\]]*$/i, '');
+  clean = clean.replace(/^(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet)[\s\-\:\.\)\(\[\{]+/i, '');
+
+  // 3. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
   clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
   
-  // 3. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
+  // 4. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
   clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
 
-  // 4. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
+  // 5. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
   clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
 
-  // 5. Clean up any remaining trailing or leading punctuation/whitespace
+  // 6. Clean up any remaining trailing or leading punctuation/whitespace
   clean = clean.replace(/^[\s\-_:.,;()/[\]{}#]+|[\s\-_:.,;()/[\]{}#]+$/g, '');
 
   return clean.trim() || name.trim();
@@ -376,8 +380,15 @@ export function autoHealSmartClientPrices(
   const clientTypeEstablishedPrices = new Map<string, number>();
   const clientGeneralEstablishedPrices = new Map<string, number>();
 
-  // Pass 1: Find all clients with a known non-zero price in active sessions
-  sessionList.forEach(s => {
+  // Pass 1: Find all clients with a known non-zero price in active sessions (latest date/updatedAt first)
+  const sortedForPrices = [...sessionList].sort((a, b) => {
+    if ((b.updatedAt || 0) !== (a.updatedAt || 0)) {
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    }
+    return (b.date || '').localeCompare(a.date || '');
+  });
+
+  sortedForPrices.forEach(s => {
     if (!s || s.type === 'cancelled' || s.type === 'non-session') return;
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
     if (typeof s.price === 'number' && s.price > 0 && isWithinAccounting) {
