@@ -26,7 +26,7 @@ import {
   ChevronUp,
   BarChart3
 } from 'lucide-react';
-import { Session, AppSettings, getNormalizedClientName } from '../types';
+import { Session, AppSettings, getNormalizedClientName, areClientNamesEquivalent } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -61,17 +61,21 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
 
   // Normalize target client name
   const targetNormalized = useMemo(() => getNormalizedClientName(clientName).toLocaleLowerCase('tr-TR'), [clientName]);
+  const displayTitle = useMemo(() => {
+    const cleanNorm = getNormalizedClientName(clientName);
+    if (cleanNorm) return cleanNorm;
+    return clientName.replace(/[\s\u00A0]+/g, ' ').trim();
+  }, [clientName]);
 
   // Extract all sessions for this specific client (both Online and Face-to-Face together)
+  // Handles accidental double/multiple spaces, session numbers (e.g. "özlem tirün 2" vs "özlem  tirün    2")
   const clientSessions = useMemo(() => {
-    if (!targetNormalized) return [];
+    if (!clientName) return [];
     return sessions.filter(s => {
       if (!s || !s.clientName) return false;
-      const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
-      const rawDirectMatch = s.clientName.trim().toLocaleLowerCase('tr-TR') === clientName.trim().toLocaleLowerCase('tr-TR');
-      return sNorm === targetNormalized || rawDirectMatch || sNorm.includes(targetNormalized) || targetNormalized.includes(sNorm);
+      return areClientNamesEquivalent(s.clientName, clientName);
     });
-  }, [sessions, targetNormalized, clientName]);
+  }, [sessions, clientName]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -224,7 +228,7 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-base sm:text-lg font-bold text-slate-900 truncate">
-                    {formatClientName(clientName)}
+                    {formatClientName(displayTitle)}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60 shadow-3xs">
                     {stats.totalSessions} Seans

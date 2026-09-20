@@ -279,13 +279,13 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <Search className="w-4 h-4" />
               </motion.button>
 
-              {/* Danışan Özel Fiyat & Kurtarma Button */}
+              {/* Danışan Özel Fiyat Yönetimi Button */}
               {onOpenClientPricingModal && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   onClick={onOpenClientPricingModal}
                   className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
-                  title="Danışan Özel Fiyatları & 84 Günlük Geçmiş Kurtarma"
+                  title="Danışan Özel Fiyat Yönetimi"
                 >
                   <Sparkles className="w-4 h-4 text-emerald-600" />
                   <span>Danışan Fiyatları</span>
@@ -760,8 +760,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold text-slate-800">Danışan Fiyat & Kurtarma</p>
-                              <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-bold">84 Gün</span>
+                              <p className="text-xs font-bold text-slate-800">Danışan Özel Fiyatları</p>
                             </div>
                             <p className="text-[10px] text-slate-500">Özel seans, bakıcı ve ofis ücretlerini yönet</p>
                           </div>

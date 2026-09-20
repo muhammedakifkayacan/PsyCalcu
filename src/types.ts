@@ -163,7 +163,8 @@ export function toTurkishUpper(str: string): string {
 
 export function getNormalizedClientName(name: string): string {
   if (!name) return "";
-  let clean = name.trim();
+  // Normalize all multiple whitespace characters (including double/triple spaces, tabs, non-breaking spaces) to a single space
+  let clean = name.replace(/[\s\u00A0]+/g, ' ').trim();
 
   // 1. Remove leading numbering/session prefixes e.g. "1. Ahmet", "1- Ahmet", "1. seans Ahmet", "#1 Ahmet", "Seans 1: Ahmet"
   clean = clean.replace(/^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i, '');
@@ -185,7 +186,47 @@ export function getNormalizedClientName(name: string): string {
   // 6. Clean up any remaining trailing or leading punctuation/whitespace
   clean = clean.replace(/^[\s\-_:.,;()/[\]{}#]+|[\s\-_:.,;()/[\]{}#]+$/g, '');
 
-  return clean.trim() || name.trim();
+  // 7. Ensure any leftover multiple spaces in between words are collapsed into a single space
+  clean = clean.replace(/[\s\u00A0]+/g, ' ').trim();
+
+  return clean || name.replace(/[\s\u00A0]+/g, ' ').trim();
+}
+
+/**
+ * Checks if two client names are equivalent, taking into account:
+ * - Accidental double/multiple spaces ("özlem tirün 2" vs "özlem  tirün    2")
+ * - Session numbering prefixes/suffixes ("özlem tirün 1" vs "özlem tirün 2")
+ * - Turkish case insensitivity ("İ" / "i", "I" / "ı")
+ */
+export function areClientNamesEquivalent(nameA?: string | null, nameB?: string | null): boolean {
+  if (!nameA || !nameB) return false;
+  
+  // Collapse whitespace and trim
+  const cleanA = nameA.replace(/[\s\u00A0]+/g, ' ').trim();
+  const cleanB = nameB.replace(/[\s\u00A0]+/g, ' ').trim();
+  
+  if (!cleanA || !cleanB) return false;
+
+  // 1. Direct match with whitespace collapsed (case insensitive in Turkish)
+  if (cleanA.toLocaleLowerCase('tr-TR') === cleanB.toLocaleLowerCase('tr-TR')) {
+    return true;
+  }
+
+  // 2. Normalized match (session numbers, prefixes, suffixes, extra spaces removed)
+  const normA = getNormalizedClientName(cleanA).toLocaleLowerCase('tr-TR');
+  const normB = getNormalizedClientName(cleanB).toLocaleLowerCase('tr-TR');
+  
+  if (normA && normB) {
+    if (normA === normB) return true;
+    // Prefix or sub-phrase match if both have at least 3 chars (e.g., partial name)
+    if (normA.length >= 3 && normB.length >= 3) {
+      if (normA.startsWith(normB + ' ') || normB.startsWith(normA + ' ')) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

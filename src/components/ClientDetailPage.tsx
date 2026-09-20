@@ -29,9 +29,13 @@ import {
   Trash2,
   Edit3,
   Sparkles,
-  Baby
+  Baby,
+  Filter,
+  SlidersHorizontal,
+  X,
+  RotateCcw
 } from 'lucide-react';
-import { Session, AppSettings, SessionType, getNormalizedClientName } from '../types';
+import { Session, AppSettings, SessionType, getNormalizedClientName, areClientNamesEquivalent } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 
 interface ClientDetailPageProps {
@@ -69,20 +73,42 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedText, setCopiedText] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // Calculate active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (typeFilter !== 'all') count++;
+    if (paymentFilter !== 'all') count++;
+    if (sortOrder !== 'desc') count++;
+    return count;
+  }, [searchQuery, typeFilter, paymentFilter, sortOrder]);
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setTypeFilter('all');
+    setPaymentFilter('all');
+    setSortOrder('desc');
+  };
 
   // Normalize target client name
   const targetNormalized = useMemo(() => getNormalizedClientName(clientName).toLocaleLowerCase('tr-TR'), [clientName]);
+  const displayTitle = useMemo(() => {
+    const cleanNorm = getNormalizedClientName(clientName);
+    if (cleanNorm) return cleanNorm;
+    return clientName.replace(/[\s\u00A0]+/g, ' ').trim();
+  }, [clientName]);
 
   // Extract all sessions for this specific client (both Online and Face-to-Face together)
+  // Handles accidental double/multiple spaces, session numbers (e.g. "özlem tirün 2" vs "özlem  tirün    2")
   const clientSessions = useMemo(() => {
-    if (!targetNormalized) return [];
+    if (!clientName) return [];
     return sessions.filter(s => {
       if (!s || !s.clientName) return false;
-      const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
-      const rawDirectMatch = s.clientName.trim().toLocaleLowerCase('tr-TR') === clientName.trim().toLocaleLowerCase('tr-TR');
-      return sNorm === targetNormalized || rawDirectMatch || sNorm.includes(targetNormalized) || targetNormalized.includes(sNorm);
+      return areClientNamesEquivalent(s.clientName, clientName);
     });
-  }, [sessions, targetNormalized, clientName]);
+  }, [sessions, clientName]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -261,7 +287,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 truncate">
-                {formatClientName(clientName)}
+                {formatClientName(displayTitle)}
               </h1>
               <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200/60 shadow-3xs">
                 {stats.totalSessions} Seans
@@ -434,61 +460,206 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Filter & Search Toolbar */}
-      <div className="p-3 sm:p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Tarih veya seans notlarında ara..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            id="client-detail-search-input"
-          />
+      {/* Sleek Minimalist Toolbar with Small Filter Button */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden transition-all">
+        {/* Compact Header Bar */}
+        <div className="p-3 sm:p-4 flex items-center justify-between gap-3">
+          {/* Left: Session count */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-extrabold text-slate-800">
+              Seans Kayıtları
+            </span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+              {displaySessions.length} {displaySessions.length === clientSessions.length ? 'seans' : `/ ${clientSessions.length}`}
+            </span>
+          </div>
+
+          {/* Right: Actions & Small Filter Button */}
+          <div className="flex items-center gap-2 shrink-0">
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Filtreleri Temizle"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span className="hidden sm:inline">Temizle</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(prev => !prev)}
+              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border ${
+                isFilterOpen || activeFilterCount > 0
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+              id="client-detail-toggle-filter-btn"
+              title="Filtrele ve Ara"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Filtrele</span>
+              {activeFilterCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center ml-0.5">
+                  {activeFilterCount}
+                </span>
+              )}
+              {isFilterOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 text-slate-500 ml-0.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 ml-0.5" />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2 flex-wrap text-xs">
-          {/* Type Filter */}
-          <select
-            value={typeFilter}
-            onChange={e => setTypeFilter(e.target.value as any)}
-            className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            id="client-detail-type-filter"
-          >
-            <option value="all">Tüm Türler (Online & Yüzyüze)</option>
-            <option value="online">🌐 Sadece Online</option>
-            <option value="face-to-face">🏢 Sadece Yüz Yüze</option>
-            <option value="cancelled">🚫 İptal Edilenler</option>
-          </select>
+        {/* Active Filter Chips (shown when panel is closed so user always has context) */}
+        {!isFilterOpen && activeFilterCount > 0 && (
+          <div className="px-3 pb-3 pt-0 flex items-center gap-1.5 flex-wrap border-t border-slate-100/80 pt-2.5">
+            <span className="text-[11px] text-slate-400 font-medium mr-1">Aktif filtreler:</span>
+            {searchQuery.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-[11px] font-semibold">
+                <span>Ara: "{searchQuery}"</span>
+                <button onClick={() => setSearchQuery('')} className="hover:text-rose-600 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {typeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200/80 text-[11px] font-semibold">
+                <span>{typeFilter === 'online' ? 'Online' : typeFilter === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}</span>
+                <button onClick={() => setTypeFilter('all')} className="hover:text-rose-600 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {paymentFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 text-[11px] font-semibold">
+                <span>{paymentFilter === 'paid' ? 'Ödenenler' : paymentFilter === 'unpaid' ? 'Ödenmeyenler' : 'Kısmi'}</span>
+                <button onClick={() => setPaymentFilter('all')} className="hover:text-rose-600 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {sortOrder !== 'desc' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-semibold">
+                <span>Eskiden Yeniye</span>
+                <button onClick={() => setSortOrder('desc')} className="hover:text-rose-600 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
 
-          {/* Payment Filter */}
-          <select
-            value={paymentFilter}
-            onChange={e => setPaymentFilter(e.target.value as any)}
-            className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            id="client-detail-payment-filter"
-          >
-            <option value="all">Tüm Ödemeler</option>
-            <option value="paid">✅ Ödenenler</option>
-            <option value="unpaid">⏳ Ödenmeyenler</option>
-            <option value="partial">⚠️ Kısmi Ödenenler</option>
-          </select>
+        {/* Collapsible Filter Panel */}
+        <AnimatePresence>
+          {isFilterOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="border-t border-slate-100 bg-slate-50/50 p-3 sm:p-4 space-y-3 overflow-hidden"
+            >
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Tarih veya seans notlarında ara..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  id="client-detail-search-input"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-          {/* Sort Order Toggle */}
-          <button
-            type="button"
-            onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-            className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-100 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Tarih Sıralaması"
-            id="client-detail-sort-toggle"
-          >
-            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
-            <span>{sortOrder === 'desc' ? 'Yeniden Eskiye' : 'Eskiden Yeniye'}</span>
-          </button>
-        </div>
+              {/* Filter controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                {/* Type Filter */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Seans Türü</label>
+                  <select
+                    value={typeFilter}
+                    onChange={e => setTypeFilter(e.target.value as any)}
+                    className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+                    id="client-detail-type-filter"
+                  >
+                    <option value="all">Tüm Türler (Online & Yüzyüze)</option>
+                    <option value="online">🌐 Sadece Online</option>
+                    <option value="face-to-face">🏢 Sadece Yüz Yüze</option>
+                    <option value="cancelled">🚫 İptal Edilenler</option>
+                  </select>
+                </div>
+
+                {/* Payment Filter */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ödeme Durumu</label>
+                  <select
+                    value={paymentFilter}
+                    onChange={e => setPaymentFilter(e.target.value as any)}
+                    className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+                    id="client-detail-payment-filter"
+                  >
+                    <option value="all">Tüm Ödemeler</option>
+                    <option value="paid">✅ Ödenenler</option>
+                    <option value="unpaid">⏳ Ödenmeyenler</option>
+                    <option value="partial">⚠️ Kısmi Ödenenler</option>
+                  </select>
+                </div>
+
+                {/* Sort Order Toggle */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tarih Sıralaması</label>
+                  <button
+                    type="button"
+                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 font-semibold flex items-center justify-between transition-colors cursor-pointer"
+                    id="client-detail-sort-toggle"
+                  >
+                    <span>{sortOrder === 'desc' ? 'Yeniden Eskiye' : 'Eskiden Yeniye'}</span>
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Panel Footer */}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                {activeFilterCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Filtreleri Sıfırla ({activeFilterCount})</span>
+                  </button>
+                ) : (
+                  <span className="text-slate-400 text-[11px]">Kriterlerinize göre filtreleyin</span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsFilterOpen(false)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Kapat
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Session List */}

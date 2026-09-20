@@ -167,7 +167,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
   };
 
   const handleQuickAutoRepair = async (reg: Registration) => {
-    if (!window.confirm(`${reg.displayName} kullanıcısının 84 günlük seansları için sıfırlanmış seans ücretlerini, bakıcı ve ofis masraflarını otomatik hesaplayıp geri yüklemek istiyor musunuz?`)) {
+    if (!window.confirm(`${reg.displayName} kullanıcısının sıfırlanmış seans ücretlerini, bakıcı ve ofis masraflarını otomatik hesaplayıp geri yüklemek istiyor musunuz?`)) {
       return;
     }
     setLoadingPricingUserId(reg.userId);
@@ -240,7 +240,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
         settings,
         repairedSessions,
         existingExpenses,
-        `Yönetici Tarafından 1-Tıkla 84 Günlük Veri Kurtarma (${repairedCount} Seans Onarıldı)`
+        `Yönetici Tarafından 1-Tıkla Veri Onarma (${repairedCount} Seans Onarıldı)`
       );
 
       showToast(`Harika! ${reg.displayName} için ${repairedCount} adet seansın fiyat ve masrafları başarıyla geri yüklendi!`, 'success');
@@ -1129,19 +1129,19 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                           </div>
                         </div>
 
-                        {/* Section 8.5: Danışan Fiyat & 84 Günlük Seans Kurtarma (Admin Özel) */}
+                        {/* Section 8.5: Danışan Fiyat & Seans Onarma (Admin Özel) */}
                         <div className="space-y-2 border-t border-slate-50 pt-3 pb-1 bg-emerald-50/40 p-3 rounded-2xl border border-emerald-100">
                           <label className="font-semibold text-slate-700 flex items-center justify-between text-xs">
                             <span className="flex items-center gap-1.5 text-emerald-800 font-bold">
                               <Sparkles className="w-4 h-4 text-emerald-600" />
-                              Danışan Özel Fiyat & Seans Kurtarma (84 Gün)
+                              Danışan Özel Fiyat & Seans Onarma
                             </span>
                             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                              Kalıcı Kurtarma
+                              Kalıcı Onarma
                             </span>
                           </label>
                           <p className="text-[10px] text-slate-500 leading-relaxed">
-                            Kullanıcının Temmuz'dan beri gelen tüm seanslarını, sıfırlanmış ücretlerini, bakıcı ve ofis masraflarını tek tıkla onarın veya detaylı listeden düzenleyin.
+                            Kullanıcının tüm seanslarını, sıfırlanmış ücretlerini, bakıcı ve ofis masraflarını tek tıkla onarın veya detaylı listeden düzenleyin.
                           </p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                             <button
@@ -1155,7 +1155,7 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
                               ) : (
                                 <Wrench className="w-3.5 h-3.5" />
                               )}
-                              <span>⚡ 1-Tıkla 84 Günü Onar</span>
+                              <span>⚡ 1-Tıkla Seansları Onar</span>
                             </button>
                             <button
                               type="button"

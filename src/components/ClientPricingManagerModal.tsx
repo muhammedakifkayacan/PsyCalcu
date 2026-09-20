@@ -513,14 +513,14 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-800">
-                  {isAdminView ? `Danışan Fiyat & Geçmiş Kurtarma Paneli (${targetUserName || 'Kullanıcı'})` : 'Danışan Özel Fiyat & Muhasebe Kurtarma Merkezi'}
+                  {isAdminView ? `Danışan Özel Fiyat Paneli (${targetUserName || 'Kullanıcı'})` : 'Danışan Özel Fiyat Yönetimi'}
                 </h2>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
-                  84 Günlük Tam Senkronizasyon
+                  Toplu Fiyat & Masraf Yönetimi
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Danışanlarınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek ekrandan ayarlayın; tüm geçmiş ve gelecek seanslara anında uygulansın.
+                Danışanlarınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek ekrandan ayarlayın; tüm seanslara anında uygulansın.
               </p>
             </div>
           </div>
@@ -977,7 +977,7 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
               className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              {isSaving ? 'Tüm Seanslara Uygulanıyor...' : 'Tüm 84 Günlük Seanslara Uygula ve Kaydet'}
+              {isSaving ? 'Tüm Seanslara Uygulanıyor...' : 'Tüm Seanslara Uygula ve Kaydet'}
             </button>
           )}
         </div>

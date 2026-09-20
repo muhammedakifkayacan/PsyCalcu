@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, areClientNamesEquivalent, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -1825,9 +1825,12 @@ export default function App() {
       // 1. Text filter
       if (searchTabQuery.trim()) {
         const query = toTurkishUpper(searchTabQuery.trim());
-        const matchName = toTurkishUpper(session.clientName).includes(query);
+        const cleanQuery = toTurkishUpper(searchTabQuery.replace(/[\s\u00A0]+/g, ' ').trim());
+        const cleanClientName = toTurkishUpper((session.clientName || '').replace(/[\s\u00A0]+/g, ' ').trim());
+        const matchName = toTurkishUpper(session.clientName).includes(query) || cleanClientName.includes(cleanQuery);
         const noteText = session.isSyncedFromCalendar ? (tempNotesCache[session.id] || '') : (session.notes || '');
-        const matchNotes = noteText ? toTurkishUpper(noteText).includes(query) : false;
+        const cleanNoteText = toTurkishUpper((noteText || '').replace(/[\s\u00A0]+/g, ' ').trim());
+        const matchNotes = noteText ? (toTurkishUpper(noteText).includes(query) || cleanNoteText.includes(cleanQuery)) : false;
         const matchTime = session.time.includes(query);
         const matchPrice = String(session.price).includes(query);
         if (!matchName && !matchNotes && !matchTime && !matchPrice) {
@@ -2080,10 +2083,13 @@ export default function App() {
   const searchedSessions = useMemo(() => {
     if (!headerSearchQuery.trim()) return [];
     const q = headerSearchQuery.trim().toLowerCase();
+    const cleanQ = headerSearchQuery.replace(/[\s\u00A0]+/g, ' ').trim().toLowerCase();
     return sessions.filter(s => {
-      const clientMatch = s.clientName.toLowerCase().includes(q);
+      const clientClean = (s.clientName || '').replace(/[\s\u00A0]+/g, ' ').toLowerCase();
+      const clientMatch = clientClean.includes(cleanQ) || s.clientName.toLowerCase().includes(q);
       const noteText = s.isSyncedFromCalendar ? (tempNotesCache[s.id] || '') : (s.notes || '');
-      const notesMatch = noteText ? noteText.toLowerCase().includes(q) : false;
+      const notesClean = (noteText || '').replace(/[\s\u00A0]+/g, ' ').toLowerCase();
+      const notesMatch = notesClean.includes(cleanQ) || (noteText ? noteText.toLowerCase().includes(q) : false);
       const typeMatch = s.type.toLowerCase().includes(q);
       
       const [year, month, day] = s.date.split('-');
@@ -2178,8 +2184,12 @@ export default function App() {
 
   const filteredDebtors = useMemo(() => {
     if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
-    const q = debtSearchQuery.toLowerCase();
-    return debtsData.clientsWithDebts.filter(c => c.clientName.toLowerCase().includes(q));
+    const q = debtSearchQuery.toLowerCase().trim();
+    const cleanQ = debtSearchQuery.replace(/[\s\u00A0]+/g, ' ').toLowerCase().trim();
+    return debtsData.clientsWithDebts.filter(c => {
+      const cleanName = c.clientName.replace(/[\s\u00A0]+/g, ' ').toLowerCase().trim();
+      return c.clientName.toLowerCase().includes(q) || cleanName.includes(cleanQ);
+    });
   }, [debtsData.clientsWithDebts, debtSearchQuery]);
 
   // Financial calculations for the CURRENT MONTH
@@ -2311,8 +2321,7 @@ export default function App() {
           const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
           // Only propagate to future sessions of the EXACT SAME session type (online -> online, face-to-face -> face-to-face)
           if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type === withTimestamp.type) {
-            const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
-            if (sNorm === targetNorm && s.paymentStatus !== 'paid') {
+            if (areClientNamesEquivalent(s.clientName, withTimestamp.clientName) && s.paymentStatus !== 'paid') {
               return {
                 ...s,
                 price: withTimestamp.price,
@@ -2573,7 +2582,7 @@ export default function App() {
 
     sessions.forEach(s => {
       const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-      if (sKey === targetKey && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
+      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
         const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
         totalAmount += remainingDebt;
         sessionCount++;
@@ -2588,7 +2597,7 @@ export default function App() {
     setSessions(prev => {
       return prev.map(s => {
         const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-        if (sKey === targetKey && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
+        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
           return {
             ...s,
             paymentStatus: 'paid',
@@ -2850,10 +2859,8 @@ export default function App() {
       return undefined;
     };
 
-    // 60 days cutoff logic (aligns with icsParser.ts)
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const cutOffDateStr = formatLocalDate(sixtyDaysAgo);
+    // Unrestricted past cutoff: all past calendar sessions are processed and synced
+    const cutOffDateStr = '1970-01-01';
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched
@@ -6642,9 +6649,7 @@ export default function App() {
                 onMarkAllPaid={(name) => {
                   const unpaidAmount = sessions
                     .filter(s => {
-                      const sNorm = getNormalizedClientName(s.clientName).toLocaleLowerCase('tr-TR');
-                      const tNorm = getNormalizedClientName(name).toLocaleLowerCase('tr-TR');
-                      return (sNorm === tNorm || s.clientName === name) && s.paymentStatus !== 'paid' && s.type !== 'cancelled';
+                      return areClientNamesEquivalent(s.clientName, name) && s.paymentStatus !== 'paid' && s.type !== 'cancelled';
                     })
                     .reduce((acc, s) => acc + (s.price - (s.paidAmount || 0)), 0);
 

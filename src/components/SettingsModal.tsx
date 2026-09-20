@@ -144,17 +144,16 @@ export default function SettingsModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto font-sans">
           
-          {/* Danışan Özel Fiyat & Muhasebe Kurtarma Banner */}
+          {/* Danışan Özel Fiyat Yönetimi Banner */}
           {onOpenClientPricingModal && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-3xs">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <h4 className="text-xs font-bold text-slate-800">Danışan Özel Fiyat & Muhasebe Kurtarma</h4>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">84 Gün</span>
+                  <h4 className="text-xs font-bold text-slate-800">Danışan Özel Fiyat Yönetimi</h4>
                 </div>
                 <p className="text-[11px] text-slate-600">
-                  Her danışanınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek sayfadan düzenleyin; tüm geçmiş 84 güne uygulansın.
+                  Her danışanınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek sayfadan düzenleyin; tüm seanslara uygulansın.
                 </p>
               </div>
               <button

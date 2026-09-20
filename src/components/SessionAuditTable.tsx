@@ -315,8 +315,11 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
       // Text search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesName = (session.clientName || '').toLowerCase().includes(q);
-        const matchesNotes = (session.notes || '').toLowerCase().includes(q);
+        const cleanQ = searchQuery.replace(/[\s\u00A0]+/g, ' ').toLowerCase().trim();
+        const clientClean = (session.clientName || '').replace(/[\s\u00A0]+/g, ' ').toLowerCase();
+        const notesClean = (session.notes || '').replace(/[\s\u00A0]+/g, ' ').toLowerCase();
+        const matchesName = (session.clientName || '').toLowerCase().includes(q) || clientClean.includes(cleanQ);
+        const matchesNotes = (session.notes || '').toLowerCase().includes(q) || notesClean.includes(cleanQ);
         const matchesTime = (session.time || '').includes(q);
         if (!matchesName && !matchesNotes && !matchesTime) return false;
       }

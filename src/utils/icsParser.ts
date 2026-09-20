@@ -229,7 +229,7 @@ function generateOccurrences(
   const [sY, sM, sD] = startParsed.dateStr.split('-').map(Number);
   let currDate = new Date(sY, sM - 1, sD);
   let countProcessed = 0;
-  const maxSafety = 350; // Safety guard for infinite loop prevention
+  const maxSafety = 2500; // Safe guard for infinite loop prevention while supporting multi-year histories
 
   while (countProcessed < maxSafety) {
     const currYear = currDate.getFullYear();
@@ -418,19 +418,14 @@ export function parseICS(
     }
   }
 
-  // Define date window: 60 days in past up to 180 days in future
+  // Date window: No arbitrary past cutoff so user's entire calendar history is parsed.
+  // Future window covers upcoming 365 days (1 year)
+  const windowStart = '1970-01-01';
+
   const todayObj = new Date();
-  const sixtyDaysAgo = new Date();
-  sixtyDaysAgo.setDate(todayObj.getDate() - 60);
-
-  let windowStart = formatLocalDate(sixtyDaysAgo);
-  if (membershipDate) {
-    windowStart = membershipDate.split('T')[0];
-  }
-
-  const future180Days = new Date();
-  future180Days.setDate(todayObj.getDate() + 180);
-  const windowEnd = formatLocalDate(future180Days);
+  const future365Days = new Date();
+  future365Days.setDate(todayObj.getDate() + 365);
+  const windowEnd = formatLocalDate(future365Days);
 
   interface RawEvent {
     uid: string;
@@ -570,17 +565,20 @@ export function parseICS(
 
     // If no RRULE or RRULE generated 0 occurrences, fallback to single event occurrence
     if (occurrences.length === 0) {
-      if (startParsed.dateStr >= windowStart && startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
+      if (startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
         occurrences.push({ dateStr: startParsed.dateStr, timeStr: startParsed.timeStr });
       }
     }
 
-    // Create session for each occurrence
-    const membershipCutoff = (membershipDate && membershipDate < '2026-07-01') ? membershipDate.split('T')[0] : '';
+    // Optional user membership / accounting cutoff date (only active if explicitly provided)
+    const effectiveAccountingCutoff = (membershipDate && membershipDate.trim()) 
+      ? membershipDate.split('T')[0] 
+      : '';
 
     for (const occ of occurrences) {
-      // Only treat events strictly before 2026-07-01 (or explicit pre-2026 membership cutoff) as pre-usage zeroed events
-      const isBeforeRegistration = Boolean(occ.dateStr && occ.dateStr < '2026-07-01' && (membershipCutoff ? occ.dateStr < membershipCutoff : true));
+      // Events strictly before an explicitly configured accounting start date are pulled into the calendar & agenda,
+      // but zeroed out financially (price: 0, paymentStatus: 'paid', no expenses) if configured
+      const isBeforeRegistration = Boolean(occ.dateStr && effectiveAccountingCutoff && occ.dateStr < effectiveAccountingCutoff);
 
       // Determine financial parameters based on session type
       let price = defaultPrice;
