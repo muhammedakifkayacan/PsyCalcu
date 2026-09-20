@@ -431,7 +431,6 @@ export function parseICS(
     locationRaw?: string;
     noteRaw?: string;
     rruleRaw?: string;
-    recurrenceIdRaw?: string;
     exdates: Set<string>;
     statusRaw?: string;
   }
@@ -483,8 +482,6 @@ export function parseICS(
           currentRaw.locationRaw = cleanVal;
         } else if (key === 'RRULE') {
           currentRaw.rruleRaw = line;
-        } else if (key === 'RECURRENCE-ID') {
-          currentRaw.recurrenceIdRaw = line;
         } else if (key === 'EXDATE') {
           const exParsed = parseIcsDateTimeToLocal(line, calTimezone);
           if (exParsed) {
@@ -560,11 +557,10 @@ export function parseICS(
     }
 
     // Create session for each occurrence
-    const membershipCutoff = (membershipDate && membershipDate < '2026-07-01') ? membershipDate.split('T')[0] : '';
+    const membershipCutoff = membershipDate ? membershipDate.split('T')[0] : '';
 
     for (const occ of occurrences) {
-      // Only treat events strictly before 2026-07-01 (or explicit pre-2026 membership cutoff) as pre-usage zeroed events
-      const isBeforeRegistration = Boolean(occ.dateStr && occ.dateStr < '2026-07-01' && (membershipCutoff ? occ.dateStr < membershipCutoff : true));
+      const isBeforeRegistration = Boolean(membershipCutoff && occ.dateStr < membershipCutoff);
 
       // Determine financial parameters based on session type
       let price = defaultPrice;
@@ -596,9 +592,7 @@ export function parseICS(
       }
 
       // Generate deterministic ID per occurrence to prevent duplicate session accumulation
-      // If the event has RRULE, RECURRENCE-ID, or multiple occurrences, always append the occurrence date
-      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
-      const sessionId = hasRecurrence
+      const sessionId = occurrences.length > 1
         ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
         : `ics_${raw.uid}`;
 

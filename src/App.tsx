@@ -60,7 +60,6 @@ import PublicAvailability from './components/PublicAvailability';
 import EmailReportGenerator from './components/EmailReportGenerator';
 import SettingsModal from './components/SettingsModal';
 import SessionModal from './components/SessionModal';
-import { ClientPricingManagerModal } from './components/ClientPricingManagerModal';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
@@ -80,8 +79,6 @@ import { HeaderNavigation } from './components/HeaderNavigation';
 import PullToRefresh from './components/PullToRefresh';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
-import { safeStorage, pruneStorage } from './utils/storage';
-import { DataBackupSnapshot } from './types';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -100,14 +97,15 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
     </div>
     <div className="pt-3 border-t border-slate-100 w-full text-center">
       <p className="text-xs text-slate-400 font-medium">
-        Bu özellik yöneticiniz tarafından geçici olarak sınırlandırılmıştır. Bilgi almak veya aktifleştirmek için lütfen <span className="font-semibold text-[#6b705c]">sistem yöneticisi</span> ile iletişime geçin.
+        Bu özellik yöneticiniz tarafından geçici olarak sınırlandırılmıştır. Bilgi almak veya aktifleştirmek için lütfen <span className="font-semibold text-[#6b705c]">muhammedakifkayacan@gmail.com</span> ile iletişime geçin.
       </p>
     </div>
   </div>
 );
 
-// Auto-correct any session before 2026-07-01 to be 0 TL,
-// AND automatically repair/heal any active sessions (from 2026-07-01 onwards) whose price or fees were accidentally zeroed out.
+// Auto-correct any session before the user's registration / accounting start date to be 0 TL and marked as 'paid'
+// (because past sessions prior to registration were already accounted for elsewhere),
+// and automatically reconcile smart client prices for all active sessions in the accounting period (on or after registration date)
 const autoCorrectPastSessions = (
   sessionList: Session[],
   defaultPrice = 1200,
@@ -116,17 +114,10 @@ const autoCorrectPastSessions = (
   accountingStartDate?: string | null
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
-
-  // Cutoff date is ONLY for old pre-usage data prior to 2026-07-01
-  const cutoffDate = (accountingStartDate && accountingStartDate < '2026-07-01') 
-    ? accountingStartDate.split('T')[0] 
-    : '2026-07-01';
-
-  const healedAndRestored = sessionList.map(s => {
+  const cutoffDate = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+  const zeroedPast: Session[] = sessionList.map(s => {
     if (!s) return s;
-
-    // 1. Pre-2026-07-01 historical pre-app data cutoff
-    if (s.date && s.date < cutoffDate) {
+    if (cutoffDate && s.date && s.date < cutoffDate) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
         return {
           ...s,
@@ -136,52 +127,13 @@ const autoCorrectPastSessions = (
           babysitterFeeAmount: 0,
           hasOfficeRentFee: false,
           officeRentFeeAmount: 0,
-          updatedAt: Date.now()
+          updatedAt: Date.now() // Mark as updated to trigger cloud sync saving
         };
       }
-      return s;
-    }
-
-    // 2. FOR ACTIVE SESSIONS (2026-07-01 onwards):
-    // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped!
-    let updated = { ...s };
-    let changed = false;
-
-    if (s.type !== 'cancelled' && s.type !== 'non-session') {
-      // Repair price if zero or missing
-      if (typeof updated.price !== 'number' || updated.price === 0) {
-        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
-        updated.price = smartCosts.price || defaultPrice || 1200;
-        changed = true;
-      }
-
-      // Repair babysitter fee if default is set and fee was stripped
-      if (defaultBabysitterFee > 0) {
-        if (!updated.hasBabysitterFee || typeof updated.babysitterFeeAmount !== 'number' || updated.babysitterFeeAmount === 0) {
-          updated.hasBabysitterFee = true;
-          updated.babysitterFeeAmount = defaultBabysitterFee;
-          changed = true;
-        }
-      }
-
-      // Repair office rent fee if default is set and fee was stripped
-      if (defaultOfficeRentFee > 0 && (updated.type === 'face-to-face' || updated.hasOfficeRentFee)) {
-        if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
-          updated.hasOfficeRentFee = true;
-          updated.officeRentFeeAmount = defaultOfficeRentFee;
-          changed = true;
-        }
-      }
-    }
-
-    if (changed) {
-      updated.updatedAt = Date.now();
-      return updated;
     }
     return s;
   });
-
-  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
+  return autoHealSmartClientPrices(zeroedPast, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -191,7 +143,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableKDV: false,
   defaultKdvRate: 20,
   defaultIsKdvInclusive: true,
-  therapistName: '',
+  therapistName: 'Dr. Melis Kaya',
   therapistPhone: '',
   calendarSyncEnabled: true,
   onlineCalendarWebcalUrl: '',
@@ -201,16 +153,17 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableSmartClientPriceMatching: true,
   autoMarkShortEventsAsNonSession: true,
   defaultLandingPage: 'agenda',
-  userRole: 'tenant',
+  userRole: undefined,
   ownerCalendars: [],
   rooms: [],
 };
 
 export default function App() {
   const { formatMoney, formatClientName, isPrivacyMode, isHideClientNames } = usePrivacy();
-  // Load settings from safeStorage or set defaults
+  // Load settings from localStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const savedSettings = safeStorage.getItem('psycalcu_settings');
+    const saved = localStorage.getItem('psycalcu_sessions'); // note: settings key below
+    const savedSettings = localStorage.getItem('psycalcu_settings');
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
@@ -240,9 +193,9 @@ export default function App() {
     return DEFAULT_SETTINGS;
   });
 
-  // Load sessions from safeStorage or use empty array
+  // Load sessions from localStorage or use empty array
   const [sessions, setSessions] = useState<Session[]>(() => {
-    const saved = safeStorage.getItem('psycalcu_sessions');
+    const saved = localStorage.getItem('psycalcu_sessions');
     if (saved) {
       try {
         return autoCorrectPastSessions(JSON.parse(saved));
@@ -251,9 +204,9 @@ export default function App() {
     return [];
   });
 
-  // Load clinic expenses from safeStorage or use empty array
+  // Load clinic expenses from localStorage or use empty array
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = safeStorage.getItem('psycalcu_expenses');
+    const saved = localStorage.getItem('psycalcu_expenses');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -321,14 +274,8 @@ export default function App() {
 
   // Authentication & Cloud Sync states
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>(() => {
-    return (safeStorage.getItem('psycalcu_cached_reg_status') as any) || 'checking';
-  });
-  const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(() => {
-    return safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z';
-  });
-  const [isDebtCutoffModalOpen, setIsDebtCutoffModalOpen] = useState(false);
-  const [debtCutoffDate, setDebtCutoffDate] = useState<string>('2026-07-01');
+  const [registrationStatus, setRegistrationStatus] = useState<'approved' | 'pending' | 'rejected' | 'checking'>('checking');
+  const [registrationCreatedAt, setRegistrationCreatedAt] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [maxSessionsLimit, setMaxSessionsLimit] = useState<string | number>('unlimited');
   const [featuresAIAllowed, setFeaturesAIAllowed] = useState<boolean>(true);
@@ -343,9 +290,6 @@ export default function App() {
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
-  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
-  const [lastCalendarSyncTime, setLastCalendarSyncTime] = useState<Date | null>(null);
-  const lastSyncTimestampRef = useRef<number>(0);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
   const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
   const [agendaStatusFilter, setAgendaStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'cancelled'>('all');
@@ -368,21 +312,21 @@ export default function App() {
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ settings: string; sessions: string; expenses: string }>((() => {
-    const savedSessions = safeStorage.getItem('psycalcu_sessions');
+    const savedSessions = localStorage.getItem('psycalcu_sessions');
     let initialSessionsStr = '[]';
     if (savedSessions) {
       try {
         initialSessionsStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions)));
       } catch (e) {}
     }
-    const savedSettingsStr = safeStorage.getItem('psycalcu_settings') || '';
-    const savedExpensesStr = safeStorage.getItem('psycalcu_expenses') || '[]';
+    const savedSettingsStr = localStorage.getItem('psycalcu_settings') || '';
+    const savedExpensesStr = localStorage.getItem('psycalcu_expenses') || '[]';
     return { settings: savedSettingsStr, sessions: initialSessionsStr, expenses: savedExpensesStr };
   })());
 
   // Notification States
   const [localNotifications, setLocalNotifications] = useState<AppNotification[]>(() => {
-    const saved = safeStorage.getItem('psycalcu_local_notifications');
+    const saved = localStorage.getItem('psycalcu_local_notifications');
     try {
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
@@ -392,7 +336,7 @@ export default function App() {
 
   const [announcements, setAnnouncements] = useState<AppNotification[]>([]);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>(() => {
-    const saved = safeStorage.getItem('psycalcu_read_announcement_ids');
+    const saved = localStorage.getItem('psycalcu_read_announcement_ids');
     try {
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
@@ -499,7 +443,7 @@ export default function App() {
     setLocalNotifications(prev => {
       const updated = prev.map(n => ({ ...n, read: true }));
       const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-      safeStorage.setItem(notificationsKey, JSON.stringify(updated), user?.uid);
+      localStorage.setItem(notificationsKey, JSON.stringify(updated));
       return updated;
     });
     
@@ -507,7 +451,7 @@ export default function App() {
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
       const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
-      safeStorage.setItem(announcementsKey, JSON.stringify(updated), user?.uid);
+      localStorage.setItem(announcementsKey, JSON.stringify(updated));
       return updated;
     });
     
@@ -518,13 +462,13 @@ export default function App() {
   const handleClearAllNotifications = () => {
     setLocalNotifications([]);
     const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-    safeStorage.removeItem(notificationsKey);
+    localStorage.removeItem(notificationsKey);
     
     const allAnnotIds = announcements.map(ann => ann.id);
     setReadAnnouncementIds(prev => {
       const updated = Array.from(new Set([...prev, ...allAnnotIds]));
       const announcementsKey = user ? `psycalcu_read_announcement_ids_${user.uid}` : 'psycalcu_read_announcement_ids';
-      safeStorage.setItem(announcementsKey, JSON.stringify(updated), user?.uid);
+      localStorage.setItem(announcementsKey, JSON.stringify(updated));
       return updated;
     });
     
@@ -577,7 +521,7 @@ export default function App() {
     setLocalNotifications(prev => {
       const updated = [newNotif, ...prev].slice(0, 100);
       const notificationsKey = user ? `psycalcu_local_notifications_${user.uid}` : 'psycalcu_local_notifications';
-      safeStorage.setItem(notificationsKey, JSON.stringify(updated), user?.uid);
+      localStorage.setItem(notificationsKey, JSON.stringify(updated));
       return updated;
     });
   };
@@ -675,9 +619,9 @@ export default function App() {
         setIsCloudSaving(false);
         setIsAuthSyncing(false);
         activeSavesCountRef.current = 0;
-        // Load safe storage if they log out
-        const savedSessions = safeStorage.getItem('psycalcu_sessions');
-        const savedSettings = safeStorage.getItem('psycalcu_settings');
+        // Load local storage if they log out
+        const savedSessions = localStorage.getItem('psycalcu_sessions');
+        const savedSettings = localStorage.getItem('psycalcu_settings');
         if (savedSessions) {
           try { setSessions(JSON.parse(savedSessions)); } catch (e) {}
         } else {
@@ -690,8 +634,8 @@ export default function App() {
         // Immediately load user-specific cached data for a seamless instant UI transition on different devices
         const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
         const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
-        const savedSessions = safeStorage.getItem(userSessionsKey);
-        const savedSettings = safeStorage.getItem(userSettingsKey);
+        const savedSessions = localStorage.getItem(userSessionsKey);
+        const savedSettings = localStorage.getItem(userSettingsKey);
         
         if (savedSessions) {
           try { 
@@ -729,7 +673,7 @@ export default function App() {
         
         // Also initialize lastSavedRef to prevent immediate auto-saving before sync
         const userExpensesKey = `psycalcu_expenses_${currentUser.uid}`;
-        const savedExpenses = safeStorage.getItem(userExpensesKey);
+        const savedExpenses = localStorage.getItem(userExpensesKey);
         lastSavedRef.current = {
           settings: savedSettings || '',
           sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]',
@@ -749,22 +693,16 @@ export default function App() {
     }
 
     const cleanEmail = (user.email || '').trim().toLowerCase();
-    const isBusra = cleanEmail.includes('uzmanpsikologbusra') || cleanEmail.includes('uzmpsikologbusra');
 
-    if (isBusra) {
+    if (cleanEmail === 'uzmpsikologbusra@gmail.com') {
       setRegistrationCreatedAt('2026-07-01T00:00:00.000Z');
     }
 
-    if (cleanEmail === 'muhammedakifkayacan@gmail.com' || isBusra) {
+    if (cleanEmail === 'muhammedakifkayacan@gmail.com') {
       setRegistrationStatus('approved');
       setRegistrationError(null);
     } else {
-      const cachedStatus = safeStorage.getItem(`psycalcu_cached_reg_${user.uid}`);
-      if (cachedStatus === 'approved') {
-        setRegistrationStatus('approved');
-      } else {
-        setRegistrationStatus('checking');
-      }
+      setRegistrationStatus('checking');
       setRegistrationError(null);
     }
     
@@ -774,18 +712,8 @@ export default function App() {
       try {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (cleanEmail !== 'muhammedakifkayacan@gmail.com' && !isBusra) {
-            const nextStatus = data.status || 'pending';
-            setRegistrationStatus(nextStatus);
-            safeStorage.setItem(`psycalcu_cached_reg_${user.uid}`, nextStatus, user.uid);
-            if (nextStatus === 'approved') {
-              safeStorage.setItem('psycalcu_cached_reg_status', 'approved', user.uid);
-            } else {
-              safeStorage.removeItem('psycalcu_cached_reg_status');
-            }
-          } else {
-            setRegistrationStatus('approved');
-            safeStorage.setItem(`psycalcu_cached_reg_${user.uid}`, 'approved', user.uid);
+          if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
+            setRegistrationStatus(data.status || 'pending');
           }
           setMaxSessionsLimit(data.maxSessionsLimit ?? 'unlimited');
           setFeaturesAIAllowed(data.featuresAIAllowed !== false);
@@ -805,10 +733,10 @@ export default function App() {
                 userRole: data.userRole as 'tenant' | 'owner',
                 ownerCalendars: data.userRole === 'owner' ? (prev.ownerCalendars ?? []) : undefined
               };
-              // Save to safeStorage
+              // Save to localStorage
               const userSettingsKey = `psycalcu_settings_${user.uid}`;
-              safeStorage.setItem(userSettingsKey, JSON.stringify(updated), user.uid);
-              safeStorage.setItem('psycalcu_settings', JSON.stringify(updated), user.uid);
+              localStorage.setItem(userSettingsKey, JSON.stringify(updated));
+              localStorage.setItem('psycalcu_settings', JSON.stringify(updated));
               
               // Save to Firestore
               saveUserData(user.uid, updated, sessionsRef.current || []).catch(err => {
@@ -819,16 +747,15 @@ export default function App() {
           }
           
           let regCreated = data.createdAt;
-          // Protect and correct Büşra's registration date & status
-          if (isBusra && (data.createdAt !== '2026-07-01T00:00:00.000Z' || data.status !== 'approved')) {
+          // Protect and correct uzmpsikologbusra@gmail.com's registration date
+          if (cleanEmail === 'uzmpsikologbusra@gmail.com' && data.createdAt !== '2026-07-01T00:00:00.000Z') {
             regCreated = '2026-07-01T00:00:00.000Z';
-            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z', status: 'approved' }, { merge: true }).catch(err => {
+            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z' }, { merge: true }).catch(err => {
               console.error("Error correcting registration date for Büşra:", err);
             });
           }
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
-            safeStorage.setItem('psycalcu_registration_created_at', regCreated, user.uid);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, regCreated));
           }
           
@@ -839,18 +766,15 @@ export default function App() {
             const newReg = {
               userId: user.uid,
               email: user.email || 'bilinmiyor',
-              displayName: user.displayName || (isBusra ? 'Uzm. Psikolog Büşra' : 'Psikolog'),
-              status: (cleanEmail === 'muhammedakifkayacan@gmail.com' || isBusra) ? 'approved' : 'pending',
-              createdAt: isBusra ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
+              displayName: user.displayName || 'Psikolog',
+              status: cleanEmail === 'muhammedakifkayacan@gmail.com' ? 'approved' : 'pending',
+              createdAt: cleanEmail === 'uzmpsikologbusra@gmail.com' ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
             };
             await setDoc(regRef, newReg);
-            if (cleanEmail !== 'muhammedakifkayacan@gmail.com' && !isBusra) {
+            if (cleanEmail !== 'muhammedakifkayacan@gmail.com') {
               setRegistrationStatus('pending');
-            } else {
-              setRegistrationStatus('approved');
             }
             setRegistrationCreatedAt(newReg.createdAt);
-            safeStorage.setItem('psycalcu_registration_created_at', newReg.createdAt, user.uid);
             setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, newReg.createdAt));
             setRegistrationError(null);
 
@@ -898,55 +822,25 @@ export default function App() {
     const performSync = async () => {
       try {
         setIsAuthSyncing(true);
-        const cleanEmail = (user.email || '').trim().toLowerCase();
-        const isBusra = cleanEmail.includes('uzmanpsikologbusra') || cleanEmail.includes('uzmpsikologbusra');
         const cloudData = await fetchUserData(user.uid);
         
         // Check if there was an explicit request to migrate anonymous local data
-        const shouldMigrate = safeStorage.getItem('psycalcu_should_migrate') === 'true';
+        const shouldMigrate = localStorage.getItem('psycalcu_should_migrate') === 'true';
         
         if (cloudData) {
-          // Clean up legacy placeholder therapistName if present
-          if (cloudData.settings) {
-            if (!cloudData.settings.therapistName || cloudData.settings.therapistName === 'Dr. Melis Kaya') {
-              cloudData.settings.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
-            }
-          }
-
-          // Resolve effective accounting / registration cutoff date before correcting sessions
-          let effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt);
-          if (!effectiveCutoff && !isBusra) {
-            try {
-              const regRef = doc(db, 'registrations', user.uid);
-              const regSnap = await getDoc(regRef);
-              if (regSnap.exists()) {
-                effectiveCutoff = regSnap.data()?.createdAt || null;
-                if (effectiveCutoff) {
-                  setRegistrationCreatedAt(effectiveCutoff);
-                  safeStorage.setItem('psycalcu_registration_created_at', effectiveCutoff, user.uid);
-                }
-              }
-            } catch (e) {
-              console.warn("Could not read registration doc in performSync:", e);
-            }
-          }
-          if (!effectiveCutoff) {
-            effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
-          }
-
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
           const cloudSessions = autoCorrectPastSessions(
             cloudData.sessions || [],
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            effectiveCutoff
+            registrationCreatedAt
           );
           
           if (shouldMigrate) {
             // User explicitly requested to migrate anonymous data into their existing cloud account
             let localSessions: Session[] = [];
-            const savedSessionsStr = safeStorage.getItem('psycalcu_sessions');
+            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
             if (savedSessionsStr) {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
@@ -976,7 +870,7 @@ export default function App() {
               cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
               cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
               cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-              effectiveCutoff
+              registrationCreatedAt
             );
             
             setSessions(finalSessions);
@@ -990,9 +884,9 @@ export default function App() {
             };
 
             // Wipe anonymous local storage
-            safeStorage.removeItem('psycalcu_sessions');
-            safeStorage.removeItem('psycalcu_settings');
-            safeStorage.removeItem('psycalcu_should_migrate');
+            localStorage.removeItem('psycalcu_sessions');
+            localStorage.removeItem('psycalcu_settings');
+            localStorage.removeItem('psycalcu_should_migrate');
             showToast('Yerel seanslarınız mevcut bulut hesabınızla başarıyla birleştirildi!', 'success');
           } else {
             // Standard flow: Cloud is the absolute source of truth!
@@ -1001,12 +895,6 @@ export default function App() {
             setSettings(cloudData.settings);
             if (cloudData.expenses) {
               setExpenses(cloudData.expenses);
-            }
-            if (cloudData.backupSnapshots && Array.isArray(cloudData.backupSnapshots)) {
-              setBackupSnapshots(cloudData.backupSnapshots);
-              try {
-                localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(cloudData.backupSnapshots));
-              } catch (e) {}
             }
             
             // Auto-sync public availability to make sure public_availability collection is populated
@@ -1018,9 +906,9 @@ export default function App() {
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
             const userExpensesKey = `psycalcu_expenses_${user.uid}`;
-            safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
-            safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
-            safeStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []), user.uid);
+            localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
+            localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
+            localStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []));
 
             lastSavedRef.current = {
               settings: JSON.stringify(cloudData.settings),
@@ -1030,46 +918,31 @@ export default function App() {
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           }
         } else {
-          // BRAND NEW USER (First time registered user, or local cache available)
+          // BRAND NEW USER (First time registered user, no cloud data yet)
           let sessionsToSave: Session[] = [];
-          let settingsToSave = { ...settings };
+          let settingsToSave = settings;
           
-          if (!settingsToSave.therapistName || settingsToSave.therapistName === 'Dr. Melis Kaya') {
-            settingsToSave.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
+          if (shouldMigrate) {
+            // Sync existing local data to their new cloud database if they checked migrate
+            const savedSessionsStr = localStorage.getItem('psycalcu_sessions');
+            const savedSettingsStr = localStorage.getItem('psycalcu_settings');
+            
+            if (savedSessionsStr) {
+              try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
+            if (savedSettingsStr) {
+              try { settingsToSave = JSON.parse(savedSettingsStr); } catch (e) {}
+            }
           }
-
-          // Check if there is cached data either user-scoped or anonymous
-          const savedSessionsStr = safeStorage.getItem(`psycalcu_sessions_${user.uid}`) || safeStorage.getItem('psycalcu_sessions');
-          const savedSettingsStr = safeStorage.getItem(`psycalcu_settings_${user.uid}`) || safeStorage.getItem('psycalcu_settings');
           
-          if (savedSessionsStr) {
-            try { sessionsToSave = JSON.parse(savedSessionsStr); } catch (e) {}
-          }
-          if (savedSettingsStr) {
-            try { 
-              const parsedSettings = JSON.parse(savedSettingsStr);
-              settingsToSave = { ...settingsToSave, ...parsedSettings };
-              if (!settingsToSave.therapistName || settingsToSave.therapistName === 'Dr. Melis Kaya') {
-                settingsToSave.therapistName = isBusra ? 'Uzm. Psikolog Büşra' : (user.displayName || '');
-              }
-            } catch (e) {}
-          }
-
-          const effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
-          const correctedSessions = autoCorrectPastSessions(
-            sessionsToSave,
-            settingsToSave.defaultSessionPrice,
-            settingsToSave.defaultBabysitterFee,
-            settingsToSave.defaultOfficeRentFee,
-            effectiveCutoff
-          );
+          const correctedSessions = autoCorrectPastSessions(sessionsToSave);
           
           let hasRealLocalSessions = false;
           if (correctedSessions && correctedSessions.length > 0) {
             hasRealLocalSessions = !correctedSessions.every(s => s.id && s.id.startsWith('mock_'));
           }
           
-          if (hasRealLocalSessions) {
+          if (hasRealLocalSessions && shouldMigrate) {
             await saveUserData(user.uid, settingsToSave, correctedSessions, expenses);
             setSessions(correctedSessions);
             setSettings(settingsToSave);
@@ -1078,7 +951,7 @@ export default function App() {
               sessions: JSON.stringify(correctedSessions),
               expenses: JSON.stringify(expenses)
             };
-            showToast('Mevcut seanslarınız ve ayarlarınız bulut hesabınıza başarıyla kaydedildi!', 'success');
+            showToast('Mevcut seanslarınız ve ayarlarınız yeni bulut hesabınıza başarıyla aktarıldı!', 'success');
           } else {
             await saveUserData(user.uid, settingsToSave, [], []);
             setSessions([]);
@@ -1092,9 +965,9 @@ export default function App() {
           }
           
           // Wipe anonymous local storage
-          safeStorage.removeItem('psycalcu_sessions');
-          safeStorage.removeItem('psycalcu_settings');
-          safeStorage.removeItem('psycalcu_should_migrate');
+          localStorage.removeItem('psycalcu_sessions');
+          localStorage.removeItem('psycalcu_settings');
+          localStorage.removeItem('psycalcu_should_migrate');
         }
       } catch (error: any) {
         console.error("Bulut verisi çekilirken hata:", error);
@@ -1115,13 +988,13 @@ export default function App() {
         const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
         // Initialize lastSavedRef on failure to prevent infinite failing save retries
-        const finalSavedSessions = safeStorage.getItem(localSessionsKey) || '[]';
+        const finalSavedSessions = localStorage.getItem(localSessionsKey) || '[]';
         let correctedSavedStr = '[]';
         try {
           correctedSavedStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(finalSavedSessions)));
         } catch (e) {}
-        const finalSavedSettings = safeStorage.getItem(localSettingsKey) || '';
-        const finalSavedExpenses = safeStorage.getItem(localExpensesKey) || '[]';
+        const finalSavedSettings = localStorage.getItem(localSettingsKey) || '';
+        const finalSavedExpenses = localStorage.getItem(localExpensesKey) || '[]';
         lastSavedRef.current = {
           settings: finalSavedSettings,
           sessions: correctedSavedStr,
@@ -1129,8 +1002,8 @@ export default function App() {
         };
  
         // Graceful fallback to local storage on offline/network errors
-        const savedSessions = safeStorage.getItem(localSessionsKey);
-        const savedSettings = safeStorage.getItem(localSettingsKey);
+        const savedSessions = localStorage.getItem(localSessionsKey);
+        const savedSettings = localStorage.getItem(localSettingsKey);
         if (savedSessions) {
           try { setSessions(autoCorrectPastSessions(JSON.parse(savedSessions))); } catch (e) {}
         } else if (user) {
@@ -1196,9 +1069,9 @@ export default function App() {
     const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
     const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
-    safeStorage.setItem(localSettingsKey, JSON.stringify(settings), user ? user.uid : undefined);
-    safeStorage.setItem(localSessionsKey, JSON.stringify(sessions), user ? user.uid : undefined);
-    safeStorage.setItem(localExpensesKey, JSON.stringify(expenses), user ? user.uid : undefined);
+    localStorage.setItem(localSettingsKey, JSON.stringify(settings));
+    localStorage.setItem(localSessionsKey, JSON.stringify(sessions));
+    localStorage.setItem(localExpensesKey, JSON.stringify(expenses));
 
     if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
       return;
@@ -1614,15 +1487,6 @@ export default function App() {
   const [searchType, setSearchType] = useState<'all' | 'online' | 'face-to-face' | 'cancelled' | 'non-session'>('all');
   const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isClientPricingModalOpen, setIsClientPricingModalOpen] = useState(false);
-  const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>(() => {
-    try {
-      const cached = localStorage.getItem('psycalcu_snapshots_active');
-      return cached ? JSON.parse(cached) : [];
-    } catch (e) {
-      return [];
-    }
-  });
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [prefilledRoomId, setPrefilledRoomId] = useState('');
@@ -1738,7 +1602,7 @@ export default function App() {
       const next = !prev;
       try {
         const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
-        safeStorage.setItem(key, String(next), user?.uid);
+        localStorage.setItem(key, String(next));
       } catch (e) {}
       return next;
     });
@@ -1746,7 +1610,7 @@ export default function App() {
 
   const [showExplanations, setShowExplanations] = useState<boolean>(() => {
     try {
-      const saved = safeStorage.getItem('psycalcu_show_explanations');
+      const saved = localStorage.getItem('psycalcu_show_explanations');
       return saved !== 'false';
     } catch (e) {
       return true;
@@ -1758,7 +1622,7 @@ export default function App() {
       const next = !prev;
       try {
         const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
-        safeStorage.setItem(key, String(next), user?.uid);
+        localStorage.setItem(key, String(next));
       } catch (e) {}
       return next;
     });
@@ -1768,7 +1632,7 @@ export default function App() {
     setShowExplanations(false);
     try {
       const key = user ? `psycalcu_show_explanations_${user.uid}` : 'psycalcu_show_explanations';
-      safeStorage.setItem(key, 'false', user?.uid);
+      localStorage.setItem(key, 'false');
     } catch (e) {}
   }, [user]);
 
@@ -2086,13 +1950,9 @@ export default function App() {
       return `${h}:${m}`;
     };
 
-    const effectiveAccountingStart = settings.accountingStartDate || (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
-
     // Filter non-cancelled, non-session, unpaid, and realized (past or present) sessions
     const unpaidSessions = sessions.filter(s => {
       if (s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
-      // Do not count sessions strictly before the accounting start cutoff as active debts
-      if (effectiveAccountingStart && s.date && s.date < effectiveAccountingStart) return false;
       const sessionDateTime = `${s.date}T${padTime(s.time)}`;
       return sessionDateTime <= nowStr;
     });
@@ -2144,10 +2004,9 @@ export default function App() {
       unpaidSessions,
       totalUnpaidAmount,
       clientsWithDebts,
-      debtorCount: clientsWithDebts.length,
-      effectiveAccountingStart
+      debtorCount: clientsWithDebts.length
     };
-  }, [sessions, settings.accountingStartDate, registrationCreatedAt]);
+  }, [sessions]);
 
   const filteredDebtors = useMemo(() => {
     if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
@@ -2253,7 +2112,7 @@ export default function App() {
     if (!existing && maxSessionsLimit !== 'unlimited') {
       const limitNum = typeof maxSessionsLimit === 'string' ? parseInt(maxSessionsLimit, 10) : maxSessionsLimit;
       if (!isNaN(limitNum) && sessions.length >= limitNum) {
-        showToast(`Yöneticiniz tarafından belirlenen maksimum seans limitine (${limitNum}) ulaştınız. Daha fazla seans eklemek için lütfen sistem yöneticisi ile iletişime geçin.`, 'error');
+        showToast(`Yöneticiniz tarafından belirlenen maksimum seans limitine (${limitNum}) ulaştınız. Daha fazla seans eklemek için lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.`, 'error');
         return;
       }
     }
@@ -2323,7 +2182,7 @@ export default function App() {
 
   const handleClearAllSessions = () => {
     setSessions([]);
-    safeStorage.setItem('psycalcu_sessions', JSON.stringify([]));
+    localStorage.setItem('psycalcu_sessions', JSON.stringify([]));
   };
 
   const handleToggleType = (id: string, currentType: SessionType) => {
@@ -2566,93 +2425,9 @@ export default function App() {
     );
   };
 
-  const handleClearDebtsBeforeDate = async (cutoffDateStr: string) => {
-    if (!cutoffDateStr) return;
-
-    let clearedCount = 0;
-    const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; price: number; paidAmount?: number }> = {};
-
-    let updatedSessionsList: Session[] = [];
-    setSessions(prev => {
-      const updated = prev.map(s => {
-        if (!s) return s;
-        if (s.date && s.date < cutoffDateStr && (s.paymentStatus !== 'paid' || s.price !== 0)) {
-          clearedCount++;
-          modifiedPreviousStates[s.id] = {
-            status: s.paymentStatus || 'unpaid',
-            price: Number(s.price) || 0,
-            paidAmount: s.paidAmount
-          };
-          return {
-            ...s,
-            paymentStatus: 'paid' as const,
-            price: 0,
-            paidAmount: 0,
-            hasBabysitterFee: false,
-            babysitterFeeAmount: 0,
-            hasOfficeRentFee: false,
-            officeRentFeeAmount: 0,
-            updatedAt: Date.now(),
-            isManuallyEdited: true
-          };
-        }
-        return s;
-      });
-      updatedSessionsList = updated;
-      return updated;
-    });
-
-    const newSettings = { ...settings, accountingStartDate: cutoffDateStr };
-    setSettings(newSettings);
-    if (user) {
-      const userSettingsKey = `psycalcu_settings_${user.uid}`;
-      safeStorage.setItem(userSettingsKey, JSON.stringify(newSettings), user.uid);
-      const userSessionsKey = `psycalcu_sessions_${user.uid}`;
-      safeStorage.setItem(userSessionsKey, JSON.stringify(updatedSessionsList), user.uid);
-
-      // Direct persist to Firestore
-      saveUserData(user.uid, newSettings, updatedSessionsList, expenses).then(() => {
-        lastSavedRef.current = {
-          settings: JSON.stringify(newSettings),
-          sessions: JSON.stringify(updatedSessionsList),
-          expenses: JSON.stringify(expenses)
-        };
-      }).catch(err => {
-        console.error("Direct save to Firestore in handleClearDebtsBeforeDate:", err);
-      });
-    }
-
-    const undoFn = () => {
-      setSessions(prev => prev.map(s => {
-        if (modifiedPreviousStates[s.id]) {
-          return {
-            ...s,
-            paymentStatus: modifiedPreviousStates[s.id].status,
-            price: modifiedPreviousStates[s.id].price,
-            paidAmount: modifiedPreviousStates[s.id].paidAmount,
-            updatedAt: Date.now(),
-            isManuallyEdited: true
-          };
-        }
-        return s;
-      }));
-      showToast('Eski seansları temizleme işlemi geri alındı.', 'info');
-    };
-
-    showToast(
-      `${cutoffDateStr} öncesi seanslar kapatıldı!`,
-      'success',
-      {
-        title: 'Geçmiş Seanslar Kapatıldı',
-        message: `${cutoffDateStr} tarihinden önceki seanslar (${clearedCount} seans) ödendi/kapanmış kabul edildi ve borç takip listesinden kaldırıldı.`
-      },
-      undoFn
-    );
-  };
-
   const handleGenerateSummary = async () => {
     if (featuresAIAllowed === false) {
-      showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
+      showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
       return;
     }
     setIsSummaryLoading(true);
@@ -2694,7 +2469,7 @@ export default function App() {
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: summaryText };
         const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
-        safeStorage.setItem(key, JSON.stringify(updated), user?.uid);
+        localStorage.setItem(key, JSON.stringify(updated));
         return updated;
       });
 
@@ -2758,7 +2533,7 @@ export default function App() {
       setAiSummaries(prev => {
         const updated = { ...prev, [selectedDate]: localSummary };
         const key = user ? `psycalcu_ai_summaries_${user.uid}` : 'psycalcu_ai_summaries';
-        safeStorage.setItem(key, JSON.stringify(updated), user?.uid);
+        localStorage.setItem(key, JSON.stringify(updated));
         return updated;
       });
 
@@ -2798,49 +2573,37 @@ export default function App() {
     const deletedList: any[] = [];
     let deletedCount = 0;
 
-    // Helper to extract base UID from deterministic or legacy ICS session IDs
-    const extractBaseUid = (id: string) => {
-      if (!id.startsWith('ics_')) return id;
-      const withoutPrefix = id.slice(4); // remove 'ics_'
-      const lastUnderscore = withoutPrefix.lastIndexOf('_');
-      if (lastUnderscore !== -1) {
-        const after = withoutPrefix.slice(lastUnderscore + 1);
-        if (/^\d{8}$/.test(after)) {
-          return withoutPrefix.slice(0, lastUnderscore);
-        }
-      }
-      return withoutPrefix;
-    };
-
-    // Track incoming IDs for fast direct lookups
+    // Track incoming IDs for easy lookup
     const incomingIds = new Set(newSessions.map(ns => ns.id));
 
-    // Multi-index existing sessions for robust matching across ID variations, recurrence exceptions, and reschedules
-    const matchedExistingIds = new Set<string>();
-    const replacedOldIds = new Set<string>();
-    const existingById = new Map<string, Session>();
-    const existingByUidAndDate = new Map<string, Session>();
-    const existingByClientDateTime = new Map<string, Session>();
-    const existingByClientDate = new Map<string, Session[]>();
-
+    // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
+    const sessionsToKeep: Session[] = [];
     sessions.forEach(s => {
-      existingById.set(s.id, s);
-      if (s.id.startsWith('ics_')) {
-        const baseUid = extractBaseUid(s.id);
-        existingByUidAndDate.set(`${baseUid}_${s.date}`, s);
-        if (!existingByUidAndDate.has(baseUid)) {
-          existingByUidAndDate.set(baseUid, s);
+      if (s.isSyncedFromCalendar && 
+          !s.isFromMultiCalendar &&
+          activeSyncedTypes && 
+          s.syncedCalendarType && 
+          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
+          s.date >= cutOffDateStr) {
+        
+        // This session is from a synced calendar that we just updated, and it's within the sync window
+        if (!incomingIds.has(s.id)) {
+          // It is not in the incoming list, meaning it was deleted or moved from the calendar feed!
+          deletedList.push({
+            id: s.id,
+            clientName: s.clientName,
+            date: s.date,
+            time: s.time,
+            type: s.type
+          });
+          deletedCount++;
+          return; // Filter it out (delete it)
         }
       }
-      const normName = getNormalizedClientName(s.clientName);
-      if (normName && s.date) {
-        existingByClientDateTime.set(`${normName}_${s.date}_${s.time}`, s);
-        const dateList = existingByClientDate.get(`${normName}_${s.date}`) || [];
-        dateList.push(s);
-        existingByClientDate.set(`${normName}_${s.date}`, dateList);
-      }
+      sessionsToKeep.push(s);
     });
 
+    const sessionsMap = new Map(sessionsToKeep.map(s => [s.id, s]));
     let addedCount = 0;
     let updatedCount = 0;
     const toUpdate: Session[] = [];
@@ -2848,47 +2611,12 @@ export default function App() {
     const updatedList: any[] = [];
 
     newSessions.forEach(ns => {
-      // Find candidate match among existing sessions using prioritized matching
-      let existing: Session | undefined = undefined;
+      if (sessionsMap.has(ns.id)) {
+        const existing = sessionsMap.get(ns.id)!;
 
-      // 1. Exact ID
-      if (existingById.has(ns.id)) {
-        existing = existingById.get(ns.id);
-      }
-
-      // 2. Base UID + Date (handles ics_uid vs ics_uid_YYYYMMDD)
-      if (!existing && ns.id.startsWith('ics_')) {
-        const nsBaseUid = extractBaseUid(ns.id);
-        existing = existingByUidAndDate.get(`${nsBaseUid}_${ns.date}`) || existingByUidAndDate.get(nsBaseUid);
-      }
-
-      // 3. Normalized clientName + Date + Time
-      const normClient = getNormalizedClientName(ns.clientName);
-      if (!existing && normClient && ns.date) {
-        const candidate = existingByClientDateTime.get(`${normClient}_${ns.date}_${ns.time}`);
-        if (candidate && !matchedExistingIds.has(candidate.id)) {
-          existing = candidate;
-        }
-      }
-
-      // 4. Same client on same date (e.g. event time moved in calendar)
-      if (!existing && normClient && ns.date) {
-        const candidates = existingByClientDate.get(`${normClient}_${ns.date}`) || [];
-        const unmatched = candidates.filter(c => !matchedExistingIds.has(c.id));
-        if (unmatched.length === 1) {
-          existing = unmatched[0];
-        }
-      }
-
-      if (existing) {
-        matchedExistingIds.add(existing.id);
-        if (existing.id !== ns.id) {
-          replacedOldIds.add(existing.id);
-        }
-
-        // Determine if the incoming session is cancelled, non-session, or strictly before 2026-07-01
-        const regCutoff = (registrationCreatedAt && registrationCreatedAt < '2026-07-01') ? registrationCreatedAt.split('T')[0] : '';
-        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff && ns.date < '2026-07-01');
+        // Determine if the incoming session is cancelled, non-session, or before the user's registration cutoff
+        const regCutoff = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
+        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff);
         const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration;
 
         // Auto-match room if not manually edited/set using temp notes
@@ -2897,61 +2625,20 @@ export default function App() {
         // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
-        // CRITICAL DATA PROTECTION:
-        // A user's payment records ('paid', 'partial', or paidAmount > 0) and manual edits MUST NEVER be lost!
-        const hasPaymentRecorded = existing.paymentStatus === 'paid' || 
-                                   existing.paymentStatus === 'partial' || 
-                                   (Number(existing.paidAmount) || 0) > 0;
-        const isAccountingProtected = hasPaymentRecorded || Boolean(existing.isManuallyEdited);
-
         // Smart price lookup: If existing has a custom price/user edit, preserve it, else smart lookup
-        let effectivePrice = existing.price;
-        if (effectivePrice === 0 || !effectivePrice) {
-          if (!isCancelledOrNonSessionOrBefore) {
-            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice) || settings.defaultSessionPrice || 1200;
-          } else {
-            effectivePrice = 0;
-          }
+        let effectivePrice = isCancelledOrNonSessionOrBefore ? 0 : existing.price;
+        if (!isCancelledOrNonSessionOrBefore && (effectivePrice === 0 || !effectivePrice)) {
+          effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice);
         }
 
         const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
-          ? (isAccountingProtected && existing.type !== 'non-session' && existing.type !== 'cancelled' ? existing.type : ns.type)
+          ? ns.type
           : (existing.isManuallyEdited ? existing.type : ns.type);
-
-        // Preserve payment status if user marked it paid or recorded accounting
-        const effectivePaymentStatus = isAccountingProtected
-          ? existing.paymentStatus
-          : (isCancelledOrNonSessionOrBefore 
-              ? (ns.type === 'non-session' ? 'unpaid' : 'paid') 
-              : (existing.paymentStatus || ns.paymentStatus));
-
-        const effectivePaidAmount = isAccountingProtected
-          ? existing.paidAmount
-          : (isCancelledOrNonSessionOrBefore ? 0 : (existing.paidAmount ?? ns.paidAmount));
-
-        const effectivePaymentMethod = existing.paymentMethod || ns.paymentMethod;
-
-        // Preserve babysitter fee
-        const effectiveHasBabysitterFee = (ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
-          ? false
-          : (existing.hasBabysitterFee ?? ns.hasBabysitterFee ?? true);
-        const effectiveBabysitterFeeAmount = (effectiveHasBabysitterFee)
-          ? (existing.babysitterFeeAmount || ns.babysitterFeeAmount || settings.defaultBabysitterFee || 250)
-          : 0;
-
-        // Preserve office rent fee
-        const effectiveHasOfficeRentFee = (ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
-          ? false
-          : (existing.hasOfficeRentFee ?? ns.hasOfficeRentFee ?? (resolvedType === 'face-to-face'));
-        const effectiveOfficeRentFeeAmount = (effectiveHasOfficeRentFee)
-          ? (existing.officeRentFeeAmount || ns.officeRentFeeAmount || settings.defaultOfficeRentFee || 200)
-          : 0;
 
         // Merge changed calendar fields (clientName, date, time, duration, type), 
         // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
         const updated: Session = {
           ...existing,
-          id: ns.id, // Migrate to incoming ID to ensure future syncs and lookups match seamlessly
           clientName: ns.clientName, // Always accept latest event name from calendar (e.g. Ahmet -> Ahmet 1)
           type: resolvedType,
           date: ns.date,
@@ -2960,20 +2647,19 @@ export default function App() {
           notes: persistentNotes,
           roomId: matchedRoomId,
           price: effectivePrice,
-          paymentStatus: effectivePaymentStatus,
-          paidAmount: effectivePaidAmount,
-          paymentMethod: effectivePaymentMethod,
-          hasBabysitterFee: effectiveHasBabysitterFee,
-          babysitterFeeAmount: effectiveBabysitterFeeAmount,
-          hasOfficeRentFee: effectiveHasOfficeRentFee,
-          officeRentFeeAmount: effectiveOfficeRentFeeAmount,
-          isSyncedFromCalendar: true,
-          syncedCalendarType: ns.syncedCalendarType || existing.syncedCalendarType,
-          isManuallyEdited: existing.isManuallyEdited
+          paymentStatus: isCancelledOrNonSessionOrBefore 
+            ? (ns.type === 'non-session' ? 'unpaid' : 'paid') 
+            : (existing.paymentStatus || ns.paymentStatus),
+          paidAmount: existing.paidAmount,
+          paymentMethod: existing.paymentMethod,
+          hasBabysitterFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasBabysitterFee : ns.hasBabysitterFee),
+          babysitterFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.babysitterFeeAmount : ns.babysitterFeeAmount),
+          hasOfficeRentFee: isCancelledOrNonSessionOrBefore ? false : (existing.isManuallyEdited ? existing.hasOfficeRentFee : ns.hasOfficeRentFee),
+          officeRentFeeAmount: isCancelledOrNonSessionOrBefore ? 0 : (existing.isManuallyEdited ? existing.officeRentFeeAmount : ns.officeRentFeeAmount),
         };
         
-        // Only update if there is a real difference or ID migration
-        if (existing.id !== updated.id || JSON.stringify(existing) !== JSON.stringify(updated)) {
+        // Only update if there is a real difference to avoid state mutations & unnecessary cloud writes
+        if (JSON.stringify(existing) !== JSON.stringify(updated)) {
           updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
           toUpdate.push(updated);
           updatedList.push({
@@ -3010,7 +2696,7 @@ export default function App() {
         // Match room for new session
         const matchedRoomId = findMatchedRoomId(ns.notes);
 
-        const nsWithTimestamp: Session = { 
+        const nsWithTimestamp = { 
           ...ns, 
           notes: ns.isSyncedFromCalendar ? "" : (ns.notes || ""),
           roomId: matchedRoomId || ns.roomId,
@@ -3031,56 +2717,11 @@ export default function App() {
       }
     });
 
-    // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
-    const sessionsToKeep: Session[] = [];
-    sessions.forEach(s => {
-      // If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
-      if (replacedOldIds.has(s.id)) {
-        return;
-      }
-
-      if (s.isSyncedFromCalendar && 
-          !s.isFromMultiCalendar &&
-          activeSyncedTypes && 
-          s.syncedCalendarType && 
-          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
-          s.date >= cutOffDateStr) {
-        
-        const isMatched = incomingIds.has(s.id) || matchedExistingIds.has(s.id);
-
-        // CRITICAL PROTECTION: A session with payment records or manual edits must NEVER be deleted by calendar sync!
-        const isAccountingProtected = s.paymentStatus === 'paid' || 
-                                     s.paymentStatus === 'partial' || 
-                                     (Number(s.paidAmount) || 0) > 0 || 
-                                     Boolean(s.isManuallyEdited);
-
-        if (!isMatched) {
-          if (isAccountingProtected) {
-            // Keep protected session!
-            sessionsToKeep.push(s);
-            return;
-          }
-
-          // Unedited, unpaid calendar event removed from external calendar feed
-          deletedList.push({
-            id: s.id,
-            clientName: s.clientName,
-            date: s.date,
-            time: s.time,
-            type: s.type
-          });
-          deletedCount++;
-          return; // Filter it out (delete it)
-        }
-      }
-      sessionsToKeep.push(s);
-    });
-
-    if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
+    if (toUpdate.length > 0 || deletedCount > 0) {
       setSessions(prev => {
-        // Filter out deleted sessions and replaced old IDs from state
+        // Filter out deleted sessions from state
         const keepIds = new Set(sessionsToKeep.map(s => s.id));
-        const filteredPrev = prev.filter(s => keepIds.has(s.id) && !replacedOldIds.has(s.id));
+        const filteredPrev = prev.filter(s => keepIds.has(s.id));
 
         const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
@@ -3141,15 +2782,11 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          if (showNotificationOnNoChanges) {
-            showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
-          }
+          showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
         }
       } catch (err: any) {
         console.error("Online calendar sync failed:", err);
-        if (showNotificationOnNoChanges) {
-          showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
-        }
+        showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
       }
     }
 
@@ -3167,15 +2804,11 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          if (showNotificationOnNoChanges) {
-            showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
-          }
+          showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
         }
       } catch (err: any) {
         console.error("Face-to-face calendar sync failed:", err);
-        if (showNotificationOnNoChanges) {
-          showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
-        }
+        showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
       }
     }
 
@@ -3212,7 +2845,6 @@ export default function App() {
     }
 
     setIsManualSyncing(false);
-    setLastCalendarSyncTime(new Date());
 
     const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
     if (hasFetchedOnline) syncedTypesFetched.push('online');
@@ -3249,103 +2881,26 @@ export default function App() {
     }
   };
 
-  // Automated background calendar sync orchestrator (non-intrusive, throttled)
-  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 90000) => {
-    if (featuresCalendarAllowed === false) return;
-    if (!settings.calendarSyncEnabled) return;
-    const hasOwnerCalendars = settings.userRole === 'owner' && settings.ownerCalendars && settings.ownerCalendars.length > 0;
-    if (!settings.onlineCalendarWebcalUrl && !settings.faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) return;
-
-    const now = Date.now();
-    if (now - lastSyncTimestampRef.current < minIntervalMs) {
-      return;
-    }
-
-    if (isManualSyncing || isAutoSyncing || isCloudSaving) {
-      return;
-    }
-
-    lastSyncTimestampRef.current = now;
-    setIsAutoSyncing(true);
-    try {
-      await handleManualCalendarSync(false);
-      setLastCalendarSyncTime(new Date());
-    } catch (e) {
-      console.warn("Background auto-sync error:", e);
-    } finally {
-      setIsAutoSyncing(false);
-    }
-  }, [featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
-
-  // Periodic automatic sync heartbeat (checks every 4 minutes)
-  useEffect(() => {
-    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
-    const interval = setInterval(() => {
-      triggerAutoCalendarSync(180000); // at least 3 minutes between runs
-    }, 240000);
-    return () => clearInterval(interval);
-  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
-
-  // Auto-sync when user switches back to browser tab or focuses window
-  useEffect(() => {
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === 'visible') {
-        triggerAutoCalendarSync(90000); // 90 seconds throttle
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-    window.addEventListener('focus', handleVisibilityOrFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
-      window.removeEventListener('focus', handleVisibilityOrFocus);
-    };
-  }, [triggerAutoCalendarSync]);
-
-  // Auto-sync when user navigates to core calendar or audit views
-  useEffect(() => {
-    if (activeTab === 'agenda' || activeTab === 'audit' || activeTab === 'stats') {
-      triggerAutoCalendarSync(90000);
-    }
-  }, [activeTab, triggerAutoCalendarSync]);
-
   // Pull-to-refresh handler for mobile & manual pull
   const handlePageRefresh = async () => {
     try {
       if (user && registrationStatus === 'approved') {
         const cloudData = await fetchUserData(user.uid);
         if (cloudData) {
-          let effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt;
-          if (!effectiveCutoff) {
-            try {
-              const regRef = doc(db, 'registrations', user.uid);
-              const regSnap = await getDoc(regRef);
-              if (regSnap.exists()) {
-                effectiveCutoff = regSnap.data()?.createdAt || null;
-                if (effectiveCutoff) {
-                  setRegistrationCreatedAt(effectiveCutoff);
-                  safeStorage.setItem('psycalcu_registration_created_at', effectiveCutoff, user?.uid);
-                }
-              }
-            } catch (e) {}
-          }
-          if (!effectiveCutoff) {
-            effectiveCutoff = safeStorage.getItem('psycalcu_registration_created_at');
-          }
-
           const cloudSessions = autoCorrectPastSessions(
             cloudData.sessions || [],
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
             cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            effectiveCutoff
+            registrationCreatedAt
           );
           setSessions(cloudSessions);
           setSettings(cloudData.settings);
           
           const userSessionsKey = `psycalcu_sessions_${user.uid}`;
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
-          safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
-          safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
+          localStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions));
+          localStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings));
         }
       }
       await handleManualCalendarSync(false);
@@ -3373,7 +2928,7 @@ export default function App() {
   // Google Sheets Export Logic (Valid CSV format with UTF-8 BOM)
   const handleExportCSV = () => {
     if (featuresExportAllowed === false) {
-      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
       return;
     }
     let csvContent = "\uFEFF"; // BOM for Excel/Sheets compatibility
@@ -3432,7 +2987,7 @@ export default function App() {
 
   const handleCopySessionsToClipboard = () => {
     if (featuresExportAllowed === false) {
-      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
+      showToast('Excel / E-Tablo dışa aktarım yetkiniz bulunmamaktadır. Lütfen muhammedakifkayacan@gmail.com ile iletişime geçin.', 'error');
       return;
     }
     let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tÖdeme Durumu\tTahsil Edilen (₺)\tÖdeme Yöntemi\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
@@ -3765,7 +3320,7 @@ export default function App() {
             )}
             
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Herhangi bir sorun yaşarsanız sistem yöneticisi ile iletişime geçebilirsiniz.
+              Herhangi bir sorun yaşarsanız kurucu yöneticiye (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) e-posta gönderebilirsiniz.
             </p>
           </div>
 
@@ -3817,11 +3372,11 @@ export default function App() {
           </div>
           <div className="space-y-3 text-slate-500 leading-relaxed text-xs">
             <p>
-              Hesabınız başarıyla oluşturulmuş ve bulut veritabanımıza işlenmiştir. Ancak PsyCalcu seans ve bütçe ajandasına erişebilmek için yöneticinin onayı gerekmektedir.
+              Hesabınız başarıyla oluşturulmuş ve bulut veritabanımıza işlenmiştir. Ancak PsyCalcu seans ve bütçe ajandasına erişebilmek için kurucu yöneticinin (<strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong>) onayı gerekmektedir.
             </p>
             <p className="bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8] text-left text-[11px] leading-relaxed">
               🙋‍♂️ <strong className="text-[#6b705c]">Ne Yapabilirsiniz?</strong><br />
-              Yöneticiyi şahsen tanıyorsanız onay vermesi için kendisine iletebilir veya doğrudan iletişime geçebilirsiniz.
+              Yöneticiyi şahsen tanıyorsanız onay vermesi için kendisine söyleyebilir, bilgi almak veya onay talebinizi hızlandırmak için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> adresine e-posta gönderebilir veya iletişime geçebilirsiniz.
             </p>
             <p className="text-[11px] text-slate-400 font-medium">
               💡 Yönetici onay verdiğinde bu sayfa <strong className="text-emerald-700 font-bold">otomatik olarak güncellenecek</strong> ve uygulamaya girişiniz sağlanacaktır.
@@ -3872,7 +3427,7 @@ export default function App() {
             <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
           </div>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Bu hesabın PsyCalcu uygulamasını kullanma yetkisi yönetici tarafından sınırlandırılmıştır. Sorularınız için sistem yöneticisi ile iletişime geçebilirsiniz.
+            Bu hesabın PsyCalcu uygulamasını kullanma yetkisi yönetici tarafından sınırlandırılmıştır. Sorularınız için <strong className="text-[#6b705c]">muhammedakifkayacan@gmail.com</strong> ile iletişime geçebilirsiniz.
           </p>
           <div className="pt-2">
             <button
@@ -3990,7 +3545,6 @@ export default function App() {
         setIsFaqOpen={setIsFaqOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         handleLogout={handleLogout}
-        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -4174,32 +3728,16 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* Auto Sync Status Indicator & Manual Sync Button */}
-                    <div className="flex items-center gap-1.5">
-                      <div 
-                        className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-medium bg-emerald-50/70 border border-emerald-200/60 text-emerald-800 select-none"
-                        title={lastCalendarSyncTime ? `Son otomatik senkronizasyon: ${lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Google/iCloud Takvimleri periyodik ve arka planda otomatik eşitlenir'}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isManualSyncing || isAutoSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
-                        <span className="font-semibold">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Otomatik Eşitleme'}</span>
-                        {lastCalendarSyncTime && !isManualSyncing && !isAutoSyncing && (
-                          <span className="text-[10px] text-emerald-600/80">
-                            • {lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Sync Button */}
-                      <button
-                        onClick={() => handleManualCalendarSync(true)}
-                        disabled={isManualSyncing || isAutoSyncing}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
-                        title="Tüm iCloud/Google takvim seanslarını şimdi manuel eşitle"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing || isAutoSyncing ? 'animate-spin text-emerald-600' : ''}`} />
-                        <span className="hidden sm:inline">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Şimdi Eşitle'}</span>
-                      </button>
-                    </div>
+                    {/* Sync Button */}
+                    <button
+                      onClick={() => handleManualCalendarSync(true)}
+                      disabled={isManualSyncing}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
+                      title="Tüm iCloud/Google takvim seanslarını şimdi eşitle"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">{isManualSyncing ? 'Eşitleniyor...' : 'Eşitle'}</span>
+                    </button>
 
                     {/* Agenda Filter Dropdown Button */}
                     <div className="relative" ref={agendaFilterRef}>
@@ -5595,50 +5133,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Period / History Management Bar */}
-              <div className="bg-[#fdfbf7] p-4 sm:p-5 rounded-3xl border border-[#e5e1d8] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#6b705c]/10 flex items-center justify-center text-[#6b705c] shrink-0">
-                    <CalendarIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 font-bold tracking-wider uppercase block">
-                      Borç & Muhasebe Başlangıç Tarihi
-                    </span>
-                    <span className="text-sm font-bold text-slate-800">
-                      {debtsData.effectiveAccountingStart 
-                        ? new Date(debtsData.effectiveAccountingStart).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
-                        : 'Tüm Geçmiş Seanslar'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleClearDebtsBeforeDate('2026-07-01');
-                    }}
-                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
-                    title="1 Temmuz 2026 öncesindeki tüm eski seansları otomatik kapatır ve borçları düzeltir"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>1 Temmuz 2026 İtibariyle Borçları Düzelt</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDebtCutoffDate(debtsData.effectiveAccountingStart || '2026-07-01');
-                      setIsDebtCutoffModalOpen(true);
-                    }}
-                    className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
-                  >
-                    <CalendarIcon className="w-3.5 h-3.5 text-[#6b705c]" />
-                    <span>Özel Tarih Belirle</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Debtors List and Search */}
               <div className="bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-xs flex flex-col min-h-[400px]">
                 {/* Header and Search */}
@@ -5722,8 +5216,8 @@ export default function App() {
                                       </p>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                    <div className="text-right mr-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-right">
                                       <span className="font-bold text-slate-800 text-xs block">
                                         {formatMoney(s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0))}
                                       </span>
@@ -5733,21 +5227,6 @@ export default function App() {
                                         </span>
                                       )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedDate(s.date);
-                                        setEditingSession(s);
-                                        setPrefilledRoomId(s.roomId || '');
-                                        setPrefilledTime(s.time);
-                                        setIsSessionModalOpen(true);
-                                      }}
-                                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg border border-slate-200 cursor-pointer transition-all shrink-0 flex items-center gap-1"
-                                      title="Seansı Düzenle (Ücret, Saat, Danışan vb.)"
-                                    >
-                                      <Edit3 className="w-3 h-3 text-slate-500" />
-                                      <span>Düzenle</span>
-                                    </button>
                                     <button
                                       onClick={() => handleMarkSessionAsPaid(s.id)}
                                       className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 cursor-pointer transition-all shrink-0"
@@ -5831,15 +5310,7 @@ export default function App() {
                   defaultBabysitterFee={settings.defaultBabysitterFee}
                   defaultOfficeRentFee={settings.defaultOfficeRentFee}
                   settings={settings}
-                  onSaveSettings={(updated) => {
-                    setSettings(updated);
-                    if (user) {
-                      safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
-                      saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
-                        console.error("Error saving updated settings from CalendarSyncGuide:", err);
-                      });
-                    }
-                  }}
+                  onSaveSettings={(updated) => setSettings(updated)}
                   showToast={showToast}
                   sessions={sessions}
                   onDeleteSessions={(ids) => {
@@ -5918,7 +5389,7 @@ export default function App() {
                             onChange={(e) => {
                               const checked = e.target.checked;
                               setExportIncludeNotes(checked);
-                              try { safeStorage.setItem('psycalcu_export_include_notes', String(checked), user?.uid); } catch (err) {}
+                              try { localStorage.setItem('psycalcu_export_include_notes', String(checked)); } catch (err) {}
                             }}
                             className="mt-0.5 rounded border-[#e5e1d8] text-[#6b705c] focus:ring-[#6b705c] cursor-pointer"
                           />
@@ -5937,7 +5408,7 @@ export default function App() {
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setExportIncludeSyncedNotes(checked);
-                                try { safeStorage.setItem('psycalcu_export_include_synced_notes', String(checked), user?.uid); } catch (err) {}
+                                try { localStorage.setItem('psycalcu_export_include_synced_notes', String(checked)); } catch (err) {}
                                 if (checked && Object.keys(tempNotesCache).length === 0) {
                                   fetchInstantCalendarNotes(true);
                                 }
@@ -6473,18 +5944,12 @@ export default function App() {
         settings={settings}
         onSave={async (updated) => {
           setSettings(updated);
-          if (user) {
-            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
-            saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
-              console.error("Error saving updated settings from SettingsModal:", err);
-            });
-            if (updated.userRole !== settings.userRole) {
-              try {
-                const regRef = doc(db, 'registrations', user.uid);
-                await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
-              } catch (err) {
-                console.error("Error setting role in registrations:", err);
-              }
+          if (user && updated.userRole !== settings.userRole) {
+            try {
+              const regRef = doc(db, 'registrations', user.uid);
+              await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
+            } catch (err) {
+              console.error("Error setting role in registrations:", err);
             }
           }
         }}
@@ -6502,50 +5967,6 @@ export default function App() {
             console.error("Error submitting role change request:", err);
             showToast(`Talep gönderilirken hata oluştu: ${err.message || String(err)}`, 'error');
           }
-        }}
-        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
-      />
-
-      {/* Client Pricing & Data Recovery Manager Modal */}
-      <ClientPricingManagerModal
-        isOpen={isClientPricingModalOpen}
-        onClose={() => setIsClientPricingModalOpen(false)}
-        sessions={sessions}
-        settings={settings}
-        expenses={expenses}
-        snapshots={backupSnapshots}
-        onApplyRules={async (updatedSessions, updatedSettings) => {
-          setSessions(updatedSessions);
-          setSettings(updatedSettings);
-          if (user) {
-            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
-            safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(updatedSessions), user.uid);
-            await saveUserData(
-              user.uid, 
-              updatedSettings, 
-              updatedSessions, 
-              expensesRef.current || [], 
-              'Danışan Fiyatları ve Seans Kayıtları Toplu Güncellemesi'
-            );
-          }
-          showToast('Danışan özel fiyatları ve tüm seanslar başarıyla güncellendi!', 'success');
-        }}
-        onRestoreSnapshot={async (snapshot) => {
-          if (!snapshot || !snapshot.sessions) return;
-          setSessions(snapshot.sessions);
-          if (snapshot.settings) setSettings(snapshot.settings);
-          if (snapshot.expenses) setExpenses(snapshot.expenses);
-          if (user) {
-            await saveUserData(
-              user.uid,
-              snapshot.settings || settings,
-              snapshot.sessions,
-              snapshot.expenses || expenses,
-              `Yedek Noktasına Dönüş (${snapshot.label})`
-            );
-          }
-          showToast(`"${snapshot.label}" yedeği başarıyla geri yüklendi!`, 'success');
-          setIsClientPricingModalOpen(false);
         }}
       />
 
@@ -6596,109 +6017,6 @@ export default function App() {
         clientName={debtConfirmState.clientName}
         totalAmount={debtConfirmState.totalAmount}
       />
-
-      {/* Debt Cutoff Date Modal */}
-      <AnimatePresence>
-        {isDebtCutoffModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain" role="dialog">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDebtCutoffModalOpen(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-xs"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-[#e5e1d8] z-10 space-y-4"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-[#6b705c]">
-                  <CalendarIcon className="w-5 h-5" />
-                  <h3 className="text-base font-bold text-slate-800">Borç Takip Başlangıç Tarihi</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsDebtCutoffModalOpen(false)}
-                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Takviminizden gelen eski seansların borç olarak listelenmesini önlemek için bir başlangıç tarihi belirleyin. 
-                Bu tarihten önceki tüm seanslar <strong>kapanmış / ödendi</strong> kabul edilecek ve borç takip listesinden kaldırılacaktır.
-              </p>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 block">Başlangıç Tarihi</label>
-                <div className="flex gap-2 mb-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setDebtCutoffDate('2026-07-01')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                      debtCutoffDate === '2026-07-01'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    📅 1 Temmuz 2026 (Önerilen)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDebtCutoffDate(new Date().toISOString().split('T')[0])}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                      debtCutoffDate === new Date().toISOString().split('T')[0]
-                        ? 'bg-[#6b705c]/10 border-[#6b705c] text-[#6b705c]'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    📅 Bugün
-                  </button>
-                </div>
-                <input
-                  type="date"
-                  value={debtCutoffDate}
-                  onChange={(e) => setDebtCutoffDate(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium"
-                />
-              </div>
-
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200/60 text-[11px] text-amber-800 leading-normal flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  Örneğin <strong>{debtCutoffDate || 'seçilen tarih'}</strong> öncesindeki seanslar kapatıldığında, şişmiş eski takvim randevuları temizlenir ve sadece gerçek bekleyen seanslarınız kalır.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsDebtCutoffModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={!debtCutoffDate}
-                  onClick={() => {
-                    handleClearDebtsBeforeDate(debtCutoffDate);
-                    setIsDebtCutoffModalOpen(false);
-                  }}
-                  className="px-4 py-2 text-xs font-bold text-white bg-[#6b705c] hover:bg-[#585c4c] rounded-xl shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Önceki Seansları Kapat ve Kaydet</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Interactive Onboarding Tour */}
       <InteractiveTour

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { safeStorage } from '../utils/storage';
 import { Smartphone, Download, X, Share, PlusSquare, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -71,7 +70,7 @@ export default function PWAInstallPrompt() {
 
   const handleDismiss = () => {
     setIsDismissed(true);
-    safeStorage.setItem('psycalcu_pwa_prompt_dismissed', 'true');
+    localStorage.setItem('psycalcu_pwa_prompt_dismissed', 'true');
   };
 
   // Do not show if already in standalone app mode, or dismissed

@@ -66,7 +66,6 @@ interface HeaderNavigationProps {
   setIsFaqOpen: (val: boolean) => void;
   setIsSettingsOpen: (val: boolean) => void;
   handleLogout: () => void;
-  onOpenClientPricingModal?: () => void;
 }
 
 export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
@@ -102,8 +101,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   showExplanations,
   setIsFaqOpen,
   setIsSettingsOpen,
-  handleLogout,
-  onOpenClientPricingModal
+  handleLogout
 }) => {
   const { isPrivacyMode, togglePrivacyMode, isHideClientNames, toggleHideClientNames, formatMoney, formatClientName } = usePrivacy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -279,19 +277,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <Search className="w-4 h-4" />
               </motion.button>
 
-              {/* Danışan Özel Fiyat & Kurtarma Button */}
-              {onOpenClientPricingModal && (
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={onOpenClientPricingModal}
-                  className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
-                  title="Danışan Özel Fiyatları & 84 Günlük Geçmiş Kurtarma"
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>Danışan Fiyatları</span>
-                </motion.button>
-              )}
-
               {/* Notifications Center */}
               <NotificationCenter
                 notifications={allNotifications}
@@ -416,7 +401,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             )}
           </AnimatePresence>
 
-          {/* SECOND ROW: TWO-WAY PRIMARY SWITCH (GÜNLÜK AJANDA | BORÇ TAKİP) */}
+          {/* SECOND ROW: TWO-WAY PRIMARY SWITCH (GÜNLÜK AJANDA | MUHASEBE) */}
           <div className="flex items-center justify-center pt-1 border-t border-[#f5f5f0]">
             <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-xs md:max-w-sm justify-center">
               
@@ -440,25 +425,25 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <span>Günlük Ajanda</span>
               </motion.button>
 
-              {/* Debt Tracker Tab Switch Button */}
+              {/* Stats / Accounting Tab Switch Button */}
               <motion.button
-                id="tab-debts"
+                id="tab-stats-main"
                 whileTap={{ scale: 0.95 }}
-                onClick={() => handleTabClick('debts')}
+                onClick={() => handleTabClick('stats')}
                 className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 select-none touch-manipulation ${
-                  activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
-                {activeTab === 'debts' && (
+                {activeTab === 'stats' && (
                   <motion.div
                     layoutId="mainHeaderSwitchIndicator"
                     className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
                     transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                   />
                 )}
-                <CreditCard className={`w-3.5 h-3.5 ${activeTab === 'debts' ? 'text-amber-300' : 'text-amber-600'}`} />
-                <span>Borç Takip</span>
-                {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
+                <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
+                <span>Muhasebe</span>
+                {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
               </motion.button>
 
             </div>
@@ -570,20 +555,17 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
                     <motion.button
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleTabClick('debts')}
+                      onClick={() => handleTabClick('stats')}
                       className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer touch-manipulation select-none ${
-                        activeTab === 'debts'
+                        activeTab === 'stats'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm'
                           : 'bg-white text-slate-700 border-[#e5e1d8] hover:border-[#6b705c]/40'
                       }`}
                     >
-                      <CreditCard className="w-5 h-5" />
+                      <TrendingUp className="w-5 h-5" />
                       <div>
-                        <div className="flex items-center gap-1">
-                          <p className="font-bold text-xs">Borç & Tahsilat</p>
-                          {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-                        </div>
-                        <p className={`text-[9px] mt-0.5 ${activeTab === 'debts' ? 'text-white/80' : 'text-slate-400'}`}>Ödenmemiş Seanslar</p>
+                        <p className="font-bold text-xs">Muhasebe & Gider</p>
+                        <p className={`text-[9px] mt-0.5 ${activeTab === 'stats' ? 'text-white/80' : 'text-slate-400'}`}>Finansal Rapor</p>
                       </div>
                     </motion.button>
                   </div>
@@ -594,29 +576,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   <h3 className="text-[10px] font-bold text-[#a5a58d] uppercase tracking-widest px-1">Diğer Menüler & Modüller</h3>
                   <div className="bg-white rounded-2xl border border-[#e5e1d8] divide-y divide-[#f5f5f0] overflow-hidden shadow-3xs">
                     
-                    {/* Stats / Accounting Financial Report */}
-                    <motion.button
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleTabClick('stats')}
-                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
-                        activeTab === 'stats' ? 'bg-[#6b705c]/10 text-[#6b705c] font-bold' : 'hover:bg-[#fdfbf7]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
-                          <TrendingUp className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-xs font-bold text-slate-800">Muhasebe & Finansal Rapor</p>
-                            {featuresAccountingAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
-                          </div>
-                          <p className="text-[10px] text-slate-400">Aylık/yıllık ciro, net kâr ve gider analizi</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </motion.button>
-
                     {/* Session Audit & Reconciliation Table */}
                     <motion.button
                       whileTap={{ scale: 0.98 }}
@@ -635,6 +594,26 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                             <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Yeni</span>
                           </div>
                           <p className="text-[10px] text-slate-400">Takvim karşılaştırma, 0 ₺ ve seans dışı denetimi</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </motion.button>
+
+                    {/* Debt Tracker */}
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => handleTabClick('debts')}
+                      className={`w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation ${
+                        activeTab === 'debts' ? 'bg-amber-50/70 text-amber-900 font-bold' : 'hover:bg-[#fdfbf7]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
+                          <CreditCard className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Borç & Tahsilat Takibi</p>
+                          <p className="text-[10px] text-slate-400">Danışan ödenmemiş seans bakiyeleri</p>
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
@@ -743,32 +722,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
                     </motion.button>
-
-                    {/* Client Pricing & Recovery Modal */}
-                    {onOpenClientPricingModal && (
-                      <motion.button
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          onOpenClientPricingModal();
-                          setIsMenuOpen(false);
-                        }}
-                        className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-emerald-50/60 hover:bg-emerald-50 text-emerald-950"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold text-slate-800">Danışan Fiyat & Kurtarma</p>
-                              <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-bold">84 Gün</span>
-                            </div>
-                            <p className="text-[10px] text-slate-500">Özel seans, bakıcı ve ofis ücretlerini yönet</p>
-                          </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-emerald-600" />
-                      </motion.button>
-                    )}
                   </div>
                 </div>
 
