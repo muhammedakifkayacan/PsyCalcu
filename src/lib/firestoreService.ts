@@ -115,15 +115,41 @@ export async function saveUserData(
   expenses?: Expense[],
   snapshotReason?: string
 ): Promise<void> {
+  const cleanedSettings = JSON.parse(JSON.stringify(settings));
+  const cleanedSessions = JSON.parse(JSON.stringify(sessions));
+  const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
+
+  // ALWAYS write to local safety emergency backup immediately so data is never lost even if quota is exhausted
+  try {
+    localStorage.setItem(`psycalcu_safety_backup_${userId}`, JSON.stringify(cleanedSessions));
+    localStorage.setItem(`psycalcu_safety_settings_${userId}`, JSON.stringify(cleanedSettings));
+  } catch (e) {}
+
+  // Auto-create snapshot if requested OR periodically for safety if there are paid sessions
+  const snapReason = snapshotReason || (sessions && sessions.some(s => s.paymentStatus === 'paid') ? 'Otomatik Muhasebe Güvenlik Yedeği' : '');
+  if (sessions && sessions.length > 0 && snapReason) {
+    try {
+      const snap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
+      const localKey = `psycalcu_snapshots_${userId}`;
+      const existingLocalStr = localStorage.getItem(localKey);
+      let localSnaps: DataBackupSnapshot[] = [];
+      if (existingLocalStr) {
+        try { localSnaps = JSON.parse(existingLocalStr); } catch (e) {}
+      }
+      // Deduplicate snapshots
+      localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== snap.label));
+      localSnaps.unshift(snap);
+      if (localSnaps.length > 30) localSnaps = localSnaps.slice(0, 30);
+      localStorage.setItem(localKey, JSON.stringify(localSnaps));
+      localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(localSnaps));
+    } catch (localErr) {}
+  }
+
   if (isFirestoreQuotaExceeded) {
     throw new Error('quota-exceeded');
   }
   try {
     const docRef = doc(db, 'users', userId);
-    // Clean data before saving to Firestore to avoid invalid data errors
-    const cleanedSettings = JSON.parse(JSON.stringify(settings));
-    const cleanedSessions = JSON.parse(JSON.stringify(sessions));
-    const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
     
     const payload: any = { 
       settings: cleanedSettings, 
@@ -136,19 +162,6 @@ export async function saveUserData(
     if (sessions && sessions.length > 0 && snapshotReason) {
       const snap = createSnapshotObject(snapshotReason, cleanedSettings, cleanedSessions, cleanedExpenses);
       payload.backupSnapshots = arrayUnion(snap);
-      
-      // Also cache snapshot in localStorage
-      try {
-        const localKey = `psycalcu_snapshots_${userId}`;
-        const existingLocalStr = localStorage.getItem(localKey);
-        let localSnaps: DataBackupSnapshot[] = [];
-        if (existingLocalStr) {
-          try { localSnaps = JSON.parse(existingLocalStr); } catch (e) {}
-        }
-        localSnaps.unshift(snap);
-        if (localSnaps.length > 30) localSnaps = localSnaps.slice(0, 30);
-        localStorage.setItem(localKey, JSON.stringify(localSnaps));
-      } catch (localErr) {}
     }
 
     // Keep a persistent calendarBackup inside the user document whenever URLs exist

@@ -25,7 +25,9 @@ import {
   ChevronRight,
   User,
   SlidersHorizontal,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Clock,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
@@ -66,7 +68,7 @@ interface HeaderNavigationProps {
   setIsFaqOpen: (val: boolean) => void;
   setIsSettingsOpen: (val: boolean) => void;
   handleLogout: () => void;
-  onOpenClientPricingModal?: () => void;
+  onOpenClientPricingModal?: (initialTab?: 'clients' | 'reconcile' | 'snapshots') => void;
 }
 
 export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
@@ -281,15 +283,26 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
               {/* Danışan Özel Fiyat Yönetimi Button */}
               {onOpenClientPricingModal && (
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={onOpenClientPricingModal}
-                  className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
-                  title="Danışan Özel Fiyat Yönetimi"
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>Danışan Fiyatları</span>
-                </motion.button>
+                <>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onOpenClientPricingModal('clients')}
+                    className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
+                    title="Danışan Özel Fiyat Yönetimi"
+                  >
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span>Danışan Fiyatları</span>
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onOpenClientPricingModal('snapshots')}
+                    className="hidden lg:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
+                    title="Zaman Yolculuğu (Yedek Noktalarından Geri Yükleme)"
+                  >
+                    <Clock className="w-4 h-4 text-indigo-600" />
+                    <span>Zaman Yolculuğu</span>
+                  </motion.button>
+                </>
               )}
 
               {/* Notifications Center */}
@@ -746,27 +759,50 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
                     {/* Client Pricing & Recovery Modal */}
                     {onOpenClientPricingModal && (
-                      <motion.button
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          onOpenClientPricingModal();
-                          setIsMenuOpen(false);
-                        }}
-                        className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-emerald-50/60 hover:bg-emerald-50 text-emerald-950"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold text-slate-800">Danışan Özel Fiyatları</p>
+                      <>
+                        <motion.button
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            onOpenClientPricingModal('clients');
+                            setIsMenuOpen(false);
+                          }}
+                          className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-emerald-50/60 hover:bg-emerald-50 text-emerald-950"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+                              <Sparkles className="w-4 h-4" />
                             </div>
-                            <p className="text-[10px] text-slate-500">Özel seans, bakıcı ve ofis ücretlerini yönet</p>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-slate-800">Danışan Özel Fiyatları</p>
+                              </div>
+                              <p className="text-[10px] text-slate-500">Özel seans, bakıcı ve ofis ücretlerini yönet</p>
+                            </div>
                           </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-emerald-600" />
-                      </motion.button>
+                          <ChevronRight className="w-4 h-4 text-emerald-600" />
+                        </motion.button>
+                        <motion.button
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            onOpenClientPricingModal('snapshots');
+                            setIsMenuOpen(false);
+                          }}
+                          className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-indigo-50/60 hover:bg-indigo-50 text-indigo-950 border-t border-slate-100"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
+                              <Clock className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-slate-800">Zaman Yolculuğu (Yedekler)</p>
+                              </div>
+                              <p className="text-[10px] text-slate-500">Kayıtlı yedek noktalarından seansları geri yükle</p>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-indigo-600" />
+                        </motion.button>
+                      </>
                     )}
                   </div>
                 </div>

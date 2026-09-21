@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Users, 
@@ -33,6 +33,7 @@ interface ClientPricingManagerModalProps {
   onRestoreSnapshot?: (snapshot: DataBackupSnapshot) => Promise<void>;
   isAdminView?: boolean;
   targetUserName?: string;
+  initialTab?: 'clients' | 'reconcile' | 'snapshots';
 }
 
 interface ClientRowState {
@@ -63,9 +64,16 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
   onApplyRules,
   onRestoreSnapshot,
   isAdminView = false,
-  targetUserName
+  targetUserName,
+  initialTab = 'clients'
 }) => {
-  const [activeTab, setActiveTab] = useState<'clients' | 'reconcile' | 'snapshots'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'reconcile' | 'snapshots'>(initialTab);
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);

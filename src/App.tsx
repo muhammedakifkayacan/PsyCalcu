@@ -47,7 +47,8 @@ import {
   CreditCard,
   Banknote,
   Landmark,
-  History
+  History,
+  GitMerge
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -1037,33 +1038,144 @@ export default function App() {
             safeStorage.removeItem('psycalcu_should_migrate');
             showToast('Yerel seanslarınız mevcut bulut hesabınızla başarıyla birleştirildi!', 'success');
           } else {
-            // Standard flow: Cloud is the absolute source of truth!
-            // No merge with stale local storage to prevent overwriting newer edits from other devices.
-            setSessions(cloudSessions);
+            // SAFE BIDIRECTIONAL RECONCILIATION:
+            // Never blindly wipe out local edits if local has newer updates or user-recorded payments!
+            const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+            let localSessions: Session[] = [];
+            const savedSessionsStr = safeStorage.getItem(userSessionsKey) || safeStorage.getItem('psycalcu_sessions');
+            if (savedSessionsStr) {
+              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
+            }
+
+            // Also check emergency safety backup
+            let safetyBackupSessions: Session[] = [];
+            try {
+              const safetyStr = localStorage.getItem(`psycalcu_safety_backup_${user.uid}`);
+              if (safetyStr) safetyBackupSessions = JSON.parse(safetyStr);
+            } catch (e) {}
+
+            const localMap = new Map<string, Session>();
+            localSessions.forEach(s => { if (s && s.id) localMap.set(s.id, s); });
+            safetyBackupSessions.forEach(s => {
+              if (s && s.id) {
+                const existing = localMap.get(s.id);
+                if (!existing || ((s.updatedAt || 0) > (existing.updatedAt || 0))) {
+                  localMap.set(s.id, s);
+                }
+              }
+            });
+
+            let hasNewerLocalEdits = false;
+            const mergedSessions = cloudSessions.map(cs => {
+              const ls = localMap.get(cs.id);
+              if (!ls) return cs;
+
+              const localTime = ls.updatedAt || 0;
+              const cloudTime = cs.updatedAt || 0;
+              const localIsPaid = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
+              const cloudIsPaid = cs.paymentStatus === 'paid' || cs.paymentStatus === 'partial' || (Number(cs.paidAmount) || 0) > 0;
+
+              // CRITICAL ACCOUNTING PRESERVATION:
+              // If local has payment recorded or local is newer than cloud or manually edited:
+              if ((localIsPaid && !cloudIsPaid) || (ls.isManuallyEdited && !cs.isManuallyEdited) || (localTime > cloudTime)) {
+                hasNewerLocalEdits = true;
+                return {
+                  ...cs,
+                  ...ls,
+                  // Keep calendar event fields but preserve user accounting data
+                  clientName: cs.clientName || ls.clientName,
+                  date: cs.date || ls.date,
+                  time: cs.time || ls.time,
+                  type: (ls.isManuallyEdited || localIsPaid) ? ls.type : cs.type,
+                  price: ls.price,
+                  paymentStatus: ls.paymentStatus,
+                  paidAmount: ls.paidAmount,
+                  paymentMethod: ls.paymentMethod,
+                  hasBabysitterFee: ls.hasBabysitterFee,
+                  babysitterFeeAmount: ls.babysitterFeeAmount,
+                  hasOfficeRentFee: ls.hasOfficeRentFee,
+                  officeRentFeeAmount: ls.officeRentFeeAmount,
+                  isManuallyEdited: true,
+                  updatedAt: Math.max(localTime, cloudTime, Date.now())
+                };
+              }
+              return cs;
+            });
+
+            // Also keep local-only sessions not yet in cloud (e.g. offline created sessions)
+            const cloudIds = new Set(cloudSessions.map(s => s.id));
+            const localOnly = Array.from(localMap.values()).filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
+            if (localOnly.length > 0) {
+              hasNewerLocalEdits = true;
+            }
+
+            const finalSessions = autoCorrectPastSessions(
+              [...mergedSessions, ...localOnly],
+              cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
+              cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
+              cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
+              effectiveCutoff,
+              cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
+              cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
+              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
+            );
+
+            setSessions(finalSessions);
             setSettings(cloudData.settings);
             if (cloudData.expenses) {
               setExpenses(cloudData.expenses);
             }
+
+            // Combine snapshots from cloud and localStorage
+            const combinedSnapshots: DataBackupSnapshot[] = [];
             if (cloudData.backupSnapshots && Array.isArray(cloudData.backupSnapshots)) {
-              setBackupSnapshots(cloudData.backupSnapshots);
-              try {
-                localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(cloudData.backupSnapshots));
-              } catch (e) {}
+              combinedSnapshots.push(...cloudData.backupSnapshots);
             }
+            try {
+              const activeSnapStr = localStorage.getItem('psycalcu_snapshots_active');
+              if (activeSnapStr) {
+                const parsed = JSON.parse(activeSnapStr);
+                if (Array.isArray(parsed)) combinedSnapshots.push(...parsed);
+              }
+              const userSnapStr = localStorage.getItem(`psycalcu_snapshots_${user.uid}`);
+              if (userSnapStr) {
+                const parsed = JSON.parse(userSnapStr);
+                if (Array.isArray(parsed)) combinedSnapshots.push(...parsed);
+              }
+            } catch (e) {}
+
+            const snapMap = new Map<string, DataBackupSnapshot>();
+            combinedSnapshots.forEach(snap => {
+              if (snap && snap.id && !snapMap.has(snap.id)) {
+                snapMap.set(snap.id, snap);
+              }
+            });
+            const sortedSnaps = Array.from(snapMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            setBackupSnapshots(sortedSnaps);
+            try {
+              localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(sortedSnaps));
+            } catch (e) {}
             
-            // Update the user-specific localStorage cache immediately with the newest cloud data
-            const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+            // Update the user-specific localStorage cache immediately
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
             const userExpensesKey = `psycalcu_expenses_${user.uid}`;
-            safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
+            safeStorage.setItem(userSessionsKey, JSON.stringify(finalSessions), user.uid);
             safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
             safeStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []), user.uid);
 
             lastSavedRef.current = {
               settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(cloudSessions),
+              sessions: JSON.stringify(finalSessions),
               expenses: JSON.stringify(cloudData.expenses || [])
             };
+
+            // If local had newer changes not yet in cloud, save to cloud now
+            if (hasNewerLocalEdits) {
+              saveUserData(user.uid, cloudData.settings, finalSessions, cloudData.expenses || [], 'Yerel Muhasebe Değişiklikleri Eşitlemesi').catch((e) => {
+                console.warn("Could not save reconciled data to cloud:", e);
+              });
+            }
+
             showToast('Bulut verileriniz başarıyla senkronize edildi.', 'success');
           }
         } else {
@@ -1229,9 +1341,25 @@ export default function App() {
           newSessionsStr !== lastSavedRef.current.sessions ||
           newExpensesStr !== lastSavedRef.current.expenses
         ) {
+          // Reconcile with local session state so local payments & manual prices are not lost
+          const currentLocal = sessionsRef.current || [];
+          const localMap = new Map(currentLocal.map(s => [s.id, s]));
+          const reconciledSessions = (newSessions as Session[]).map(ns => {
+            const ls = localMap.get(ns.id);
+            if (!ls) return ns;
+            const lsIsPaid = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
+            const nsIsPaid = ns.paymentStatus === 'paid' || ns.paymentStatus === 'partial' || (Number(ns.paidAmount) || 0) > 0;
+            const lsTime = ls.updatedAt || 0;
+            const nsTime = ns.updatedAt || 0;
+            if ((lsIsPaid && !nsIsPaid) || (ls.isManuallyEdited && !ns.isManuallyEdited) || (lsTime > nsTime)) {
+              return { ...ns, ...ls, updatedAt: Math.max(lsTime, nsTime) };
+            }
+            return ns;
+          });
+
           isRemoteUpdatingRef.current = true;
           if (newSettings) setSettings(newSettings);
-          setSessions(newSessions);
+          setSessions(reconciledSessions);
           setExpenses(newExpenses);
 
           lastSavedRef.current = {
@@ -1738,11 +1866,37 @@ export default function App() {
   const [searchPaymentStatus, setSearchPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isClientPricingModalOpen, setIsClientPricingModalOpen] = useState(false);
+  const [clientPricingInitialTab, setClientPricingInitialTab] = useState<'clients' | 'reconcile' | 'snapshots'>('clients');
   const [historyModalClientName, setHistoryModalClientName] = useState<string | null>(null);
   const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>(() => {
     try {
+      const allSnaps: DataBackupSnapshot[] = [];
       const cached = localStorage.getItem('psycalcu_snapshots_active');
-      return cached ? JSON.parse(cached) : [];
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) allSnaps.push(...parsed);
+        } catch (e) {}
+      }
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('psycalcu_snapshots_') && k !== 'psycalcu_snapshots_active') {
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) allSnaps.push(...list);
+            }
+          } catch (e) {}
+        }
+      }
+      const map = new Map<string, DataBackupSnapshot>();
+      allSnaps.forEach(s => {
+        if (s && s.id && !map.has(s.id)) {
+          map.set(s.id, s);
+        }
+      });
+      return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     } catch (e) {
       return [];
     }
@@ -4180,7 +4334,10 @@ export default function App() {
         setIsFaqOpen={setIsFaqOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         handleLogout={handleLogout}
-        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
+        onOpenClientPricingModal={(tab) => {
+          if (tab) setClientPricingInitialTab(tab);
+          setIsClientPricingModalOpen(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -4209,10 +4366,70 @@ export default function App() {
                 )}
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 shrink-0 self-end md:self-start">
-              <span className="px-4 py-2 bg-rose-600 text-white rounded-full text-xs font-bold shadow-xs">
-                Sistem Yöneticisi Uyarısı
-              </span>
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 shrink-0 self-end md:self-start">
+              <button
+                onClick={() => {
+                  setClientPricingInitialTab('snapshots');
+                  setIsClientPricingModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="Kayıtlı yedek noktalarından seansları incele ve geri yükle"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Yedek Noktaları
+              </button>
+              <button
+                onClick={() => {
+                  setClientPricingInitialTab('reconcile');
+                  setIsClientPricingModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="ID bazlı akıllı seans fiyatı ve ödeme durumu eşitlemesi"
+              >
+                <GitMerge className="w-3.5 h-3.5" />
+                Akıllı Eşitle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Proactive Data Recovery Assistance Banner */}
+        {backupSnapshots && backupSnapshots.length > 0 && sessions.filter(s => s.paymentStatus === 'paid' || s.paymentStatus === 'partial').length === 0 && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-indigo-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fade-in" id="recovery-assistance-banner">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-indigo-950">
+                  {backupSnapshots.length} Adet Güvenlik Yedek Noktası Bulundu!
+                </h4>
+                <p className="text-xs text-indigo-800 mt-0.5">
+                  Önceden yaptığınız fiyat düzenlemeleri ve 'Ödendi' işaretlemelerini içeren yedekleriniz hazır. Tek tıkla önceki seans bilgilerinizi geri yükleyebilir veya ID ile eşitleyerek eksik bilgileri tamamlayabilirsiniz.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setClientPricingInitialTab('reconcile');
+                  setIsClientPricingModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <GitMerge className="w-4 h-4" />
+                ID ile Akıllı Eşitle
+              </button>
+              <button
+                onClick={() => {
+                  setClientPricingInitialTab('snapshots');
+                  setIsClientPricingModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Clock className="w-4 h-4" />
+                Yedekleri Gör
+              </button>
             </div>
           </div>
         )}
@@ -6826,6 +7043,7 @@ export default function App() {
       <ClientPricingManagerModal
         isOpen={isClientPricingModalOpen}
         onClose={() => setIsClientPricingModalOpen(false)}
+        initialTab={clientPricingInitialTab}
         sessions={sessions}
         settings={settings}
         expenses={expenses}
