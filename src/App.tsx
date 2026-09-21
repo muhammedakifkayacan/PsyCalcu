@@ -1328,7 +1328,7 @@ export default function App() {
 
     setIsCloudSaving(true);
 
-    // Debounce cloud save by 1500ms to reduce write frequency while preserving responsiveness
+    // Debounce cloud save by 2500ms to reduce write frequency while preserving responsiveness
     const timer = setTimeout(() => {
       activeSavesCountRef.current++;
       saveUserData(user.uid, settings, sessions, expenses).then(() => {
@@ -1357,7 +1357,7 @@ export default function App() {
           console.error("Bulut kayıt hatası:", err);
         }
       });
-    }, 1500);
+    }, 2500);
 
     return () => {
       clearTimeout(timer);

@@ -165,36 +165,41 @@ export async function saveUserData(
 
     await setDoc(docRef, payload, { merge: true });
 
-    // Also save public-safe availability data to a separate collection for secure public access
-    try {
-      const publicDocRef = doc(db, 'public_availability', userId);
-      const publicSessions = (sessions || []).map((s: Session) => {
-        const item: any = {
-          id: s.id || "",
-          date: s.date || "",
-          time: s.time || "",
-          duration: s.duration || 60,
-          type: s.type === 'cancelled' ? 'cancelled' : 'busy'
-        };
-        if (s.roomId) {
-          item.roomId = s.roomId;
+    // Also save public-safe availability data to a separate collection only if room or owner features are configured
+    const hasRoomOrPublicConfig = (settings?.rooms && settings.rooms.length > 0) || 
+                                  (settings?.blockedSlots && settings.blockedSlots.length > 0) || 
+                                  settings?.userRole === 'owner';
+    if (hasRoomOrPublicConfig) {
+      try {
+        const publicDocRef = doc(db, 'public_availability', userId);
+        const publicSessions = (sessions || []).map((s: Session) => {
+          const item: any = {
+            id: s.id || "",
+            date: s.date || "",
+            time: s.time || "",
+            duration: s.duration || 60,
+            type: s.type === 'cancelled' ? 'cancelled' : 'busy'
+          };
+          if (s.roomId) {
+            item.roomId = s.roomId;
+          }
+          return item;
+        });
+        const publicAvailabilityData = JSON.parse(JSON.stringify({
+          therapistName: settings?.therapistName || "Terapist",
+          therapistPhone: settings?.therapistPhone || "",
+          rooms: settings?.rooms || [],
+          blockedSlots: settings?.blockedSlots || [],
+          sessions: publicSessions,
+          updatedAt: new Date().toISOString()
+        }));
+        await setDoc(publicDocRef, publicAvailabilityData);
+      } catch (pubErr: any) {
+        if (checkIsQuotaError(pubErr)) {
+          isFirestoreQuotaExceeded = true;
+        } else {
+          console.error("Error saving public-safe availability data: ", pubErr);
         }
-        return item;
-      });
-      const publicAvailabilityData = JSON.parse(JSON.stringify({
-        therapistName: settings?.therapistName || "Terapist",
-        therapistPhone: settings?.therapistPhone || "",
-        rooms: settings?.rooms || [],
-        blockedSlots: settings?.blockedSlots || [],
-        sessions: publicSessions,
-        updatedAt: new Date().toISOString()
-      }));
-      await setDoc(publicDocRef, publicAvailabilityData);
-    } catch (pubErr: any) {
-      if (checkIsQuotaError(pubErr)) {
-        isFirestoreQuotaExceeded = true;
-      } else {
-        console.error("Error saving public-safe availability data: ", pubErr);
       }
     }
   } catch (error: any) {
