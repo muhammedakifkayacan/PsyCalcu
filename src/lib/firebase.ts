@@ -63,17 +63,6 @@ try {
 }
 export const db = dbInstance;
 
-// Check if quota was recently exceeded and start in offline mode
-try {
-  const savedQuotaTs = localStorage.getItem('psycalcu_firestore_quota_exceeded_timestamp');
-  if (savedQuotaTs) {
-    const elapsed = Date.now() - parseInt(savedQuotaTs, 10);
-    if (elapsed < 12 * 60 * 60 * 1000) {
-      disableNetwork(db).catch(() => {});
-    }
-  }
-} catch (e) {}
-
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

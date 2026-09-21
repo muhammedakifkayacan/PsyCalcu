@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, setDoc, getDoc, disableNetwork, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
 
 interface UserData {
@@ -12,23 +12,6 @@ interface UserData {
 }
 
 export let isFirestoreQuotaExceeded = false;
-
-const QUOTA_EXCEEDED_KEY = 'psycalcu_firestore_quota_exceeded_timestamp';
-
-// Check quota state on startup
-try {
-  const savedQuotaTs = localStorage.getItem(QUOTA_EXCEEDED_KEY);
-  if (savedQuotaTs) {
-    const elapsed = Date.now() - parseInt(savedQuotaTs, 10);
-    // Quota resets daily; if recorded within last 12 hours, stay in offline mode
-    if (elapsed < 12 * 60 * 60 * 1000) {
-      isFirestoreQuotaExceeded = true;
-      disableNetwork(db).catch(() => {});
-    } else {
-      localStorage.removeItem(QUOTA_EXCEEDED_KEY);
-    }
-  }
-} catch (e) {}
 
 export function checkIsQuotaError(error: any): boolean {
   if (!error) return false;
@@ -45,29 +28,10 @@ export function checkIsQuotaError(error: any): boolean {
   );
 }
 
-// Utility to cleanly disable network on quota limit
-async function handleQuotaExceeded() {
-  if (!isFirestoreQuotaExceeded) {
-    isFirestoreQuotaExceeded = true;
-    try {
-      localStorage.setItem(QUOTA_EXCEEDED_KEY, Date.now().toString());
-    } catch (e) {}
-    try {
-      await disableNetwork(db);
-      console.warn("Firestore network communication has been disabled due to quota limits.");
-    } catch (err) {
-      console.error("Failed to disable Firestore network:", err);
-    }
-  }
-}
-
 /**
  * Fetch all user data (sessions and settings) from Firestore
  */
 export async function fetchUserData(userId: string): Promise<UserData | null> {
-  if (isFirestoreQuotaExceeded) {
-    throw new Error('quota-exceeded');
-  }
   try {
     const docRef = doc(db, 'users', userId);
     const docSnap = await getDoc(docRef);
@@ -102,8 +66,7 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
     return null;
   } catch (error: any) {
     if (checkIsQuotaError(error)) {
-      await handleQuotaExceeded();
-      throw new Error('quota-exceeded');
+      isFirestoreQuotaExceeded = true;
     }
     console.error("Error fetching user data from Firestore: ", error);
     throw error;
@@ -157,14 +120,9 @@ export async function saveUserData(
   }
   try {
     const docRef = doc(db, 'users', userId);
-    // Remove undefined properties before saving to Firestore to avoid setDoc invalid data error
+    // Clean data before saving to Firestore to avoid invalid data errors
     const cleanedSettings = JSON.parse(JSON.stringify(settings));
-    const cleanedSessions = JSON.parse(JSON.stringify(sessions)).map((s: any) => {
-      if (s.isSyncedFromCalendar && !s.isManuallyEdited) {
-        delete s.notes;
-      }
-      return s;
-    });
+    const cleanedSessions = JSON.parse(JSON.stringify(sessions));
     const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
     
     const payload: any = { 
@@ -208,42 +166,40 @@ export async function saveUserData(
     await setDoc(docRef, payload, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
-    if (!isFirestoreQuotaExceeded) {
-      try {
-        const publicDocRef = doc(db, 'public_availability', userId);
-        const publicSessions = (sessions || []).map((s: Session) => {
-          const item: any = {
-            id: s.id || "",
-            date: s.date || "",
-            time: s.time || "",
-            duration: s.duration || 60,
-            type: s.type === 'cancelled' ? 'cancelled' : 'busy'
-          };
-          if (s.roomId) {
-            item.roomId = s.roomId;
-          }
-          return item;
-        });
-        const publicAvailabilityData = JSON.parse(JSON.stringify({
-          therapistName: settings?.therapistName || "Terapist",
-          therapistPhone: settings?.therapistPhone || "",
-          rooms: settings?.rooms || [],
-          blockedSlots: settings?.blockedSlots || [],
-          sessions: publicSessions,
-          updatedAt: new Date().toISOString()
-        }));
-        await setDoc(publicDocRef, publicAvailabilityData);
-      } catch (pubErr: any) {
-        if (checkIsQuotaError(pubErr)) {
-          await handleQuotaExceeded();
-        } else {
-          console.error("Error saving public-safe availability data: ", pubErr);
+    try {
+      const publicDocRef = doc(db, 'public_availability', userId);
+      const publicSessions = (sessions || []).map((s: Session) => {
+        const item: any = {
+          id: s.id || "",
+          date: s.date || "",
+          time: s.time || "",
+          duration: s.duration || 60,
+          type: s.type === 'cancelled' ? 'cancelled' : 'busy'
+        };
+        if (s.roomId) {
+          item.roomId = s.roomId;
         }
+        return item;
+      });
+      const publicAvailabilityData = JSON.parse(JSON.stringify({
+        therapistName: settings?.therapistName || "Terapist",
+        therapistPhone: settings?.therapistPhone || "",
+        rooms: settings?.rooms || [],
+        blockedSlots: settings?.blockedSlots || [],
+        sessions: publicSessions,
+        updatedAt: new Date().toISOString()
+      }));
+      await setDoc(publicDocRef, publicAvailabilityData);
+    } catch (pubErr: any) {
+      if (checkIsQuotaError(pubErr)) {
+        isFirestoreQuotaExceeded = true;
+      } else {
+        console.error("Error saving public-safe availability data: ", pubErr);
       }
     }
   } catch (error: any) {
     if (checkIsQuotaError(error)) {
-      await handleQuotaExceeded();
+      isFirestoreQuotaExceeded = true;
       throw new Error('quota-exceeded');
     }
     console.error("Error saving user data to Firestore: ", error);

@@ -689,6 +689,7 @@ export default function App() {
   }, []);
 
   const activeSavesCountRef = useRef(0);
+  const isRemoteUpdatingRef = useRef(false);
 
   // Monitor Auth State Changes
   useEffect(() => {
@@ -1228,6 +1229,7 @@ export default function App() {
           newSessionsStr !== lastSavedRef.current.sessions ||
           newExpensesStr !== lastSavedRef.current.expenses
         ) {
+          isRemoteUpdatingRef.current = true;
           if (newSettings) setSettings(newSettings);
           setSessions(newSessions);
           setExpenses(newExpenses);
@@ -1305,6 +1307,17 @@ export default function App() {
     const currentSettingsStr = JSON.stringify(settings);
     const currentSessionsStr = JSON.stringify(sessions);
     const currentExpensesStr = JSON.stringify(expenses);
+
+    // If change came from remote listener, skip saving back to cloud
+    if (isRemoteUpdatingRef.current) {
+      isRemoteUpdatingRef.current = false;
+      lastSavedRef.current = {
+        settings: currentSettingsStr,
+        sessions: currentSessionsStr,
+        expenses: currentExpensesStr
+      };
+      return;
+    }
 
     // Skip saving to cloud if data hasn't changed since last cloud synchronization or save
     if (currentSettingsStr === lastSavedRef.current.settings &&
