@@ -238,7 +238,18 @@ export default function App() {
   const { formatMoney, formatClientName, isPrivacyMode, isHideClientNames } = usePrivacy();
   // Load settings from safeStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const savedSettings = safeStorage.getItem('psycalcu_settings');
+    let savedSettings = safeStorage.getItem('psycalcu_settings');
+    if (!savedSettings) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('psycalcu_settings_') || key.startsWith('psycalcu_safety_settings_'))) {
+            const raw = localStorage.getItem(key);
+            if (raw) { savedSettings = raw; break; }
+          }
+        }
+      } catch (e) {}
+    }
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
@@ -264,6 +275,7 @@ export default function App() {
           userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
           ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
           rooms: parsed.rooms ?? DEFAULT_SETTINGS.rooms,
+          clientCustomPrices: parsed.clientCustomPrices ?? DEFAULT_SETTINGS.clientCustomPrices,
         };
       } catch (e) {}
     }
@@ -272,7 +284,26 @@ export default function App() {
 
   // Load sessions from safeStorage or use empty array
   const [sessions, setSessions] = useState<Session[]>(() => {
-    const saved = safeStorage.getItem('psycalcu_sessions');
+    let saved = safeStorage.getItem('psycalcu_sessions');
+    if (!saved) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('psycalcu_sessions_') || key.startsWith('psycalcu_safety_backup_'))) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  saved = raw;
+                  break;
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {}
+    }
     if (saved) {
       try {
         return autoCorrectPastSessions(JSON.parse(saved));
@@ -1047,11 +1078,36 @@ export default function App() {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
 
-            // Also check emergency safety backup
+            // Also check emergency safety backups and snapshot stores
             let safetyBackupSessions: Session[] = [];
             try {
-              const safetyStr = localStorage.getItem(`psycalcu_safety_backup_${user.uid}`);
-              if (safetyStr) safetyBackupSessions = JSON.parse(safetyStr);
+              const safetyStr = localStorage.getItem(`psycalcu_safety_backup_${user.uid}`) || localStorage.getItem('psycalcu_safety_backup');
+              if (safetyStr) {
+                const parsedSafety = JSON.parse(safetyStr);
+                if (Array.isArray(parsedSafety)) safetyBackupSessions.push(...parsedSafety);
+              }
+              // Scan snapshots in localStorage to recover any user-edited prices or paid statuses
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('snapshot') || key.includes('backup'))) {
+                  const raw = localStorage.getItem(key);
+                  if (raw) {
+                    try {
+                      const parsed = JSON.parse(raw);
+                      if (Array.isArray(parsed)) {
+                        parsed.forEach(item => {
+                          const candidateList = Array.isArray(item) ? item : (item && Array.isArray(item.sessions) ? item.sessions : []);
+                          candidateList.forEach((s: Session) => {
+                            if (s && s.id && (s.isManuallyEdited || s.paymentStatus === 'paid' || (Number(s.paidAmount) || 0) > 0)) {
+                              safetyBackupSessions.push(s);
+                            }
+                          });
+                        });
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
             } catch (e) {}
 
             const localMap = new Map<string, Session>();
@@ -1059,7 +1115,7 @@ export default function App() {
             safetyBackupSessions.forEach(s => {
               if (s && s.id) {
                 const existing = localMap.get(s.id);
-                if (!existing || ((s.updatedAt || 0) > (existing.updatedAt || 0))) {
+                if (!existing || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited) || (existing.paymentStatus !== 'paid' && s.paymentStatus === 'paid')) {
                   localMap.set(s.id, s);
                 }
               }
@@ -3140,6 +3196,41 @@ export default function App() {
     const incomingIds = new Set(newSessions.map(ns => ns.id));
 
     // Multi-index existing sessions for robust matching across ID variations, recurrence exceptions, and reschedules
+    const currentMemorySessions = (sessionsRef.current && sessionsRef.current.length > 0)
+      ? sessionsRef.current
+      : (sessions && sessions.length > 0 ? sessions : []);
+
+    let effectiveSessions = currentMemorySessions;
+    if (effectiveSessions.length === 0) {
+      try {
+        const userKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
+        const savedStr = safeStorage.getItem(userKey) || safeStorage.getItem('psycalcu_sessions');
+        if (savedStr) {
+          const parsed = JSON.parse(savedStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            effectiveSessions = parsed;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // CRITICAL QUOTA & DATA LOSS SHIELD:
+    // If existing sessions have not been loaded into state or local cache yet and initial sync is pending,
+    // NEVER proceed with calendar import! Otherwise, every single calendar event would be treated as brand new,
+    // wiping user edits and exhausting quotas.
+    if (effectiveSessions.length === 0 && !isInitialSyncDone) {
+      console.warn("handleImportSessions postponed: existing sessions not yet loaded from store.");
+      return {
+        addedCount: 0,
+        updatedCount: 0,
+        deletedCount: 0,
+        totalParsed: newSessions.length,
+        addedList: [],
+        updatedList: [],
+        deletedList: []
+      };
+    }
+
     const matchedExistingIds = new Set<string>();
     const replacedOldIds = new Set<string>();
     const existingById = new Map<string, Session>();
@@ -3147,7 +3238,7 @@ export default function App() {
     const existingByClientDateTime = new Map<string, Session>();
     const existingByClientDate = new Map<string, Session[]>();
 
-    sessions.forEach(s => {
+    effectiveSessions.forEach(s => {
       existingById.set(s.id, s);
       if (s.id.startsWith('ics_')) {
         const baseUid = extractBaseUid(s.id);
@@ -3232,7 +3323,10 @@ export default function App() {
         let effectivePrice = existing.price;
         if (effectivePrice === 0 || !effectivePrice) {
           if (!isCancelledOrNonSessionOrBefore) {
-            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, sessions, settings.defaultSessionPrice, settings.clientCustomPrices, ns.type) || settings.defaultSessionPrice || 1200;
+            const fallbackTypePrice = ns.type === 'face-to-face'
+              ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
+              : (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200);
+            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, effectiveSessions, fallbackTypePrice, settings.clientCustomPrices, ns.type) || fallbackTypePrice;
           } else {
             effectivePrice = 0;
           }
@@ -3296,8 +3390,24 @@ export default function App() {
           isManuallyEdited: existing.isManuallyEdited
         };
         
-        // Only update if there is a real difference or ID migration
-        if (existing.id !== updated.id || JSON.stringify(existing) !== JSON.stringify(updated)) {
+        // Semantic equality check to avoid redundant updates and protect save quota
+        const hasSemanticDifference = 
+          existing.id !== updated.id ||
+          existing.clientName !== updated.clientName ||
+          existing.date !== updated.date ||
+          existing.time !== updated.time ||
+          existing.duration !== updated.duration ||
+          existing.type !== updated.type ||
+          (existing.roomId || '') !== (updated.roomId || '') ||
+          (existing.price || 0) !== (updated.price || 0) ||
+          existing.paymentStatus !== updated.paymentStatus ||
+          (existing.paidAmount || 0) !== (updated.paidAmount || 0) ||
+          (existing.hasBabysitterFee || false) !== (updated.hasBabysitterFee || false) ||
+          (existing.babysitterFeeAmount || 0) !== (updated.babysitterFeeAmount || 0) ||
+          (existing.hasOfficeRentFee || false) !== (updated.hasOfficeRentFee || false) ||
+          (existing.officeRentFeeAmount || 0) !== (updated.officeRentFeeAmount || 0);
+
+        if (hasSemanticDifference) {
           updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
           toUpdate.push(updated);
           updatedList.push({
@@ -3310,15 +3420,18 @@ export default function App() {
           updatedCount++;
         }
       } else {
-        let finalPrice = ns.price;
+        const defaultTypePrice = ns.type === 'face-to-face'
+          ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
+          : (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200);
+        let finalPrice = ns.price || defaultTypePrice;
         let finalBabysitterFee = ns.babysitterFeeAmount;
         let finalOfficeRentFee = ns.officeRentFeeAmount;
         if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled' && ns.type !== 'non-session') {
           const matchedCosts = getSmartClientCosts(
             ns.clientName,
             ns.date,
-            sessions,
-            settings.defaultSessionPrice,
+            effectiveSessions,
+            defaultTypePrice,
             settings.defaultBabysitterFee,
             settings.defaultOfficeRentFee,
             settings.clientCustomPrices,
@@ -3359,7 +3472,7 @@ export default function App() {
 
     // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
     const sessionsToKeep: Session[] = [];
-    sessions.forEach(s => {
+    effectiveSessions.forEach(s => {
       // If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
       if (replacedOldIds.has(s.id)) {
         return;
@@ -3404,9 +3517,10 @@ export default function App() {
 
     if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
       setSessions(prev => {
+        const baseList = prev.length > 0 ? prev : effectiveSessions;
         // Filter out deleted sessions and replaced old IDs from state
         const keepIds = new Set(sessionsToKeep.map(s => s.id));
-        const filteredPrev = prev.filter(s => keepIds.has(s.id) && !replacedOldIds.has(s.id));
+        const filteredPrev = baseList.filter(s => keepIds.has(s.id) && !replacedOldIds.has(s.id));
 
         const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
         toUpdate.forEach(u => prevMap.set(u.id, u));
@@ -3468,7 +3582,8 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+          const onlineDefaultPrice = settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200;
+          const parsed = parseICS(icsText, onlineDefaultPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -3497,7 +3612,8 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+          const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200;
+          const parsed = parseICS(icsText, faceToFaceDefaultPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -3592,6 +3708,10 @@ export default function App() {
 
   // Automated background calendar sync orchestrator (non-intrusive, throttled)
   const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 90000) => {
+    // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized!
+    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
+    // NEVER run auto-sync if existing sessions have not been populated in state or ref yet!
+    if (!sessionsRef.current || sessionsRef.current.length === 0) return;
     if (featuresCalendarAllowed === false) return;
     if (!settings.calendarSyncEnabled) return;
     const hasOwnerCalendars = settings.userRole === 'owner' && settings.ownerCalendars && settings.ownerCalendars.length > 0;
@@ -3616,7 +3736,7 @@ export default function App() {
     } finally {
       setIsAutoSyncing(false);
     }
-  }, [featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
+  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
 
   // Periodic automatic sync heartbeat (checks every 10 minutes)
   useEffect(() => {
@@ -3630,7 +3750,7 @@ export default function App() {
   // Auto-sync when user switches back to browser tab or focuses window
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && isInitialSyncDone && !isAuthLoading && !isAuthSyncing) {
         triggerAutoCalendarSync(180000); // 3 minutes throttle
       }
     };
@@ -3640,14 +3760,15 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [triggerAutoCalendarSync]);
+  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
 
   // Auto-sync when user navigates to core calendar or audit views
   useEffect(() => {
+    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
     if (activeTab === 'agenda' || activeTab === 'audit' || activeTab === 'stats') {
       triggerAutoCalendarSync(180000);
     }
-  }, [activeTab, triggerAutoCalendarSync]);
+  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, activeTab, triggerAutoCalendarSync]);
 
   // Pull-to-refresh handler for mobile & manual pull
   const handlePageRefresh = async () => {

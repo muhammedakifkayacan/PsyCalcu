@@ -405,7 +405,8 @@ export default function CalendarSyncGuide({
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
-      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online', null, settings.autoMarkShortEventsAsNonSession ?? true);
+      const onlineDefaultPrice = settings.defaultOnlinePrice ?? defaultPrice;
+      const parsed = parseICS(icsText, onlineDefaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'online', null, settings.autoMarkShortEventsAsNonSession ?? true);
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
@@ -445,7 +446,8 @@ export default function CalendarSyncGuide({
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
-      const parsed = parseICS(icsText, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face', null, settings.autoMarkShortEventsAsNonSession ?? true);
+      const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? defaultPrice;
+      const parsed = parseICS(icsText, faceToFaceDefaultPrice, defaultBabysitterFee, defaultOfficeRentFee, 'face-to-face', null, settings.autoMarkShortEventsAsNonSession ?? true);
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
