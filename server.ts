@@ -639,7 +639,8 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         headers: {
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
           "Accept": "text/calendar, text/plain, application/octet-stream, */*"
-        }
+        },
+        signal: AbortSignal.timeout(12000)
       });
 
       if (!fetchResponse.ok) {

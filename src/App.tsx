@@ -76,7 +76,7 @@ import { SessionAuditTable } from './components/SessionAuditTable';
 import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
-import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded } from './lib/firestoreService';
+import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded, checkIsQuotaError } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
@@ -840,9 +840,11 @@ export default function App() {
               safeStorage.setItem('psycalcu_settings', JSON.stringify(updated), user.uid);
               
               // Save to Firestore
-              saveUserData(user.uid, updated, sessionsRef.current || []).catch(err => {
-                console.error("Error auto-saving updated settings from registration role sync:", err);
-              });
+              if (!isFirestoreQuotaExceeded && !isQuotaExceeded) {
+                saveUserData(user.uid, updated, sessionsRef.current || []).catch(err => {
+                  console.error("Error auto-saving updated settings from registration role sync:", err);
+                });
+              }
               return updated;
             });
           }
@@ -851,9 +853,11 @@ export default function App() {
           // Protect and correct Büşra's registration date & status
           if (isBusra && (data.createdAt !== '2026-07-01T00:00:00.000Z' || data.status !== 'approved')) {
             regCreated = '2026-07-01T00:00:00.000Z';
-            setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z', status: 'approved' }, { merge: true }).catch(err => {
-              console.error("Error correcting registration date for Büşra:", err);
-            });
+            if (!isFirestoreQuotaExceeded && !isQuotaExceeded) {
+              setDoc(regRef, { createdAt: '2026-07-01T00:00:00.000Z', status: 'approved' }, { merge: true }).catch(err => {
+                console.error("Error correcting registration date for Büşra:", err);
+              });
+            }
           }
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
@@ -872,7 +876,9 @@ export default function App() {
               status: (cleanEmail === 'muhammedakifkayacan@gmail.com' || isBusra) ? 'approved' : 'pending',
               createdAt: isBusra ? '2026-07-01T00:00:00.000Z' : new Date().toISOString()
             };
-            await setDoc(regRef, newReg);
+            if (!isFirestoreQuotaExceeded && !isQuotaExceeded) {
+              await setDoc(regRef, newReg);
+            }
             if (cleanEmail !== 'muhammedakifkayacan@gmail.com' && !isBusra) {
               setRegistrationStatus('pending');
             } else {
@@ -1044,11 +1050,6 @@ export default function App() {
               } catch (e) {}
             }
             
-            // Auto-sync public availability to make sure public_availability collection is populated
-            saveUserData(user.uid, cloudData.settings, cloudSessions, cloudData.expenses || []).catch(err => {
-              console.warn("Public availability auto-sync failed:", err);
-            });
-            
             // Update the user-specific localStorage cache immediately with the newest cloud data
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
@@ -1198,6 +1199,65 @@ export default function App() {
     performSync();
   }, [user, registrationStatus]);
 
+  // Real-time live multi-device listener: instant updates when changes occur on another device
+  useEffect(() => {
+    if (!user || registrationStatus !== 'approved' || isQuotaExceeded) return;
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      // Ignore local optimistic writes to prevent loops
+      if (docSnap.metadata.hasPendingWrites) {
+        return;
+      }
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (!data) return;
+
+        const newSettings = data.settings;
+        const newSessions = data.sessions || [];
+        const newExpenses = data.expenses || [];
+
+        const newSettingsStr = JSON.stringify(newSettings || {});
+        const newSessionsStr = JSON.stringify(newSessions);
+        const newExpensesStr = JSON.stringify(newExpenses);
+
+        // Check if remote data differs from current state
+        if (
+          newSettingsStr !== lastSavedRef.current.settings ||
+          newSessionsStr !== lastSavedRef.current.sessions ||
+          newExpensesStr !== lastSavedRef.current.expenses
+        ) {
+          if (newSettings) setSettings(newSettings);
+          setSessions(newSessions);
+          setExpenses(newExpenses);
+
+          lastSavedRef.current = {
+            settings: newSettingsStr,
+            sessions: newSessionsStr,
+            expenses: newExpensesStr
+          };
+
+          // Update local cache
+          const userSessionsKey = `psycalcu_sessions_${user.uid}`;
+          const userSettingsKey = `psycalcu_settings_${user.uid}`;
+          const userExpensesKey = `psycalcu_expenses_${user.uid}`;
+          if (newSettings) safeStorage.setItem(userSettingsKey, newSettingsStr, user.uid);
+          safeStorage.setItem(userSessionsKey, newSessionsStr, user.uid);
+          safeStorage.setItem(userExpensesKey, newExpensesStr, user.uid);
+
+          showToast('Diğer cihazınızdan yapılan değişiklikler canlı olarak güncellendi.', 'info');
+        }
+      }
+    }, (err) => {
+      if (checkIsQuotaError(err)) {
+        setIsQuotaExceeded(true);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, registrationStatus, isQuotaExceeded]);
+
   // Refs to track latest values for safe unmount/unload saving
   const sessionsRef = useRef(sessions);
   const settingsRef = useRef(settings);
@@ -1253,12 +1313,11 @@ export default function App() {
       return;
     }
 
-    // Increment active saves count
-    activeSavesCountRef.current++;
     setIsCloudSaving(true);
 
-    // Debounce cloud save by 500ms for high responsiveness
+    // Debounce cloud save by 1500ms to reduce write frequency while preserving responsiveness
     const timer = setTimeout(() => {
+      activeSavesCountRef.current++;
       saveUserData(user.uid, settings, sessions, expenses).then(() => {
         activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
         if (activeSavesCountRef.current === 0) {
@@ -1285,11 +1344,10 @@ export default function App() {
           console.error("Bulut kayıt hatası:", err);
         }
       });
-    }, 500);
+    }, 1500);
 
     return () => {
       clearTimeout(timer);
-      activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
       if (activeSavesCountRef.current === 0) {
         setIsCloudSaving(false);
       }
@@ -3258,7 +3316,10 @@ export default function App() {
       } catch (err: any) {
         console.error("Online calendar sync failed:", err);
         if (showNotificationOnNoChanges) {
-          showToast(`Online Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+          const errMsg = (err?.message === 'Failed to fetch' || err?.name === 'TypeError')
+            ? 'Takvim sunucusuna erişilemedi veya bağlantı kesildi.'
+            : (err?.message || err);
+          showToast(`Online Takvim Eşitleme Hatası: ${errMsg}`, 'error');
         }
       }
     }
@@ -3284,7 +3345,10 @@ export default function App() {
       } catch (err: any) {
         console.error("Face-to-face calendar sync failed:", err);
         if (showNotificationOnNoChanges) {
-          showToast(`Yüzyüze Takvim Eşitleme Hatası: ${err?.message || err}`, 'error');
+          const errMsg = (err?.message === 'Failed to fetch' || err?.name === 'TypeError')
+            ? 'Takvim sunucusuna erişilemedi veya bağlantı kesildi.'
+            : (err?.message || err);
+          showToast(`Yüzyüze Takvim Eşitleme Hatası: ${errMsg}`, 'error');
         }
       }
     }
@@ -3387,12 +3451,12 @@ export default function App() {
     }
   }, [featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
 
-  // Periodic automatic sync heartbeat (checks every 4 minutes)
+  // Periodic automatic sync heartbeat (checks every 10 minutes)
   useEffect(() => {
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
     const interval = setInterval(() => {
-      triggerAutoCalendarSync(180000); // at least 3 minutes between runs
-    }, 240000);
+      triggerAutoCalendarSync(300000); // at least 5 minutes between runs
+    }, 600000);
     return () => clearInterval(interval);
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
 
@@ -3400,7 +3464,7 @@ export default function App() {
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
-        triggerAutoCalendarSync(90000); // 90 seconds throttle
+        triggerAutoCalendarSync(180000); // 3 minutes throttle
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
@@ -3414,7 +3478,7 @@ export default function App() {
   // Auto-sync when user navigates to core calendar or audit views
   useEffect(() => {
     if (activeTab === 'agenda' || activeTab === 'audit' || activeTab === 'stats') {
-      triggerAutoCalendarSync(90000);
+      triggerAutoCalendarSync(180000);
     }
   }, [activeTab, triggerAutoCalendarSync]);
 

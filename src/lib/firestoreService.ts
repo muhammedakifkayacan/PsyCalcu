@@ -13,6 +13,23 @@ interface UserData {
 
 export let isFirestoreQuotaExceeded = false;
 
+const QUOTA_EXCEEDED_KEY = 'psycalcu_firestore_quota_exceeded_timestamp';
+
+// Check quota state on startup
+try {
+  const savedQuotaTs = localStorage.getItem(QUOTA_EXCEEDED_KEY);
+  if (savedQuotaTs) {
+    const elapsed = Date.now() - parseInt(savedQuotaTs, 10);
+    // Quota resets daily; if recorded within last 12 hours, stay in offline mode
+    if (elapsed < 12 * 60 * 60 * 1000) {
+      isFirestoreQuotaExceeded = true;
+      disableNetwork(db).catch(() => {});
+    } else {
+      localStorage.removeItem(QUOTA_EXCEEDED_KEY);
+    }
+  }
+} catch (e) {}
+
 export function checkIsQuotaError(error: any): boolean {
   if (!error) return false;
   const errMsg = error.message || String(error);
@@ -22,18 +39,25 @@ export function checkIsQuotaError(error: any): boolean {
     errCode === 'quota-exceeded' ||
     errMsg.toLowerCase().includes('quota') ||
     errMsg.toLowerCase().includes('resource-exhausted') ||
-    errMsg.toLowerCase().includes('quota exceeded')
+    errMsg.toLowerCase().includes('quota exceeded') ||
+    errMsg.toLowerCase().includes('free daily write units') ||
+    errMsg.toLowerCase().includes('free daily read units')
   );
 }
 
 // Utility to cleanly disable network on quota limit
 async function handleQuotaExceeded() {
-  isFirestoreQuotaExceeded = true;
-  try {
-    await disableNetwork(db);
-    console.warn("Firestore network communication has been disabled due to quota limits.");
-  } catch (err) {
-    console.error("Failed to disable Firestore network:", err);
+  if (!isFirestoreQuotaExceeded) {
+    isFirestoreQuotaExceeded = true;
+    try {
+      localStorage.setItem(QUOTA_EXCEEDED_KEY, Date.now().toString());
+    } catch (e) {}
+    try {
+      await disableNetwork(db);
+      console.warn("Firestore network communication has been disabled due to quota limits.");
+    } catch (err) {
+      console.error("Failed to disable Firestore network:", err);
+    }
   }
 }
 
@@ -169,9 +193,9 @@ export async function saveUserData(
       } catch (localErr) {}
     }
 
-    // Keep a persistent calendarBackup and history log inside the user document whenever URLs exist
+    // Keep a persistent calendarBackup inside the user document whenever URLs exist
     if (settings?.onlineCalendarWebcalUrl || settings?.faceToFaceCalendarWebcalUrl || (settings?.ownerCalendars && settings.ownerCalendars.length > 0)) {
-      const historyRecord = {
+      payload.calendarBackup = {
         id: 'link_' + Date.now(),
         timestamp: new Date().toISOString(),
         onlineCalendarWebcalUrl: settings.onlineCalendarWebcalUrl || '',
@@ -179,39 +203,43 @@ export async function saveUserData(
         ownerCalendars: settings.ownerCalendars || [],
         therapistName: settings.therapistName || ''
       };
-      payload.calendarBackup = historyRecord;
-      payload.calendarHistory = arrayUnion(historyRecord);
     }
 
     await setDoc(docRef, payload, { merge: true });
 
     // Also save public-safe availability data to a separate collection for secure public access
-    try {
-      const publicDocRef = doc(db, 'public_availability', userId);
-      const publicSessions = (sessions || []).map((s: Session) => {
-        const item: any = {
-          id: s.id || "",
-          date: s.date || "",
-          time: s.time || "",
-          duration: s.duration || 60,
-          type: s.type === 'cancelled' ? 'cancelled' : 'busy'
-        };
-        if (s.roomId) {
-          item.roomId = s.roomId;
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const publicDocRef = doc(db, 'public_availability', userId);
+        const publicSessions = (sessions || []).map((s: Session) => {
+          const item: any = {
+            id: s.id || "",
+            date: s.date || "",
+            time: s.time || "",
+            duration: s.duration || 60,
+            type: s.type === 'cancelled' ? 'cancelled' : 'busy'
+          };
+          if (s.roomId) {
+            item.roomId = s.roomId;
+          }
+          return item;
+        });
+        const publicAvailabilityData = JSON.parse(JSON.stringify({
+          therapistName: settings?.therapistName || "Terapist",
+          therapistPhone: settings?.therapistPhone || "",
+          rooms: settings?.rooms || [],
+          blockedSlots: settings?.blockedSlots || [],
+          sessions: publicSessions,
+          updatedAt: new Date().toISOString()
+        }));
+        await setDoc(publicDocRef, publicAvailabilityData);
+      } catch (pubErr: any) {
+        if (checkIsQuotaError(pubErr)) {
+          await handleQuotaExceeded();
+        } else {
+          console.error("Error saving public-safe availability data: ", pubErr);
         }
-        return item;
-      });
-      const publicAvailabilityData = JSON.parse(JSON.stringify({
-        therapistName: settings?.therapistName || "Terapist",
-        therapistPhone: settings?.therapistPhone || "",
-        rooms: settings?.rooms || [],
-        blockedSlots: settings?.blockedSlots || [],
-        sessions: publicSessions,
-        updatedAt: new Date().toISOString()
-      }));
-      await setDoc(publicDocRef, publicAvailabilityData);
-    } catch (pubErr) {
-      console.error("Error saving public-safe availability data: ", pubErr);
+      }
     }
   } catch (error: any) {
     if (checkIsQuotaError(error)) {
