@@ -34,14 +34,15 @@ interface InteractiveTourProps {
   setActiveTab: (tab: string) => void;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   userId?: string;
+  onComplete?: () => void;
 }
 
-export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToast, userId }: InteractiveTourProps) {
+export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToast, userId, onComplete }: InteractiveTourProps) {
   useBodyScrollLock(isOpen);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number; placement: string }>({ top: 0, left: 0, placement: 'center' });
-  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -371,11 +372,20 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
   };
 
   const handleFinish = () => {
-    // Finishing the tour successfully should always mark it as completed so it doesn't auto-start again.
+    // Finishing the tour successfully marks it as completed so it doesn't auto-start again.
     const key1 = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+    try {
+      localStorage.setItem(key1, 'true');
+      localStorage.setItem('psycalcu_tour_completed', 'true');
+      sessionStorage.setItem('psycalcu_tour_dismissed', 'true');
+    } catch (e) {}
     safeStorage.setItem(key1, 'true', userId);
     safeStorage.setItem('psycalcu_tour_completed', 'true', userId);
     
+    if (onComplete) {
+      onComplete();
+    }
+
     if (showToast) {
       showToast("Tanıtım turu tamamlandı! Keyifli kullanımlar dileriz.", "success");
     }
@@ -384,17 +394,22 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
   };
 
   const handleSkip = () => {
-    if (dontShowAgain) {
-      const key1 = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
-      safeStorage.setItem(key1, 'true', userId);
-      safeStorage.setItem('psycalcu_tour_completed', 'true', userId);
-      if (showToast) {
-        showToast("Tanıtım turu kapatıldı ve bir daha gösterilmeyecek şekilde kaydedildi.", "success");
-      }
-    } else {
-      if (showToast) {
-        showToast("Tanıtım turu kapatıldı. SSS / Yardım sayfasından dilediğiniz zaman tekrar başlatabilirsiniz.", "info");
-      }
+    // Skipping always silences the tour for the session and permanently marks it
+    const key1 = userId ? `psycalcu_tour_completed_${userId}` : 'psycalcu_tour_completed';
+    try {
+      localStorage.setItem(key1, 'true');
+      localStorage.setItem('psycalcu_tour_completed', 'true');
+      sessionStorage.setItem('psycalcu_tour_dismissed', 'true');
+    } catch (e) {}
+    safeStorage.setItem(key1, 'true', userId);
+    safeStorage.setItem('psycalcu_tour_completed', 'true', userId);
+
+    if (onComplete) {
+      onComplete();
+    }
+
+    if (showToast) {
+      showToast("Tanıtım turu kapatıldı. SSS / Yardım menüsünden dilediğiniz zaman tekrar başlatabilirsiniz.", "info");
     }
     onClose();
     setCurrentStepIndex(0);

@@ -232,6 +232,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   userRole: 'tenant',
   ownerCalendars: [],
   rooms: [],
+  hasSeenTour: false,
 };
 
 export default function App() {
@@ -276,6 +277,7 @@ export default function App() {
           ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
           rooms: parsed.rooms ?? DEFAULT_SETTINGS.rooms,
           clientCustomPrices: parsed.clientCustomPrices ?? DEFAULT_SETTINGS.clientCustomPrices,
+          hasSeenTour: parsed.hasSeenTour ?? false,
         };
       } catch (e) {}
     }
@@ -768,20 +770,8 @@ export default function App() {
           try {
             const parsed = JSON.parse(savedSettings);
             setSettings({
-              defaultSessionPrice: parsed.defaultSessionPrice ?? DEFAULT_SETTINGS.defaultSessionPrice,
-              defaultBabysitterFee: parsed.defaultBabysitterFee ?? DEFAULT_SETTINGS.defaultBabysitterFee,
-              defaultOfficeRentFee: parsed.defaultOfficeRentFee ?? parsed.monthlyOfficeRent ?? DEFAULT_SETTINGS.defaultOfficeRentFee,
-              therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
-              therapistPhone: parsed.therapistPhone ?? DEFAULT_SETTINGS.therapistPhone,
-              calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
-              onlineCalendarWebcalUrl: parsed.onlineCalendarWebcalUrl ?? parsed.calendarWebcalUrl ?? DEFAULT_SETTINGS.onlineCalendarWebcalUrl,
-              faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
-              googleSheetId: parsed.googleSheetId ?? DEFAULT_SETTINGS.googleSheetId,
-              googleSheetsLinked: parsed.googleSheetsLinked ?? DEFAULT_SETTINGS.googleSheetsLinked,
-              enableSmartClientPriceMatching: parsed.enableSmartClientPriceMatching ?? DEFAULT_SETTINGS.enableSmartClientPriceMatching,
-              autoMarkShortEventsAsNonSession: parsed.autoMarkShortEventsAsNonSession ?? DEFAULT_SETTINGS.autoMarkShortEventsAsNonSession,
-              defaultLandingPage: parsed.defaultLandingPage ?? DEFAULT_SETTINGS.defaultLandingPage,
-              userRole: parsed.userRole ?? DEFAULT_SETTINGS.userRole,
+              ...DEFAULT_SETTINGS,
+              ...parsed,
               ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
             });
           } catch (e) {}
@@ -2266,18 +2256,37 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Auto trigger tour for first-time logged-in users
+  // Auto trigger tour for first-time logged-in users (guarded against repeat triggers)
+  const hasTourTriggeredRef = useRef(false);
   useEffect(() => {
-    if (user) {
-      const isCompleted = localStorage.getItem(`psycalcu_tour_completed_${user.uid}`);
-      if (!isCompleted) {
-        const timer = setTimeout(() => {
-          setIsTourOpen(true);
-        }, 1500); // 1.5s delay for smooth transitions after auth
-        return () => clearTimeout(timer);
-      }
+    if (!user) return;
+    if (hasTourTriggeredRef.current) return;
+
+    // Check all layers: session storage, localStorage (with & without UID), and Firestore settings
+    const isDismissedInSession = sessionStorage.getItem('psycalcu_tour_dismissed') === 'true';
+    const isCompletedUser = localStorage.getItem(`psycalcu_tour_completed_${user.uid}`) === 'true';
+    const isCompletedGlobal = localStorage.getItem('psycalcu_tour_completed') === 'true';
+    const isCompletedSettings = settings.hasSeenTour === true;
+
+    if (isDismissedInSession || isCompletedUser || isCompletedGlobal || isCompletedSettings) {
+      hasTourTriggeredRef.current = true;
+      return;
     }
-  }, [user]);
+
+    hasTourTriggeredRef.current = true;
+    const timer = setTimeout(() => {
+      if (
+        sessionStorage.getItem('psycalcu_tour_dismissed') === 'true' ||
+        localStorage.getItem(`psycalcu_tour_completed_${user.uid}`) === 'true' ||
+        localStorage.getItem('psycalcu_tour_completed') === 'true' ||
+        settings.hasSeenTour
+      ) {
+        return;
+      }
+      setIsTourOpen(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [user, settings.hasSeenTour]);
 
   useEffect(() => {
     setShowAiDetails(false);
@@ -7382,7 +7391,40 @@ export default function App() {
       {/* Interactive Onboarding Tour */}
       <InteractiveTour
         isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
+        onClose={() => {
+          setIsTourOpen(false);
+          hasTourTriggeredRef.current = true;
+          try {
+            sessionStorage.setItem('psycalcu_tour_dismissed', 'true');
+            if (user?.uid) {
+              localStorage.setItem(`psycalcu_tour_completed_${user.uid}`, 'true');
+              safeStorage.setItem(`psycalcu_tour_completed_${user.uid}`, 'true', user.uid);
+            }
+            localStorage.setItem('psycalcu_tour_completed', 'true');
+            safeStorage.setItem('psycalcu_tour_completed', 'true', user?.uid);
+          } catch (e) {}
+        }}
+        onComplete={() => {
+          setIsTourOpen(false);
+          hasTourTriggeredRef.current = true;
+          try {
+            sessionStorage.setItem('psycalcu_tour_dismissed', 'true');
+            if (user?.uid) {
+              localStorage.setItem(`psycalcu_tour_completed_${user.uid}`, 'true');
+              safeStorage.setItem(`psycalcu_tour_completed_${user.uid}`, 'true', user.uid);
+            }
+            localStorage.setItem('psycalcu_tour_completed', 'true');
+            safeStorage.setItem('psycalcu_tour_completed', 'true', user?.uid);
+          } catch (e) {}
+          if (!settings.hasSeenTour) {
+            const updatedSettings = { ...settings, hasSeenTour: true };
+            setSettings(updatedSettings);
+            if (user) {
+              safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
+              saveUserData(user.uid, updatedSettings, sessions, expenses).catch(() => {});
+            }
+          }
+        }}
         setActiveTab={(tab) => {
           if (['agenda', 'stats', 'sync', 'backup', 'debts', 'settings'].includes(tab)) {
             setActiveTab(tab as any);

@@ -43,7 +43,7 @@ export function pruneStorage(currentUserId?: string): void {
 
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('debug_') || k.startsWith('temp_') || k.includes('cache_blob') || k.startsWith('psycalcu_tour_'))) {
+      if (k && (k.startsWith('debug_') || k.startsWith('temp_') || k.includes('cache_blob'))) {
         keysToRemove.push(k);
       }
     }

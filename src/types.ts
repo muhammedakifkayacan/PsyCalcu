@@ -131,6 +131,7 @@ export interface AppSettings {
   blockedSlots?: BlockedSlot[];
   accountingStartDate?: string; // YYYY-MM-DD cutoff for accounting & debt tracking
   clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule };
+  hasSeenTour?: boolean; // whether user has completed or dismissed the onboarding tour
 }
 
 export interface DaySummary {
