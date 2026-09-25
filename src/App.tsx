@@ -133,6 +133,8 @@ const autoCorrectPastSessions = (
     ? accountingStartDate.split('T')[0] 
     : '2026-07-01';
 
+  const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
+
   const healedAndRestored = sessionList.map(s => {
     if (!s) return s;
 
@@ -174,7 +176,12 @@ const autoCorrectPastSessions = (
 
       // Repair price if zero or missing
       if (typeof updated.price !== 'number' || updated.price === 0) {
-        const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, s.type);
+        const normKey = `${getNormalizedClientName(s.clientName)}_${s.type}`;
+        let smartCosts = repairCostCache.get(normKey);
+        if (!smartCosts) {
+          smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, s.type);
+          repairCostCache.set(normKey, smartCosts);
+        }
         updated.price = smartCosts.price || typeDefault || 1200;
         changed = true;
       }
@@ -419,9 +426,15 @@ export default function App() {
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const isManualSyncingRef = useRef(false);
+  useEffect(() => { isManualSyncingRef.current = isManualSyncing; }, [isManualSyncing]);
+  const isAutoSyncingRef = useRef(false);
+  useEffect(() => { isAutoSyncingRef.current = isAutoSyncing; }, [isAutoSyncing]);
   const [lastCalendarSyncTime, setLastCalendarSyncTime] = useState<Date | null>(null);
   const lastSyncTimestampRef = useRef<number>(0);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
+  const isCloudSavingRef = useRef(false);
+  useEffect(() => { isCloudSavingRef.current = isCloudSaving; }, [isCloudSaving]);
   const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
   const [agendaStatusFilter, setAgendaStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'cancelled'>('all');
   const [agendaRoomFilter, setAgendaRoomFilter] = useState<string>('all');
@@ -970,7 +983,10 @@ export default function App() {
         setIsAuthSyncing(true);
         const cleanEmail = (user.email || '').trim().toLowerCase();
         const isBusra = cleanEmail.includes('uzmanpsikologbusra') || cleanEmail.includes('uzmpsikologbusra');
-        const cloudData = await fetchUserData(user.uid);
+        
+        // Timeout guard: never let slow network or firestore hang the initial loading screen
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 7000));
+        const cloudData = await Promise.race([fetchUserData(user.uid), timeoutPromise]);
         
         // Check if there was an explicit request to migrate anonymous local data
         const shouldMigrate = safeStorage.getItem('psycalcu_should_migrate') === 'true';
@@ -1566,15 +1582,23 @@ export default function App() {
     // AND the initial cloud database synchronization is fully finished!
     if (isInitialAuthCheckDone && !isAuthLoading && !isAuthSyncing && isInitialSyncDone) {
       if (hasAutoSyncedRef.current) return;
+      const currentSettings = settingsRef.current;
+      if (!currentSettings.calendarSyncEnabled) return;
+      const hasUrls = Boolean(
+        currentSettings.onlineCalendarWebcalUrl ||
+        currentSettings.faceToFaceCalendarWebcalUrl ||
+        (currentSettings.ownerCalendars && currentSettings.ownerCalendars.length > 0)
+      );
+      if (!hasUrls) return;
       hasAutoSyncedRef.current = true;
 
-      // Run with a slight delay so startup animation & layout render first
+      // Run with a gentle delay so dashboard mounts smoothly first without blocking user interaction
       const timer = setTimeout(() => {
         handleManualCalendarSync(false);
-      }, 1500);
+      }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, isInitialSyncDone, settings]);
+  }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, isInitialSyncDone]);
 
   const handleAuthSuccess = async (currentUser: FirebaseUser) => {
     // onAuthStateChanged is the master of data loading; just reset ref to force fetch
@@ -2037,13 +2061,24 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(item.url)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, item.type, registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
           const effectiveAccountingStartDate = settings.accountingStartDate
             ? settings.accountingStartDate.split('T')[0]
             : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
           const isInitialDone = Boolean(
             settings.hasCompletedInitialCalendarSync ||
             safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true'
+          );
+          const parsed = parseICS(
+            icsText, 
+            settings.defaultSessionPrice, 
+            settings.defaultBabysitterFee, 
+            settings.defaultOfficeRentFee, 
+            item.type, 
+            registrationCreatedAt, 
+            settings.autoMarkShortEventsAsNonSession ?? true,
+            effectiveAccountingStartDate,
+            settings.closedMonths,
+            isInitialDone
           );
 
           parsed.forEach(ev => {
@@ -2618,6 +2653,16 @@ export default function App() {
   const handleSaveSession = (savedSession: Session) => {
     const existing = sessions.find(s => s.id === savedSession.id);
     
+    // Check closed months lock
+    if (isDateInClosedMonth(savedSession.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylar kilitlidir; seansı düzenlemek için önce Ay Kapatma ekranından ilgili ayın kilidini açmalısınız.', 'error');
+      return;
+    }
+    if (existing && isDateInClosedMonth(existing.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylar kilitlidir; seansı düzenlemek için önce Ay Kapatma ekranından ilgili ayın kilidini açmalısınız.', 'error');
+      return;
+    }
+
     // Check validation limits
     const validation = validateSessionAction(
       sessions.length,
@@ -2752,6 +2797,10 @@ export default function App() {
 
   const handleToggleType = (id: string, currentType: SessionType) => {
     const session = sessions.find(s => s.id === id);
+    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların tipi değiştirilemez!', 'error');
+      return;
+    }
     if (session && isOlderThan7Days(session.date)) {
       showToast('7 günden eski seansların tipi değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
@@ -2794,6 +2843,10 @@ export default function App() {
 
   const handleToggleBabysitter = (id: string) => {
     const session = sessions.find(s => s.id === id);
+    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların giderleri değiştirilemez!', 'error');
+      return;
+    }
     if (session && isOlderThan7Days(session.date)) {
       showToast('7 günden eski seansların bakıcı ücreti değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
@@ -2816,6 +2869,10 @@ export default function App() {
   const handleTogglePaymentStatus = (id: string) => {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
+    if (isDateInClosedMonth(found.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
+      return;
+    }
 
     const prevStatus = found.paymentStatus;
     const prevPaidAmount = found.paidAmount;
@@ -2878,6 +2935,10 @@ export default function App() {
   const handleMarkSessionAsPaid = (id: string) => {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
+    if (isDateInClosedMonth(found.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
+      return;
+    }
 
     const prevStatus = found.paymentStatus;
     const prevPaidAmount = found.paidAmount;
@@ -2931,7 +2992,7 @@ export default function App() {
 
     sessions.forEach(s => {
       const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
+      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid' && !isDateInClosedMonth(s.date, settings.closedMonths)) {
         const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
         totalAmount += remainingDebt;
         sessionCount++;
@@ -2946,7 +3007,7 @@ export default function App() {
     setSessions(prev => {
       return prev.map(s => {
         const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
+        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid' && !isDateInClosedMonth(s.date, settings.closedMonths)) {
           return {
             ...s,
             paymentStatus: 'paid',
@@ -3158,10 +3219,20 @@ export default function App() {
   };
 
   const handleUpdateSingleSessionPrice = (sessionId: string, newPrice: number) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ücreti değiştirilemez!', 'error');
+      return;
+    }
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, price: newPrice, isManuallyEdited: true, updatedAt: Date.now() } : s));
   };
 
   const handleUpdateSingleSessionPaymentStatus = (sessionId: string, newStatus: 'paid' | 'unpaid' | 'partial') => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
+      return;
+    }
     setSessions(prev => prev.map(s => s.id === sessionId ? { 
       ...s, 
       paymentStatus: newStatus, 
@@ -3414,6 +3485,28 @@ export default function App() {
     const addedList: any[] = [];
     const updatedList: any[] = [];
 
+    // Cache smart costs per client+type to prevent freezing the main thread on large imports
+    const clientCostsCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
+    const getCachedClientCosts = (clientName: string, date: string, type: SessionType, defPrice: number) => {
+      const norm = getNormalizedClientName(clientName);
+      const cacheKey = `${norm}_${type}`;
+      if (clientCostsCache.has(cacheKey)) {
+        return clientCostsCache.get(cacheKey)!;
+      }
+      const costs = getSmartClientCosts(
+        clientName,
+        date,
+        effectiveSessions,
+        defPrice,
+        settings.defaultBabysitterFee,
+        settings.defaultOfficeRentFee,
+        settings.clientCustomPrices,
+        type
+      );
+      clientCostsCache.set(cacheKey, costs);
+      return costs;
+    };
+
     newSessions.forEach(ns => {
       // 1. CLOSED / LOCKED MONTH PROTECTION:
       // Kitlenen ayın etkinliklerini kesinlikle kontrol etme / eşitleme!
@@ -3497,7 +3590,7 @@ export default function App() {
             const fallbackTypePrice = ns.type === 'face-to-face'
               ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
               : (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200);
-            effectivePrice = getSmartClientPrice(ns.clientName, ns.date, effectiveSessions, fallbackTypePrice, settings.clientCustomPrices, ns.type) || fallbackTypePrice;
+            effectivePrice = getCachedClientCosts(ns.clientName, ns.date, ns.type, fallbackTypePrice).price || fallbackTypePrice;
           } else {
             effectivePrice = 0;
           }
@@ -3598,15 +3691,11 @@ export default function App() {
         let finalBabysitterFee = ns.babysitterFeeAmount;
         let finalOfficeRentFee = ns.officeRentFeeAmount;
         if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled' && ns.type !== 'non-session') {
-          const matchedCosts = getSmartClientCosts(
+          const matchedCosts = getCachedClientCosts(
             ns.clientName,
             ns.date,
-            effectiveSessions,
-            defaultTypePrice,
-            settings.defaultBabysitterFee,
-            settings.defaultOfficeRentFee,
-            settings.clientCustomPrices,
-            ns.type
+            ns.type,
+            defaultTypePrice
           );
           finalPrice = matchedCosts.price;
           if (ns.hasBabysitterFee) {
@@ -3773,6 +3862,16 @@ export default function App() {
     let hasFetchedFaceToFace = false;
     let hasFetchedOwnerCalendars = false;
 
+    const effectiveAccountingStartDate = settings.accountingStartDate
+      ? settings.accountingStartDate.split('T')[0]
+      : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
+
+    const isInitialCalendarSyncDone = Boolean(
+      settings.hasCompletedInitialCalendarSync ||
+      safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true' ||
+      (sessionsRef.current && sessionsRef.current.length > 0)
+    );
+
     // Sync Online Calendar
     if (onlineCalendarWebcalUrl) {
       try {
@@ -3780,7 +3879,18 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const onlineDefaultPrice = settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200;
-          const parsed = parseICS(icsText, onlineDefaultPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'online', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+          const parsed = parseICS(
+            icsText, 
+            onlineDefaultPrice, 
+            settings.defaultBabysitterFee, 
+            settings.defaultOfficeRentFee, 
+            'online', 
+            registrationCreatedAt, 
+            settings.autoMarkShortEventsAsNonSession ?? true,
+            effectiveAccountingStartDate,
+            settings.closedMonths,
+            isInitialCalendarSyncDone
+          );
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -3810,7 +3920,18 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200;
-          const parsed = parseICS(icsText, faceToFaceDefaultPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'face-to-face', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+          const parsed = parseICS(
+            icsText, 
+            faceToFaceDefaultPrice, 
+            settings.defaultBabysitterFee, 
+            settings.defaultOfficeRentFee, 
+            'face-to-face', 
+            registrationCreatedAt, 
+            settings.autoMarkShortEventsAsNonSession ?? true,
+            effectiveAccountingStartDate,
+            settings.closedMonths,
+            isInitialCalendarSyncDone
+          );
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
             totalNewSessions = [...totalNewSessions, ...parsed];
@@ -3844,7 +3965,18 @@ export default function App() {
           const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
           if (response.ok) {
             const icsText = await response.text();
-            const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, 'rent-income', registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+            const parsed = parseICS(
+              icsText, 
+              settings.defaultSessionPrice, 
+              settings.defaultBabysitterFee, 
+              settings.defaultOfficeRentFee, 
+              'rent-income', 
+              registrationCreatedAt, 
+              settings.autoMarkShortEventsAsNonSession ?? true,
+              effectiveAccountingStartDate,
+              settings.closedMonths,
+              isInitialCalendarSyncDone
+            );
             const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
             if (isValidIcs) {
               const adjustedParsed = parsed.map(session => ({
@@ -3904,22 +4036,24 @@ export default function App() {
   };
 
   // Automated background calendar sync orchestrator (non-intrusive, throttled)
-  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 90000) => {
+  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 120000) => {
     // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized!
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
     // NEVER run auto-sync if existing sessions have not been populated in state or ref yet!
     if (!sessionsRef.current || sessionsRef.current.length === 0) return;
     if (featuresCalendarAllowed === false) return;
-    if (!settings.calendarSyncEnabled) return;
-    const hasOwnerCalendars = settings.userRole === 'owner' && settings.ownerCalendars && settings.ownerCalendars.length > 0;
-    if (!settings.onlineCalendarWebcalUrl && !settings.faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) return;
+    
+    const curSettings = settingsRef.current;
+    if (!curSettings.calendarSyncEnabled) return;
+    const hasOwnerCalendars = curSettings.userRole === 'owner' && curSettings.ownerCalendars && curSettings.ownerCalendars.length > 0;
+    if (!curSettings.onlineCalendarWebcalUrl && !curSettings.faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) return;
 
     const now = Date.now();
     if (now - lastSyncTimestampRef.current < minIntervalMs) {
       return;
     }
 
-    if (isManualSyncing || isAutoSyncing || isCloudSaving) {
+    if (isManualSyncingRef.current || isAutoSyncingRef.current || isCloudSavingRef.current) {
       return;
     }
 
@@ -3933,7 +4067,7 @@ export default function App() {
     } finally {
       setIsAutoSyncing(false);
     }
-  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, featuresCalendarAllowed, settings, isManualSyncing, isAutoSyncing, isCloudSaving]);
+  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, featuresCalendarAllowed]);
 
   // Periodic automatic sync heartbeat (checks every 10 minutes)
   useEffect(() => {
@@ -3958,14 +4092,6 @@ export default function App() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
-
-  // Auto-sync when user navigates to core calendar or audit views
-  useEffect(() => {
-    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
-    if (activeTab === 'agenda' || activeTab === 'audit' || activeTab === 'stats') {
-      triggerAutoCalendarSync(180000);
-    }
-  }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, activeTab, triggerAutoCalendarSync]);
 
   // Pull-to-refresh handler for mobile & manual pull
   const handlePageRefresh = async () => {
@@ -7448,6 +7574,7 @@ export default function App() {
           setIsSessionModalOpen(false);
           handleOpenClientPage(name);
         }}
+        closedMonths={settings.closedMonths}
       />
 
       {/* FAQ Modal Component */}

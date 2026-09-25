@@ -1,5 +1,6 @@
-import { Session, SessionType } from '../types';
+import { Session, SessionType, ClosedMonthRecord } from '../types';
 import { formatLocalDate, getTodayLocalDate } from './dateUtils';
+import { isDateInClosedMonth } from './monthCloseUtils';
 
 interface ParsedRrule {
   freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -398,7 +399,10 @@ export function parseICS(
   defaultOfficeRentFee: number,
   forcedType?: 'online' | 'face-to-face' | 'rent-income',
   membershipDate?: string | null,
-  autoMarkShortEvents: boolean = true
+  autoMarkShortEvents: boolean = true,
+  accountingStartDate?: string | null,
+  closedMonths?: Record<string, ClosedMonthRecord>,
+  isInitialCalendarSyncDone: boolean = false
 ): Session[] {
   const sessions: Session[] = [];
 
@@ -418,9 +422,17 @@ export function parseICS(
     }
   }
 
-  // Date window: No arbitrary past cutoff so user's entire calendar history is parsed.
-  // Future window covers upcoming 365 days (1 year)
-  const windowStart = '1970-01-01';
+  // Resolve effective accounting start cutoff (YYYY-MM-DD)
+  const effectiveAccountingStart = (accountingStartDate && accountingStartDate.trim())
+    ? accountingStartDate.split('T')[0]
+    : '';
+
+  // DATE WINDOW:
+  // KURAL: Takvim eşitleme tamamını bir kere yaptıktan sonra,
+  // muhasebe başlangıç tarihinden öncekini bir daha kontrol etmeyecek!
+  const windowStart = (isInitialCalendarSyncDone && effectiveAccountingStart)
+    ? effectiveAccountingStart
+    : '1970-01-01';
 
   const todayObj = new Date();
   const future365Days = new Date();
@@ -511,6 +523,14 @@ export function parseICS(
     const startParsed = parseIcsDateTimeToLocal(raw.dtStartRaw, calTimezone);
     if (!startParsed) continue;
 
+    // Fast-skip non-recurring events outside active window or in closed months
+    if (isInitialCalendarSyncDone && effectiveAccountingStart && !raw.rruleRaw && startParsed.dateStr < effectiveAccountingStart) {
+      continue;
+    }
+    if (closedMonths && !raw.rruleRaw && isDateInClosedMonth(startParsed.dateStr, closedMonths)) {
+      continue;
+    }
+
     const duration = calculateEventDuration(raw.dtStartRaw, raw.dtEndRaw, raw.durationRaw, calTimezone);
 
     // Determine type (online, face-to-face, cancelled, or non-session)
@@ -576,6 +596,16 @@ export function parseICS(
       : '';
 
     for (const occ of occurrences) {
+      // 1. If initial calendar sync was already done, NEVER evaluate or import events before accounting start date
+      if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) {
+        continue;
+      }
+
+      // 2. NEVER evaluate or import events in closed / locked months!
+      if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) {
+        continue;
+      }
+
       // Events strictly before an explicitly configured accounting start date are pulled into the calendar & agenda,
       // but zeroed out financially (price: 0, paymentStatus: 'paid', no expenses) if configured
       const isBeforeRegistration = Boolean(occ.dateStr && effectiveAccountingCutoff && occ.dateStr < effectiveAccountingCutoff);

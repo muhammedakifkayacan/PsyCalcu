@@ -552,9 +552,11 @@ export function autoHealSmartClientPrices(
     return sessionList;
   }
 
-  // Group latest known valid prices per normalized client name AND session type
+  // Group latest known valid prices and fees per normalized client name AND session type
   const clientTypeEstablishedPrices = new Map<string, number>();
   const clientGeneralEstablishedPrices = new Map<string, number>();
+  const clientBabysitterFees = new Map<string, number>();
+  const clientOfficeRentFees = new Map<string, number>();
 
   // Pass 1: Find all clients with a known non-zero price in active sessions (latest date/updatedAt first)
   const sortedForPrices = [...sessionList].sort((a, b) => {
@@ -567,18 +569,24 @@ export function autoHealSmartClientPrices(
   sortedForPrices.forEach(s => {
     if (!s || s.type === 'cancelled' || s.type === 'non-session') return;
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
+    const normName = getNormalizedClientName(s.clientName);
+    if (!normName) return;
+    const asciiKey = toTurkishAscii(normName).toLowerCase();
+    const typeKey = `${asciiKey}_${s.type}`;
+
     if (typeof s.price === 'number' && s.price > 0 && isWithinAccounting) {
-      const normName = getNormalizedClientName(s.clientName);
-      if (normName) {
-        const asciiKey = toTurkishAscii(normName).toLowerCase();
-        const typeKey = `${asciiKey}_${s.type}`;
-        if (!clientTypeEstablishedPrices.has(typeKey)) {
-          clientTypeEstablishedPrices.set(typeKey, s.price);
-        }
-        if (!clientGeneralEstablishedPrices.has(asciiKey)) {
-          clientGeneralEstablishedPrices.set(asciiKey, s.price);
-        }
+      if (!clientTypeEstablishedPrices.has(typeKey)) {
+        clientTypeEstablishedPrices.set(typeKey, s.price);
       }
+      if (!clientGeneralEstablishedPrices.has(asciiKey)) {
+        clientGeneralEstablishedPrices.set(asciiKey, s.price);
+      }
+    }
+    if (s.hasBabysitterFee && (Number(s.babysitterFeeAmount) || 0) > 0 && !clientBabysitterFees.has(asciiKey)) {
+      clientBabysitterFees.set(asciiKey, s.babysitterFeeAmount);
+    }
+    if (s.hasOfficeRentFee && (Number(s.officeRentFeeAmount) || 0) > 0 && !clientOfficeRentFees.has(asciiKey)) {
+      clientOfficeRentFees.set(asciiKey, s.officeRentFeeAmount);
     }
   });
 
@@ -605,15 +613,16 @@ export function autoHealSmartClientPrices(
         const establishedPrice = customRulePrice
           || clientTypeEstablishedPrices.get(typeKey) 
           || clientGeneralEstablishedPrices.get(asciiKey) 
-          || getSmartClientPrice(s.clientName, s.date, sessionList, typeDefault, clientCustomPrices, s.type);
+          || typeDefault;
 
         if (establishedPrice && establishedPrice > 0) {
-          const smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, establishedPrice, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, s.type);
+          const matchedBabysitter = customRule?.babysitterFeeAmount ?? clientBabysitterFees.get(asciiKey) ?? defaultBabysitterFee;
+          const matchedOfficeRent = customRule?.officeRentFeeAmount ?? clientOfficeRentFees.get(asciiKey) ?? (s.type === 'face-to-face' ? defaultOfficeRentFee : 0);
           return {
             ...s,
             price: establishedPrice,
-            babysitterFeeAmount: s.hasBabysitterFee ? (s.babysitterFeeAmount || smartCosts.babysitterFeeAmount) : 0,
-            officeRentFeeAmount: s.hasOfficeRentFee ? (s.officeRentFeeAmount || smartCosts.officeRentFeeAmount) : 0,
+            babysitterFeeAmount: s.hasBabysitterFee ? (s.babysitterFeeAmount || matchedBabysitter) : 0,
+            officeRentFeeAmount: s.hasOfficeRentFee ? (s.officeRentFeeAmount || matchedOfficeRent) : 0,
             isManuallyEdited: true,
             updatedAt: Date.now()
           };
