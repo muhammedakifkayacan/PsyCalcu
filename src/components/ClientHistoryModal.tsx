@@ -572,7 +572,6 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
                           <button
                             onClick={() => {
                               onSelectSession(session);
-                              onClose();
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-3xs cursor-pointer"
                             title="Seansı Düzenle"

@@ -132,6 +132,23 @@ export interface AppSettings {
   accountingStartDate?: string; // YYYY-MM-DD cutoff for accounting & debt tracking
   clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule };
   hasSeenTour?: boolean; // whether user has completed or dismissed the onboarding tour
+  closedMonths?: Record<string, ClosedMonthRecord>; // e.g. { "2026-08": ClosedMonthRecord }
+}
+
+export interface ClosedMonthRecord {
+  monthKey: string; // e.g. "2026-08" (YYYY-MM)
+  closedAt: string; // ISO date-time string
+  closedBy?: string; // therapistName or email
+  sessionCount: number;
+  onlineCount?: number;
+  faceToFaceCount?: number;
+  cancelledCount?: number;
+  totalIncome: number;
+  totalExpenses: number;
+  netIncome: number;
+  unpaidDebtCount?: number;
+  unpaidDebtAmount?: number;
+  notes?: string;
 }
 
 export interface DaySummary {

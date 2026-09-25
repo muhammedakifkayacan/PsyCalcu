@@ -4,11 +4,12 @@ import { Session, AppSettings, Expense, ExpenseCategory } from '../types';
 import { 
   Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins,
   Plus, Edit2, Trash2, Building, Zap, UserCheck, ShoppingBag, Megaphone, Landmark, Sparkles, CreditCard, Wallet,
-  Receipt, DollarSign, Tag, Check, Banknote, FileSpreadsheet, Calculator, ChevronRight
+  Receipt, DollarSign, Tag, Check, Banknote, FileSpreadsheet, Calculator, ChevronRight, Lock, ShieldCheck, CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePrivacy } from '../context/PrivacyContext';
 import { getAccountingDateRange, getTodayLocalDate } from '../utils/dateUtils';
+import { formatMonthKey, getUnclosedPastMonths } from '../utils/monthCloseUtils';
 
 export const EXPENSE_CATEGORIES: Record<ExpenseCategory, { label: string; icon: any; color: string; bg: string; border: string }> = {
   salary: { label: 'Maaş & Personel', icon: UserCheck, color: 'text-indigo-700', bg: 'bg-indigo-50/90', border: 'border-indigo-200' },
@@ -38,6 +39,7 @@ interface StatsDashboardProps {
   showToast?: (message: string, type?: 'success' | 'error' | 'info', extraData?: any, onUndo?: () => void, undoLabel?: string) => void;
   onNavigateToAudit?: () => void;
   setActiveTab?: (tab: any) => void;
+  onOpenMonthClosingModal?: (monthKey?: string) => void;
 }
 
 export default function StatsDashboard({
@@ -50,7 +52,8 @@ export default function StatsDashboard({
   showExplanations = true,
   showToast,
   onNavigateToAudit,
-  setActiveTab
+  setActiveTab,
+  onOpenMonthClosingModal
 }: StatsDashboardProps) {
   const { formatMoney } = usePrivacy();
   const [preset, setPreset] = useState<string>('thisMonth');
@@ -73,6 +76,15 @@ export default function StatsDashboard({
   const [formDate, setFormDate] = useState(() => getTodayLocalDate());
   const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'bank' | 'card'>('cash');
   const [formNotes, setFormNotes] = useState('');
+
+  const unclosedPastMonths = useMemo(() => {
+    return getUnclosedPastMonths(sessions, settings.closedMonths);
+  }, [sessions, settings.closedMonths]);
+
+  const closedMonthEntries = useMemo(() => {
+    if (!settings.closedMonths) return [];
+    return Object.values(settings.closedMonths).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [settings.closedMonths]);
 
   const handleGoToAudit = () => {
     if (onNavigateToAudit) {
@@ -427,21 +439,34 @@ export default function StatsDashboard({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {onOpenMonthClosingModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMonthClosingModal()}
+                className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Ayı kapat ve seansları mühürle"
+              >
+                <Lock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Ayı Kapat</span>
+                {unclosedPastMonths.length > 0 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                )}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleGoToAudit}
-              className="text-xs font-semibold text-[#6b705c] hover:text-[#585c4c] bg-[#6b705c]/10 hover:bg-[#6b705c]/15 px-3 py-1.5 rounded-full border border-[#6b705c]/25 flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs group"
-              title="Seans bazlı satır satır sağlama ve mutabakat tablosuna git"
+              className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer group"
+              title="Sağlama tablosuna git"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-[#6b705c]" />
-              <span>Hesap Tutmadı mı? Sağlama Yap</span>
-              <ArrowUpRight className="w-3.5 h-3.5 text-[#6b705c] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+              <span>Sağlama Tablosu</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </button>
-            <div className="text-xs font-semibold text-slate-500 bg-[#f5f5f0] px-3 py-1.5 rounded-full border border-[#e5e1d8]/50">
-              Filtrelenen Seans: <span className="text-[#6b705c] font-bold">{filteredSessions.length} adet</span>
-            </div>
-            <div className="text-xs font-semibold text-slate-500 bg-[#f5f5f0] px-3 py-1.5 rounded-full border border-[#e5e1d8]/50">
-              Klinik Gideri: <span className="text-rose-700 font-bold">{filteredCustomExpenses.length} adet</span>
+            <div className="text-xs text-slate-500 flex items-center gap-1.5 px-1">
+              <span>{filteredSessions.length} seans</span>
+              <span>·</span>
+              <span>{filteredCustomExpenses.length} gider</span>
             </div>
           </div>
         </div>
@@ -1351,6 +1376,109 @@ export default function StatsDashboard({
             )}
           </div>
         </div>
+      </div>
+
+      {/* KAPATILAN DÖNEMLER (CLOSED ACCOUNTING PERIODS) */}
+      <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-[#6b705c]" />
+            <h4 className="text-sm font-bold text-slate-800 tracking-wide">Kapatılan Dönemler</h4>
+            {closedMonthEntries.length > 0 && (
+              <span className="text-xs text-slate-400">({closedMonthEntries.length})</span>
+            )}
+          </div>
+
+          <div>
+            {onOpenMonthClosingModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMonthClosingModal()}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Lock className="w-3.5 h-3.5 text-slate-300" />
+                <span>Ayı Kapat</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {closedMonthEntries.length === 0 ? (
+          <div className="py-8 text-center rounded-2xl bg-slate-50/50 border border-dashed border-slate-200 space-y-2">
+            <Lock className="w-6 h-6 text-slate-300 mx-auto" />
+            <p className="text-xs text-slate-500 font-medium">Henüz kapatılmış dönem bulunmuyor.</p>
+            {unclosedPastMonths.length > 0 && onOpenMonthClosingModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMonthClosingModal(unclosedPastMonths[0])}
+                className="mt-1 px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5"
+              >
+                <span>{formatMonthKey(unclosedPastMonths[0])} Ayını Kapat</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-slate-400 text-[11px] font-medium border-b border-slate-100">
+                <tr>
+                  <th className="py-2.5 px-3">Dönem</th>
+                  <th className="py-2.5 px-3">Kapanış</th>
+                  <th className="py-2.5 px-3">Kapatan</th>
+                  <th className="py-2.5 px-3 text-center">Seans</th>
+                  <th className="py-2.5 px-3 text-right">Brüt Gelir</th>
+                  <th className="py-2.5 px-3 text-right">Giderler</th>
+                  <th className="py-2.5 px-3 text-right">Net Kâr</th>
+                  <th className="py-2.5 px-3 text-center">Durum</th>
+                  <th className="py-2.5 px-3 text-right">İşlem</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {closedMonthEntries.map((record) => (
+                  <tr key={record.monthKey} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-2.5 px-3 font-semibold text-slate-800">
+                      {formatMonthKey(record.monthKey)}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-500">
+                      {new Date(record.closedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-500">
+                      {record.closedBy || 'Terapist'}
+                    </td>
+                    <td className="py-2.5 px-3 text-center text-slate-700">
+                      {record.sessionCount}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                      {formatMoney(record.totalIncome)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-rose-600">
+                      {formatMoney(record.totalExpenses)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-800">
+                      {formatMoney(record.netIncome)}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="text-xs text-emerald-700 font-medium">
+                        ✓ Kilitli
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      {onOpenMonthClosingModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenMonthClosingModal(record.monthKey)}
+                          className="text-xs text-slate-500 hover:text-slate-900 transition-colors"
+                        >
+                          İncele
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Expense Modal (Add & Edit) */}

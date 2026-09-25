@@ -74,6 +74,9 @@ import { usePrivacy, Money, MaskedClientName } from './context/PrivacyContext';
 import InteractiveTour from './components/InteractiveTour';
 import AdminPanel from './components/AdminPanel';
 import { SessionAuditTable } from './components/SessionAuditTable';
+import MonthClosingModal from './components/MonthClosingModal';
+import MonthClosingBanner from './components/MonthClosingBanner';
+import { isDateInClosedMonth, getUnclosedPastMonths, ClosedMonthRecord, formatMonthKey } from './utils/monthCloseUtils';
 import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
@@ -233,6 +236,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ownerCalendars: [],
   rooms: [],
   hasSeenTour: false,
+  closedMonths: {},
 };
 
 export default function App() {
@@ -278,6 +282,7 @@ export default function App() {
           rooms: parsed.rooms ?? DEFAULT_SETTINGS.rooms,
           clientCustomPrices: parsed.clientCustomPrices ?? DEFAULT_SETTINGS.clientCustomPrices,
           hasSeenTour: parsed.hasSeenTour ?? false,
+          closedMonths: parsed.closedMonths ?? DEFAULT_SETTINGS.closedMonths,
         };
       } catch (e) {}
     }
@@ -1949,6 +1954,13 @@ export default function App() {
   });
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [isMonthClosingModalOpen, setIsMonthClosingModalOpen] = useState(false);
+  const [monthClosingInitialKey, setMonthClosingInitialKey] = useState<string | undefined>(undefined);
+
+  const openMonthClosingModal = (monthKey?: string) => {
+    setMonthClosingInitialKey(monthKey);
+    setIsMonthClosingModalOpen(true);
+  };
   const [prefilledRoomId, setPrefilledRoomId] = useState('');
   const [prefilledTime, setPrefilledTime] = useState('');
   const [tempNotesCache, setTempNotesCache] = useState<Record<string, string>>(() => {
@@ -2692,6 +2704,10 @@ export default function App() {
 
   const handleDeleteSession = (id: string) => {
     const session = sessions.find(s => s.id === id);
+    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
+      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylar kilitlidir; seansı silmek için önce Ay Kapatma ekranından ilgili ayın kilidini açmalısınız.', 'error');
+      return;
+    }
     if (session && isOlderThan7Days(session.date)) {
       showToast('7 günden eski seanslar silinemez! Muhasebesi kilitlenmiştir.', 'error');
       return;
@@ -3041,6 +3057,103 @@ export default function App() {
     );
   };
 
+  const handleCloseMonth = (monthKey: string, summaryRecord: Partial<ClosedMonthRecord>) => {
+    const updatedRecord: ClosedMonthRecord = {
+      monthKey,
+      closedAt: summaryRecord.closedAt || new Date().toISOString(),
+      closedBy: summaryRecord.closedBy || settings.therapistName || user?.displayName || user?.email || 'Terapist',
+      sessionCount: summaryRecord.sessionCount || 0,
+      onlineCount: summaryRecord.onlineCount || 0,
+      faceToFaceCount: summaryRecord.faceToFaceCount || 0,
+      cancelledCount: summaryRecord.cancelledCount || 0,
+      totalIncome: summaryRecord.totalIncome || 0,
+      totalExpenses: summaryRecord.totalExpenses || 0,
+      netIncome: summaryRecord.netIncome || 0,
+      unpaidDebtCount: summaryRecord.unpaidDebtCount || 0,
+      unpaidDebtAmount: summaryRecord.unpaidDebtAmount || 0,
+      notes: summaryRecord.notes,
+    };
+
+    const newClosedMonths = {
+      ...(settings.closedMonths || {}),
+      [monthKey]: updatedRecord
+    };
+
+    const newSettings: AppSettings = {
+      ...settings,
+      closedMonths: newClosedMonths
+    };
+
+    setSettings(newSettings);
+
+    try {
+      safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
+      if (user) {
+        safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(newSettings), user.uid);
+        saveUserData(user.uid, newSettings, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+          console.error("Error saving closedMonths to Firestore:", err);
+        });
+      }
+    } catch (e) {}
+
+    // Add notification to NotificationCenter
+    const closeNotice: AppNotification = {
+      id: `month_closed_${monthKey}_${Date.now()}`,
+      title: `Ay Kapatıldı: ${formatMonthKey(monthKey)}`,
+      message: `${formatMonthKey(monthKey)} dönemi seansları ve ücretleri doğrulanarak başarıyla kapatıldı. Seanslar mühürlendi ve takvim senkronizasyonunda kilitlendi.`,
+      type: 'system',
+      timestamp: Date.now(),
+      read: false
+    };
+    setLocalNotifications(prev => [closeNotice, ...prev]);
+  };
+
+  const handleReopenMonth = (monthKey: string) => {
+    const updatedClosedMonths = { ...(settings.closedMonths || {}) };
+    delete updatedClosedMonths[monthKey];
+
+    const newSettings: AppSettings = {
+      ...settings,
+      closedMonths: updatedClosedMonths
+    };
+
+    setSettings(newSettings);
+
+    try {
+      safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
+      if (user) {
+        safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(newSettings), user.uid);
+        saveUserData(user.uid, newSettings, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+          console.error("Error saving reopened month to Firestore:", err);
+        });
+      }
+    } catch (e) {}
+
+    const reopenNotice: AppNotification = {
+      id: `month_reopened_${monthKey}_${Date.now()}`,
+      title: `Ay Kilidi Açıldı: ${formatMonthKey(monthKey)}`,
+      message: `${formatMonthKey(monthKey)} döneminin kilidi kaldırıldı. Seanslar yeniden düzenlenebilir ve takvim senkronizasyonuna dahil edilebilir.`,
+      type: 'info',
+      timestamp: Date.now(),
+      read: false
+    };
+    setLocalNotifications(prev => [reopenNotice, ...prev]);
+  };
+
+  const handleUpdateSingleSessionPrice = (sessionId: string, newPrice: number) => {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, price: newPrice, isManuallyEdited: true, updatedAt: Date.now() } : s));
+  };
+
+  const handleUpdateSingleSessionPaymentStatus = (sessionId: string, newStatus: 'paid' | 'unpaid' | 'partial') => {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { 
+      ...s, 
+      paymentStatus: newStatus, 
+      paidAmount: newStatus === 'paid' ? s.price : (newStatus === 'unpaid' ? 0 : s.paidAmount),
+      isManuallyEdited: true, 
+      updatedAt: Date.now() 
+    } : s));
+  };
+
   const handleGenerateSummary = async () => {
     if (featuresAIAllowed === false) {
       showToast('Yapay zeka asistanı erişim yetkiniz bulunmamaktadır. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
@@ -3272,6 +3385,13 @@ export default function App() {
     const updatedList: any[] = [];
 
     newSessions.forEach(ns => {
+      // PERIOD LOCKING PROTOCOL:
+      // If this incoming event falls into a closed month, skip it completely.
+      // Calendar sync locks closed periods and strictly only syncs events after the closed months.
+      if (isDateInClosedMonth(ns.date, settings.closedMonths)) {
+        return;
+      }
+
       // Find candidate match among existing sessions using prioritized matching
       let existing: Session | undefined = undefined;
 
@@ -3306,6 +3426,13 @@ export default function App() {
 
       if (existing) {
         matchedExistingIds.add(existing.id);
+
+        // PERIOD LOCKING PROTECTION:
+        // If the existing session belongs to a closed month, keep it completely locked and untouched.
+        if (isDateInClosedMonth(existing.date, settings.closedMonths)) {
+          return;
+        }
+
         if (existing.id !== ns.id) {
           replacedOldIds.add(existing.id);
         }
@@ -3484,6 +3611,13 @@ export default function App() {
     effectiveSessions.forEach(s => {
       // If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
       if (replacedOldIds.has(s.id)) {
+        return;
+      }
+
+      // PERIOD LOCKING PROTECTION:
+      // Sessions belonging to a closed month must NEVER be deleted by calendar sync!
+      if (isDateInClosedMonth(s.date, settings.closedMonths)) {
+        sessionsToKeep.push(s);
         return;
       }
 
@@ -4468,6 +4602,15 @@ export default function App() {
           if (tab) setClientPricingInitialTab(tab);
           setIsClientPricingModalOpen(true);
         }}
+        onOpenMonthClosingModal={openMonthClosingModal}
+        unclosedMonthsCount={getUnclosedPastMonths(sessions, settings.closedMonths).length}
+      />
+
+      {/* Month Closing Notification Banner for start of month */}
+      <MonthClosingBanner
+        sessions={sessions}
+        settings={settings}
+        onOpenMonthClosingModal={openMonthClosingModal}
       />
 
       {/* Main Content Area */}
@@ -6101,6 +6244,7 @@ export default function App() {
                   showToast={(msg, type) => setToast({ message: msg, type })}
                   onNavigateToAudit={() => setActiveTab('audit')}
                   setActiveTab={setActiveTab}
+                  onOpenMonthClosingModal={openMonthClosingModal}
                 />
               )}
             </motion.div>
@@ -6390,6 +6534,7 @@ export default function App() {
                 isPrivacyMode={isPrivacyMode}
                 isHideClientNames={isHideClientNames}
                 onOpenClientHistory={(name) => handleOpenClientPage(name)}
+                onOpenMonthClosingModal={openMonthClosingModal}
               />
             </motion.div>
           )}
@@ -6433,6 +6578,7 @@ export default function App() {
                   setActiveTab={setActiveTab}
                   showExplanations={showExplanations}
                   onHideExplanations={handleHideExplanations}
+                  onOpenMonthClosingModal={openMonthClosingModal}
                 />
               )}
             </motion.div>
@@ -7285,6 +7431,27 @@ export default function App() {
         }}
       />
 
+      {/* Month Closing & Audit Modal */}
+      <MonthClosingModal
+        isOpen={isMonthClosingModalOpen}
+        onClose={() => setIsMonthClosingModalOpen(false)}
+        sessions={sessions}
+        settings={settings}
+        expenses={expenses}
+        onCloseMonth={handleCloseMonth}
+        onReopenMonth={handleReopenMonth}
+        onEditSession={(s) => {
+          setEditingSession(s);
+          setPrefilledRoomId(s.roomId || '');
+          setPrefilledTime(s.time);
+          setIsSessionModalOpen(true);
+        }}
+        onUpdateSessionPrice={handleUpdateSingleSessionPrice}
+        onUpdateSessionPaymentStatus={handleUpdateSingleSessionPaymentStatus}
+        showToast={showToast}
+        initialMonthKey={monthClosingInitialKey}
+      />
+
       {/* Debt Cutoff Date Modal */}
       <AnimatePresence>
         {isDebtCutoffModalOpen && (
@@ -7518,7 +7685,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.94 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="fixed top-5 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-[calc(100vw-2rem)] sm:max-w-md w-auto sm:w-full p-4 bg-white/95 backdrop-blur-md border border-[#e5e1d8] shadow-2xl rounded-2xl flex gap-3.5 items-start overflow-hidden"
+            className="fixed top-5 right-4 sm:right-6 left-4 sm:left-auto z-[250] max-w-[calc(100vw-2rem)] sm:max-w-md w-auto sm:w-full p-4 bg-white/95 backdrop-blur-md border border-[#e5e1d8] shadow-2xl rounded-2xl flex gap-3.5 items-start overflow-hidden"
             id="toast-overlay"
           >
             {/* Top Accent Stripe */}

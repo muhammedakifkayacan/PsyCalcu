@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User, X, ExternalLink } from 'lucide-react';
+import { Calendar, AlertCircle, Upload, HelpCircle, CheckCircle2, ArrowRight, RefreshCw, Link2, Laptop, MapPin, Trash2, AlertTriangle, Eye, EyeOff, Settings2, Building, User, X, ExternalLink, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseICS } from '../utils/icsParser';
 import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '../types';
@@ -27,6 +27,7 @@ interface CalendarSyncGuideProps {
   setActiveTab?: (tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings') => void;
   showExplanations?: boolean;
   onHideExplanations?: () => void;
+  onOpenMonthClosingModal?: (monthKey?: string) => void;
 }
 
 export default function CalendarSyncGuide({
@@ -43,6 +44,7 @@ export default function CalendarSyncGuide({
   setActiveTab,
   showExplanations = true,
   onHideExplanations,
+  onOpenMonthClosingModal,
 }: CalendarSyncGuideProps) {
   const { formatMoney } = usePrivacy();
   const [dragActive, setDragActive] = useState(false);
@@ -676,6 +678,31 @@ export default function CalendarSyncGuide({
               <li><strong className="font-semibold text-slate-800">Akıllı Oda Rezervasyonu:</strong> Takvim etkinliğinin <strong>konum, açıklama veya notlar</strong> kısmına tanımladığınız terapi odalarından birinin adını yazın (Örn: <code>Zeytin Odası</code> veya <code>Mavi Oda</code>). Sistem seansı içeri aktarırken bu odayı otomatik olarak tespit edip rezerve eder, böylece oda doluluk durumunuz da kendiliğinden planlanır!</li>
             </ul>
           </div>
+        </div>
+      )}
+
+      {/* Locked Months Calendar Guard Status */}
+      {Object.keys(settings.closedMonths || {}).length > 0 && (
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-medium text-slate-800">
+              {Object.keys(settings.closedMonths || {}).length} kapatılan dönem kilitli
+            </span>
+            <span className="text-slate-300 hidden sm:inline">·</span>
+            <span className="text-slate-500 hidden sm:inline">
+              Geçmiş seanslar senkronizasyonda korunur
+            </span>
+          </div>
+          {onOpenMonthClosingModal && (
+            <button
+              type="button"
+              onClick={() => onOpenMonthClosingModal()}
+              className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-200 px-3 py-1 rounded-lg hover:bg-slate-50 transition-colors shrink-0"
+            >
+              İncele
+            </button>
+          )}
         </div>
       )}
 

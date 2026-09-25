@@ -27,7 +27,8 @@ import {
   SlidersHorizontal,
   FileSpreadsheet,
   Clock,
-  History
+  History,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
@@ -69,6 +70,8 @@ interface HeaderNavigationProps {
   setIsSettingsOpen: (val: boolean) => void;
   handleLogout: () => void;
   onOpenClientPricingModal?: (initialTab?: 'clients' | 'reconcile' | 'snapshots') => void;
+  onOpenMonthClosingModal?: (monthKey?: string) => void;
+  unclosedMonthsCount?: number;
 }
 
 export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
@@ -105,7 +108,9 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   setIsFaqOpen,
   setIsSettingsOpen,
   handleLogout,
-  onOpenClientPricingModal
+  onOpenClientPricingModal,
+  onOpenMonthClosingModal,
+  unclosedMonthsCount
 }) => {
   const { isPrivacyMode, togglePrivacyMode, isHideClientNames, toggleHideClientNames, formatMoney, formatClientName } = usePrivacy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -280,30 +285,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               >
                 <Search className="w-4 h-4" />
               </motion.button>
-
-              {/* Danışan Özel Fiyat Yönetimi Button */}
-              {onOpenClientPricingModal && (
-                <>
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => onOpenClientPricingModal('clients')}
-                    className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
-                    title="Danışan Özel Fiyat Yönetimi"
-                  >
-                    <Sparkles className="w-4 h-4 text-emerald-600" />
-                    <span>Danışan Fiyatları</span>
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => onOpenClientPricingModal('snapshots')}
-                    className="hidden lg:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition-all cursor-pointer shadow-3xs"
-                    title="Zaman Yolculuğu (Yedek Noktalarından Geri Yükleme)"
-                  >
-                    <Clock className="w-4 h-4 text-indigo-600" />
-                    <span>Zaman Yolculuğu</span>
-                  </motion.button>
-                </>
-              )}
 
               {/* Notifications Center */}
               <NotificationCenter
@@ -652,6 +633,36 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-300" />
                     </motion.button>
+
+                    {/* Ayı Kapat & Muhasebe Kilidi */}
+                    {onOpenMonthClosingModal && (
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          onOpenMonthClosingModal();
+                        }}
+                        className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation hover:bg-[#fdfbf7]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
+                            <Lock className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold text-slate-800">Ay Kapatma & Muhasebe Kilidi</p>
+                              {(unclosedMonthsCount || 0) > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
+                                  {unclosedMonthsCount} Bekleyen
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400">Ay başı seans kontrolü ve takvim kilitleme</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </motion.button>
+                    )}
 
                     {/* Calendar Sync */}
                     <motion.button

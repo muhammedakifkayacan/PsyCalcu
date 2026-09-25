@@ -32,11 +32,13 @@ import {
   Columns3,
   SlidersHorizontal,
   Eye,
-  EyeOff
+  EyeOff,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings, SessionType } from '../types';
 import { getAccountingDateRange, getTodayLocalDate, formatLocalDate } from '../utils/dateUtils';
+import { isDateInClosedMonth } from '../utils/monthCloseUtils';
 
 interface SessionAuditTableProps {
   sessions: Session[];
@@ -49,6 +51,7 @@ interface SessionAuditTableProps {
   isPrivacyMode?: boolean;
   isHideClientNames?: boolean;
   onOpenClientHistory?: (clientName: string) => void;
+  onOpenMonthClosingModal?: (monthKey?: string) => void;
 }
 
 type PeriodPreset = 'last30' | 'thisMonth' | 'lastMonth' | 'last7' | 'all' | 'custom';
@@ -96,6 +99,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   isPrivacyMode = false,
   isHideClientNames = false,
   onOpenClientHistory,
+  onOpenMonthClosingModal,
 }) => {
   // Collapsible Filters State (DEFAULT FALSE: hidden on load until user clicks "Filtrele")
   const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(false);
@@ -794,6 +798,17 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {onOpenMonthClosingModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMonthClosingModal()}
+                className="px-4 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-medium border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Ayı Kapat"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Ayı Kapat</span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('agenda')}
               className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-xs font-semibold border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1392,6 +1407,15 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                             <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                               {session.time || '00:00'}
                             </span>
+                            {isDateInClosedMonth(session.date, settings.closedMonths) && (
+                              <span 
+                                className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.5 rounded font-bold"
+                                title="Bu seans kapatılmış bir döneme aittir (Muhasebe Onaylı & Kilitli)"
+                              >
+                                <Lock className="w-2.5 h-2.5 text-emerald-700" />
+                                Kilitli
+                              </span>
+                            )}
                           </div>
                         </td>
                       )}
