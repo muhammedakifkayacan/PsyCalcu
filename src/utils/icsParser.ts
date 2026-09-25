@@ -591,9 +591,11 @@ export function parseICS(
     }
 
     // Optional user membership / accounting cutoff date (only active if explicitly provided)
-    const effectiveAccountingCutoff = (membershipDate && membershipDate.trim()) 
+    const effectiveAccountingCutoff = ((accountingStartDate && accountingStartDate.trim()) 
+      ? accountingStartDate.split('T')[0] 
+      : '') || ((membershipDate && membershipDate.trim()) 
       ? membershipDate.split('T')[0] 
-      : '';
+      : '');
 
     for (const occ of occurrences) {
       // 1. If initial calendar sync was already done, NEVER evaluate or import events before accounting start date

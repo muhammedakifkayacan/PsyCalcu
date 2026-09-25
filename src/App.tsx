@@ -128,9 +128,22 @@ const autoCorrectPastSessions = (
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
 
-  // Cutoff date is ONLY for old pre-usage data prior to 2026-07-01
-  const cutoffDate = (accountingStartDate && accountingStartDate < '2026-07-01') 
-    ? accountingStartDate.split('T')[0] 
+  let effectiveStartDate = accountingStartDate;
+  if (!effectiveStartDate) {
+    try {
+      const storedSettings = safeStorage.getItem('psycalcu_settings');
+      if (storedSettings) {
+        const parsed = JSON.parse(storedSettings);
+        if (parsed?.accountingStartDate) {
+          effectiveStartDate = parsed.accountingStartDate;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Cutoff date is the user's accounting & debt tracking start date (defaults to 2026-07-01 if not configured)
+  const cutoffDate = (effectiveStartDate && effectiveStartDate.trim()) 
+    ? effectiveStartDate.split('T')[0] 
     : '2026-07-01';
 
   const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
@@ -144,13 +157,16 @@ const autoCorrectPastSessions = (
       return s;
     }
 
-    // 1. Pre-2026-07-01 historical pre-app data cutoff (preserve if manually edited by user)
-    if (s.date && s.date < cutoffDate && !s.isManuallyEdited) {
-      if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee) {
+    // 1. Sessions before accounting start cutoff date:
+    // Any session strictly before cutoffDate must be 0 TL, paymentStatus: 'paid', paidAmount: 0, and no expenses!
+    // This ensures historical/pre-accounting calendar sessions are never tracked as unpaid debt.
+    if (s.date && s.date < cutoffDate) {
+      if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee || (s.paidAmount && s.paidAmount > 0)) {
         return {
           ...s,
           price: 0,
           paymentStatus: 'paid' as const,
+          paidAmount: 0,
           hasBabysitterFee: false,
           babysitterFeeAmount: 0,
           hasOfficeRentFee: false,
@@ -161,7 +177,7 @@ const autoCorrectPastSessions = (
       return s;
     }
 
-    // 2. FOR ACTIVE SESSIONS (2026-07-01 onwards):
+    // 2. FOR ACTIVE SESSIONS (on or after cutoffDate):
     // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped!
     let updated = { ...s };
     let changed = false;
@@ -1000,7 +1016,7 @@ export default function App() {
           }
 
           // Resolve effective accounting / registration cutoff date before correcting sessions
-          let effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (cloudData.settings?.accountingStartDate || settings.accountingStartDate || registrationCreatedAt);
+          let effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || (isBusra ? '2026-07-01T00:00:00.000Z' : registrationCreatedAt);
           if (!effectiveCutoff && !isBusra) {
             try {
               const regRef = doc(db, 'registrations', user.uid);
@@ -1017,7 +1033,7 @@ export default function App() {
             }
           }
           if (!effectiveCutoff) {
-            effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
+            effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || (isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z'));
           }
 
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
@@ -1278,7 +1294,7 @@ export default function App() {
             } catch (e) {}
           }
 
-          const effectiveCutoff = isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z');
+          const effectiveCutoff = settingsToSave.accountingStartDate || (isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z'));
           const correctedSessions = autoCorrectPastSessions(
             sessionsToSave,
             settingsToSave.defaultSessionPrice,
