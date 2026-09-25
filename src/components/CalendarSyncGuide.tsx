@@ -203,7 +203,7 @@ export default function CalendarSyncGuide({
         return false;
       }
 
-      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(cleanUrl)}`);
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(cleanUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
         const errMsg = errJson.error || `Sunucu Hatası: ${response.status} ${response.statusText}`;
@@ -413,7 +413,7 @@ export default function CalendarSyncGuide({
     }
     setIsOnlineSyncing(true);
     try {
-      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineUrl)}`);
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
@@ -466,7 +466,7 @@ export default function CalendarSyncGuide({
     }
     setIsFaceToFaceSyncing(true);
     try {
-      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceUrl)}`);
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
@@ -566,7 +566,7 @@ export default function CalendarSyncGuide({
     });
 
     try {
-      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
+      const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`HTTP Hata: ${response.status}`);
       }

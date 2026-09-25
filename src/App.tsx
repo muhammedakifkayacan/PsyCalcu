@@ -3748,49 +3748,56 @@ export default function App() {
 
     // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
     const sessionsToKeep: Session[] = [];
+    const isSingleCalendarMode = !settings.faceToFaceCalendarWebcalUrl || !settings.onlineCalendarWebcalUrl;
+
     effectiveSessions.forEach(s => {
-      // If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
+      // 1. If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
       if (replacedOldIds.has(s.id)) {
         return;
       }
 
-      // PERIOD LOCKING PROTECTION:
+      // 2. Remove dummy initial mock sessions (mock_...) when real calendar sessions exist or are being synced
+      if (s.id && s.id.startsWith('mock_')) {
+        deletedList.push({
+          id: s.id,
+          clientName: s.clientName,
+          date: s.date,
+          time: s.time,
+          type: s.type
+        });
+        deletedCount++;
+        return; // Remove dummy mock session
+      }
+
+      // 3. PERIOD LOCKING PROTECTION:
       // Sessions belonging to a closed month must NEVER be deleted by calendar sync!
       if (isDateInClosedMonth(s.date, settings.closedMonths)) {
         sessionsToKeep.push(s);
         return;
       }
 
-      // ACCOUNTING START DATE PROTECTION:
+      // 4. ACCOUNTING START DATE PROTECTION:
       // After initial calendar sync is done, sessions before accountingStartDate must NEVER be checked or deleted!
       if (isInitialCalendarSyncDone && effectiveAccountingStartDate && s.date < effectiveAccountingStartDate) {
         sessionsToKeep.push(s);
         return;
       }
 
-      if (s.isSyncedFromCalendar && 
+      // 5. Check if this is a calendar-synced session
+      const isSyncedCalendarSession = Boolean(s.isSyncedFromCalendar || (s.id && s.id.startsWith('ics_')));
+      const isTypeMatching = isSingleCalendarMode || 
+        !s.syncedCalendarType || 
+        (activeSyncedTypes && activeSyncedTypes.includes(s.syncedCalendarType as any));
+
+      if (isSyncedCalendarSession && 
           !s.isFromMultiCalendar &&
-          activeSyncedTypes && 
-          s.syncedCalendarType && 
-          activeSyncedTypes.includes(s.syncedCalendarType as any) &&
+          isTypeMatching &&
           s.date >= cutOffDateStr) {
         
         const isMatched = incomingIds.has(s.id) || matchedExistingIds.has(s.id);
 
-        // CRITICAL PROTECTION: A session with payment records or manual edits must NEVER be deleted by calendar sync!
-        const isAccountingProtected = s.paymentStatus === 'paid' || 
-                                     s.paymentStatus === 'partial' || 
-                                     (Number(s.paidAmount) || 0) > 0 || 
-                                     Boolean(s.isManuallyEdited);
-
         if (!isMatched) {
-          if (isAccountingProtected) {
-            // Keep protected session!
-            sessionsToKeep.push(s);
-            return;
-          }
-
-          // Unedited, unpaid calendar event removed from external calendar feed
+          // Calendar event was removed, deleted, or moved in Google/Apple Calendar
           deletedList.push({
             id: s.id,
             clientName: s.clientName,
@@ -3799,7 +3806,7 @@ export default function App() {
             type: s.type
           });
           deletedCount++;
-          return; // Filter it out (delete it)
+          return; // Filter it out (delete it from PsyCalcu!)
         }
       }
       sessionsToKeep.push(s);
@@ -3891,7 +3898,7 @@ export default function App() {
     // Sync Online Calendar
     if (onlineCalendarWebcalUrl) {
       try {
-        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}`);
+        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineCalendarWebcalUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
           const icsText = await response.text();
           const onlineDefaultPrice = settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200;
@@ -3932,7 +3939,7 @@ export default function App() {
     // Sync Face-to-Face Calendar
     if (faceToFaceCalendarWebcalUrl) {
       try {
-        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}`);
+        const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
           const icsText = await response.text();
           const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200;
@@ -3978,7 +3985,7 @@ export default function App() {
         const url = item.url;
         const tenantName = item.tenantName || `Terapist ${i + 1}`;
         try {
-          const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`);
+          const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}&_t=${Date.now()}`, { cache: 'no-store' });
           if (response.ok) {
             const icsText = await response.text();
             const parsed = parseICS(

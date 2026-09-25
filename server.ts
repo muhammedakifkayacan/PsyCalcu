@@ -635,11 +635,18 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       }
 
       console.log(`Fetching calendar from: ${normalizedUrl}`);
-      const fetchResponse = await fetch(normalizedUrl, {
+      // Append cache-buster query parameter to URL to prevent Google/provider edge caching
+      const separator = normalizedUrl.includes('?') ? '&' : '?';
+      const cacheBustedUrl = `${normalizedUrl}${separator}_cb=${Date.now()}`;
+
+      const fetchResponse = await fetch(cacheBustedUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
-          "Accept": "text/calendar, text/plain, application/octet-stream, */*"
+          "Accept": "text/calendar, text/plain, application/octet-stream, */*",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
         },
+        cache: "no-store",
         signal: AbortSignal.timeout(12000)
       });
 
@@ -699,6 +706,9 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       }
 
       res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.send(icsData);
     } catch (err: any) {
       console.error("Calendar fetch error:", err);
