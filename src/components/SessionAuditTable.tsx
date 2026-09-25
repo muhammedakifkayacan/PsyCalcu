@@ -33,7 +33,10 @@ import {
   SlidersHorizontal,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  Users,
+  List,
+  FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Session, AppSettings, SessionType } from '../types';
@@ -58,6 +61,33 @@ type PeriodPreset = 'last30' | 'thisMonth' | 'lastMonth' | 'last7' | 'all' | 'cu
 type AnomalyFilter = 'all' | 'zeroPrice' | 'nonSession' | 'unpaid' | 'paid' | 'faceToFace' | 'online' | 'noRoom';
 
 export type AuditColumnKey = 'date' | 'clientName' | 'type' | 'price' | 'paymentStatus' | 'room' | 'notes' | 'actions';
+export type AuditViewMode = 'flat' | 'grouped';
+
+export interface ClientGroupStats {
+  totalSessions: number;
+  validSessions: number;
+  onlineCount: number;
+  faceToFaceCount: number;
+  nonSessionCount: number;
+  cancelledCount: number;
+  zeroPriceCount: number;
+  totalRevenue: number;
+  totalPaid: number;
+  totalUnpaid: number;
+  totalRentDeductions: number;
+  totalBabysitterDeductions: number;
+  totalDeductions: number;
+  netIncome: number;
+  hasUnpaid: boolean;
+  hasZeroPrice: boolean;
+}
+
+export interface ClientAuditGroup {
+  clientKey: string;
+  clientName: string;
+  sessions: Session[];
+  stats: ClientGroupStats;
+}
 
 export interface ColumnDefinition {
   id: AuditColumnKey;
@@ -121,6 +151,40 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
     }
     return DEFAULT_VISIBLE_COLUMNS;
   });
+
+  // View Mode: 'flat' (Standart Düz Liste / Tablo) vs 'grouped' (Danışan Bazlı Gruplandırılmış Açılır Liste)
+  const [viewMode, setViewMode] = useState<AuditViewMode>(() => {
+    try {
+      const saved = safeStorage.getItem('psycalcu_audit_view_mode');
+      if (saved === 'flat' || saved === 'grouped') return saved;
+    } catch {}
+    return 'flat';
+  });
+
+  const handleSetViewMode = (mode: AuditViewMode) => {
+    setViewMode(mode);
+    try {
+      safeStorage.setItem('psycalcu_audit_view_mode', mode);
+    } catch {}
+    if (showToast) {
+      showToast(mode === 'grouped' ? 'Danışan Bazlı Gruplandırılmış Görünüm aktif' : 'Düz Tablo Görünümü aktif', 'info');
+    }
+  };
+
+  // Expanded client groups in Grouped View
+  const [expandedClientKeys, setExpandedClientKeys] = useState<Set<string>>(() => new Set());
+
+  const toggleClientExpanded = (clientKey: string) => {
+    setExpandedClientKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(clientKey)) {
+        next.delete(clientKey);
+      } else {
+        next.add(clientKey);
+      }
+      return next;
+    });
+  };
 
   // Close column dropdown when clicking outside
   useEffect(() => {
@@ -369,6 +433,141 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
       return 0;
     });
   }, [sessions, startDate, endDate, searchQuery, anomalyFilter, sortField, sortOrder]);
+
+  // Grouped Clients Computation (Danışan bazlı gruplanmış seanslar & toplamlar)
+  const groupedClients = useMemo<ClientAuditGroup[]>(() => {
+    const map = new Map<string, Session[]>();
+    
+    for (const s of filteredSessions) {
+      const rawName = s.clientName?.trim() || 'İsimsiz / Kişisel';
+      const list = map.get(rawName) || [];
+      list.push(s);
+      map.set(rawName, list);
+    }
+
+    const groups: ClientAuditGroup[] = [];
+
+    for (const [name, clientSessions] of map.entries()) {
+      let validSessions = 0;
+      let onlineCount = 0;
+      let faceToFaceCount = 0;
+      let nonSessionCount = 0;
+      let cancelledCount = 0;
+      let zeroPriceCount = 0;
+      let totalRevenue = 0;
+      let totalPaid = 0;
+      let totalUnpaid = 0;
+      let totalRentDeductions = 0;
+      let totalBabysitterDeductions = 0;
+
+      for (const s of clientSessions) {
+        if (s.type === 'non-session') {
+          nonSessionCount++;
+          continue;
+        }
+        if (s.type === 'cancelled') {
+          cancelledCount++;
+          continue;
+        }
+
+        validSessions++;
+        if (s.type === 'online') onlineCount++;
+        if (s.type === 'face-to-face') faceToFaceCount++;
+
+        const price = Number(s.price || 0);
+        if (price === 0) {
+          zeroPriceCount++;
+        }
+        totalRevenue += price;
+
+        if (s.hasOfficeRentFee && s.officeRentFeeAmount) {
+          totalRentDeductions += Number(s.officeRentFeeAmount);
+        }
+        if (s.hasBabysitterFee && s.babysitterFeeAmount) {
+          totalBabysitterDeductions += Number(s.babysitterFeeAmount);
+        }
+
+        if (s.paymentStatus === 'paid') {
+          const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : price;
+          totalPaid += paid;
+        } else if (s.paymentStatus === 'partial') {
+          const paid = Number(s.paidAmount || 0);
+          totalPaid += paid;
+          totalUnpaid += Math.max(0, price - paid);
+        } else {
+          totalUnpaid += price;
+        }
+      }
+
+      const totalDeductions = totalRentDeductions + totalBabysitterDeductions;
+      const netIncome = totalRevenue - totalDeductions;
+
+      // Keep client's inner sessions sorted by date & time (most recent first)
+      const sortedClientSessions = [...clientSessions].sort((a, b) => {
+        const dateComp = (b.date || '').localeCompare(a.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (b.time || '').localeCompare(a.time || '');
+      });
+
+      groups.push({
+        clientKey: name,
+        clientName: name,
+        sessions: sortedClientSessions,
+        stats: {
+          totalSessions: clientSessions.length,
+          validSessions,
+          onlineCount,
+          faceToFaceCount,
+          nonSessionCount,
+          cancelledCount,
+          zeroPriceCount,
+          totalRevenue,
+          totalPaid,
+          totalUnpaid,
+          totalRentDeductions,
+          totalBabysitterDeductions,
+          totalDeductions,
+          netIncome,
+          hasUnpaid: totalUnpaid > 0,
+          hasZeroPrice: zeroPriceCount > 0
+        }
+      });
+    }
+
+    // Sort groups
+    return groups.sort((a, b) => {
+      if (sortField === 'price') {
+        return sortOrder === 'asc' ? a.stats.totalRevenue - b.stats.totalRevenue : b.stats.totalRevenue - a.stats.totalRevenue;
+      }
+      if (sortField === 'clientName') {
+        const comp = a.clientName.localeCompare(b.clientName, 'tr-TR');
+        return sortOrder === 'asc' ? comp : -comp;
+      }
+      // Default: sort alphabetically by client name
+      return a.clientName.localeCompare(b.clientName, 'tr-TR');
+    });
+  }, [filteredSessions, sortField, sortOrder]);
+
+  const handleExpandAllClients = () => {
+    setExpandedClientKeys(new Set(groupedClients.map(g => g.clientKey)));
+  };
+
+  const handleCollapseAllClients = () => {
+    setExpandedClientKeys(new Set());
+  };
+
+  const handleToggleSelectGroup = (groupSessions: Session[]) => {
+    const allGroupSelected = groupSessions.length > 0 && groupSessions.every(s => selectedSessionIds.has(s.id));
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev);
+      if (allGroupSelected) {
+        groupSessions.forEach(s => next.delete(s.id));
+      } else {
+        groupSessions.forEach(s => next.add(s.id));
+      }
+      return next;
+    });
+  };
 
   // Period Aggregated Statistics
   const stats = useMemo(() => {
@@ -1215,24 +1414,81 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* SESSIONS TABLE */}
+      {/* SESSIONS TABLE / GROUPED VIEW */}
       <div className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-3xs overflow-hidden">
         
-        {/* Table Head Bar */}
+        {/* Table Head Bar & View Mode Switcher */}
         <div className="px-5 sm:px-6 py-4 bg-[#fdfbf7] border-b border-[#e5e1d8] flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <FileSpreadsheet className="w-4 h-4 text-[#6b705c]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Seans Listesi ({filteredSessions.length} Kayıt Listeleniyor)
-            </h3>
+          
+          {/* Left: View Mode Segmented Controls */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="inline-flex p-1 bg-slate-200/70 rounded-xl border border-slate-300/60 shadow-inner">
+              <button
+                type="button"
+                onClick={() => handleSetViewMode('flat')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'flat'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Tüm seansları tek bir standart tabloda listeler"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-[#6b705c]" />
+                <span>Düz Liste (Standart Tablo)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetViewMode('grouped')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'grouped'
+                    ? 'bg-[#6b705c] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Seansları danışan bazında açılır-kapanır gruplar halinde gösterir"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Danışan Bazlı Gruplandırılmış</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  viewMode === 'grouped' ? 'bg-white/20 text-white' : 'bg-slate-300/80 text-slate-700'
+                }`}>
+                  {groupedClients.length}
+                </span>
+              </button>
+            </div>
+
             {selectedStats && selectedStats.totalCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6b705c] text-white animate-fade-in shadow-2xs">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#6b705c] text-white animate-fade-in shadow-2xs">
                 <Check className="w-3 h-3" />
-                {selectedStats.totalCount} Satır Seçili
+                {selectedStats.totalCount} Seans Seçili
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Right: Quick Batch Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {viewMode === 'grouped' && groupedClients.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleExpandAllClients}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer flex items-center gap-1 shadow-3xs"
+                  title="Tüm danışanların seanslarını aç"
+                >
+                  <ChevronDown className="w-3 h-3 text-[#6b705c]" />
+                  <span>Tümünü Aç</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCollapseAllClients}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer flex items-center gap-1 shadow-3xs"
+                  title="Tüm danışan gruplarını daralt"
+                >
+                  <ChevronUp className="w-3 h-3 text-slate-400" />
+                  <span>Tümünü Kapat</span>
+                </button>
+              </div>
+            )}
+
             {filteredSessions.length > 0 && (
               <button
                 type="button"
@@ -1253,8 +1509,8 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
               </button>
             )}
 
-            <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">
-              💡 Satırları işaretleyerek anlık toplam alın veya tıklayarak düzenleyin
+            <span className="text-[11px] text-slate-400 hidden lg:inline font-medium">
+              💡 {viewMode === 'grouped' ? 'Danışana tıklayarak seanslarını açın' : 'Satırlara tıklayarak düzenleyin'}
             </span>
           </div>
         </div>
@@ -1279,7 +1535,10 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
               Tüm Filtreleri Temizle
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'flat' ? (
+          /* ========================================================================= */
+          /* VIEW 1: FLAT STANDARD TABLE                                              */
+          /* ========================================================================= */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -1568,6 +1827,357 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                 })}
               </tbody>
             </table>
+          </div>
+        ) : (
+          /* ========================================================================= */
+          /* VIEW 2: GROUPED BY CLIENT ACCORDION VIEW                                  */
+          /* ========================================================================= */
+          <div className="p-4 sm:p-6 space-y-4 bg-[#fbf9f4]">
+            {groupedClients.map((group) => {
+              const isExpanded = expandedClientKeys.has(group.clientKey);
+              const isAllGroupSelected = group.sessions.length > 0 && group.sessions.every(s => selectedSessionIds.has(s.id));
+              const isSomeGroupSelected = group.sessions.some(s => selectedSessionIds.has(s.id)) && !isAllGroupSelected;
+
+              return (
+                <div 
+                  key={group.clientKey}
+                  className={`border rounded-2xl transition-all overflow-hidden ${
+                    isExpanded 
+                      ? 'border-[#6b705c]/40 bg-white shadow-md' 
+                      : 'border-[#e5e1d8] bg-white hover:border-[#6b705c]/30 hover:shadow-xs'
+                  }`}
+                >
+                  {/* Client Group Header (Clickable Accordion Bar) */}
+                  <div 
+                    onClick={() => toggleClientExpanded(group.clientKey)}
+                    className={`p-3.5 sm:p-4.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none transition-colors ${
+                      isExpanded ? 'bg-[#fdfbf7] border-b border-[#e5e1d8]' : 'hover:bg-[#fdfbf7]/60'
+                    }`}
+                  >
+                    {/* Left: Checkbox, Chevron, Client Name, and Badges */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      
+                      {/* Selection Checkbox for Group */}
+                      <div 
+                        className="p-1 -m-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSelectGroup(group.sessions);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isAllGroupSelected}
+                          ref={inputRef => {
+                            if (inputRef) {
+                              inputRef.indeterminate = isSomeGroupSelected;
+                            }
+                          }}
+                          onChange={() => handleToggleSelectGroup(group.sessions)}
+                          className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] cursor-pointer accent-[#6b705c]"
+                          title={isAllGroupSelected ? "Danışanın tüm seans seçimlerini kaldır" : "Danışanın tüm seanslarını seç"}
+                        />
+                      </div>
+
+                      {/* Expand / Collapse Chevron */}
+                      <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                        <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90 text-[#6b705c]' : ''}`} />
+                      </div>
+
+                      {/* Client Avatar & Name */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-xl bg-[#6b705c]/15 text-[#6b705c] flex items-center justify-center font-bold text-xs shrink-0">
+                          <User className="w-3.5 h-3.5" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {onOpenClientHistory && group.clientKey !== 'İsimsiz / Kişisel' ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenClientHistory(group.clientName);
+                                }}
+                                className="font-bold text-slate-900 text-sm hover:text-emerald-700 hover:underline cursor-pointer text-left truncate transition-colors"
+                                title={`${group.clientName} danışan sayfasını aç`}
+                              >
+                                {formatClientName(group.clientName)}
+                              </button>
+                            ) : (
+                              <span className="font-bold text-slate-900 text-sm truncate">
+                                {formatClientName(group.clientName)}
+                              </span>
+                            )}
+
+                            {/* Session Count Badge */}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                              {group.stats.totalSessions} Seans
+                            </span>
+
+                            {/* Unpaid Badge */}
+                            {group.stats.hasUnpaid && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200 shrink-0">
+                                <AlertCircle className="w-2.5 h-2.5 text-rose-600" />
+                                {formatCurrency(group.stats.totalUnpaid)} Borç
+                              </span>
+                            )}
+
+                            {/* Zero Price Warning Badge */}
+                            {group.stats.hasZeroPrice && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                                ⚠️ 0 ₺ Seans
+                              </span>
+                            )}
+
+                            {/* All Paid Badge */}
+                            {!group.stats.hasUnpaid && group.stats.totalRevenue > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                                <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
+                                Ödendi
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Financial Totals for Client */}
+                    <div className="flex items-center gap-3 sm:gap-4 ml-auto md:ml-0 shrink-0 text-xs">
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Toplam Tutar</span>
+                        <span className="font-serif font-bold text-slate-800 text-sm sm:text-base">
+                          {formatCurrency(group.stats.totalRevenue)}
+                        </span>
+                      </div>
+
+                      <div className="h-6 w-[1px] bg-slate-200 hidden sm:block" />
+
+                      <div className="text-right">
+                        <span className="text-[10px] text-emerald-600 font-bold block uppercase tracking-wider">Tahsil Edilen</span>
+                        <span className="font-serif font-bold text-emerald-700 text-xs sm:text-sm">
+                          {formatCurrency(group.stats.totalPaid)}
+                        </span>
+                      </div>
+
+                      {group.stats.totalUnpaid > 0 && (
+                        <>
+                          <div className="h-6 w-[1px] bg-slate-200 hidden sm:block" />
+                          <div className="text-right">
+                            <span className="text-[10px] text-rose-600 font-bold block uppercase tracking-wider">Kalan Borç</span>
+                            <span className="font-serif font-bold text-rose-700 text-xs sm:text-sm">
+                              {formatCurrency(group.stats.totalUnpaid)}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Client Group Body: Sessions Sub-Table */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-100 bg-white">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold border-b border-slate-100">
+                              <th className="py-2.5 px-3 w-10 text-center">Seç</th>
+                              <th className="py-2.5 px-4">Tarih & Saat</th>
+                              <th className="py-2.5 px-4">Tür</th>
+                              <th className="py-2.5 px-4">Ücret & Kesinti</th>
+                              <th className="py-2.5 px-4">Ödeme Durumu</th>
+                              <th className="py-2.5 px-4">Oda</th>
+                              <th className="py-2.5 px-4">Not</th>
+                              <th className="py-2.5 px-4 text-right">İşlemler</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {group.sessions.map((session) => {
+                              const isNonSession = session.type === 'non-session';
+                              const isCancelled = session.type === 'cancelled';
+                              const isZeroPrice = (session.price === 0 || !session.price) && !isNonSession && !isCancelled;
+                              const isSelected = selectedSessionIds.has(session.id);
+                              const room = (settings.rooms || []).find(r => r.id === session.roomId);
+
+                              return (
+                                <tr
+                                  key={session.id}
+                                  onClick={() => onEditSession(session)}
+                                  className={`group/row hover:bg-[#fdfbf7] cursor-pointer transition-colors ${
+                                    isSelected
+                                      ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15'
+                                      : isNonSession 
+                                      ? 'bg-slate-50/50 opacity-75' 
+                                      : isZeroPrice 
+                                      ? 'bg-amber-50/30' 
+                                      : ''
+                                  }`}
+                                >
+                                  {/* Checkbox Column */}
+                                  <td 
+                                    className="py-3 px-3 text-center cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleSelect(session.id);
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      readOnly
+                                      className="w-4 h-4 rounded text-[#6b705c] focus:ring-[#6b705c] pointer-events-none accent-[#6b705c]"
+                                    />
+                                  </td>
+
+                                  {/* Date & Time */}
+                                  <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-900">{formatDateTR(session.date)}</span>
+                                      <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                        {session.time || '00:00'}
+                                      </span>
+                                      {isDateInClosedMonth(session.date, settings.closedMonths) && (
+                                        <span 
+                                          className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.5 rounded font-bold"
+                                          title="Kapalı Ay (Muhasebe Onaylı & Kilitli)"
+                                        >
+                                          <Lock className="w-2.5 h-2.5 text-emerald-700" />
+                                          Kilitli
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* Type */}
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    {getSessionTypeBadge(session.type)}
+                                  </td>
+
+                                  {/* Price */}
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    {isNonSession || isCancelled ? (
+                                      <span className="text-slate-400 font-mono text-[11px]">0 ₺</span>
+                                    ) : (
+                                      <div className="space-y-0.5">
+                                        <span className={`font-bold font-mono text-xs ${isZeroPrice ? 'text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded' : 'text-slate-900'}`}>
+                                          {formatCurrency(session.price)}
+                                        </span>
+                                        {(session.hasOfficeRentFee || session.hasBabysitterFee) && (
+                                          <p className="text-[9px] text-slate-400">
+                                            Kesinti: {formatCurrency((session.hasOfficeRentFee ? session.officeRentFeeAmount : 0) + (session.hasBabysitterFee ? session.babysitterFeeAmount : 0))}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* Payment Status */}
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    {getPaymentStatusBadge(session)}
+                                  </td>
+
+                                  {/* Room */}
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    {room ? (
+                                      <span 
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
+                                        style={{ backgroundColor: room.color || '#6b705c' }}
+                                      >
+                                        <Building className="w-2.5 h-2.5" />
+                                        {room.name}
+                                      </span>
+                                    ) : session.type === 'face-to-face' ? (
+                                      <span className="text-[10px] text-slate-400 italic">Oda Atanmadı</span>
+                                    ) : (
+                                      <span className="text-slate-300 font-mono text-[10px]">-</span>
+                                    )}
+                                  </td>
+
+                                  {/* Notes */}
+                                  <td className="py-3 px-4 max-w-[180px] truncate text-slate-500 text-[11px]">
+                                    {session.notes || <span className="text-slate-300 italic">-</span>}
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onGoToDate(session.date);
+                                          setActiveTab('agenda');
+                                          showToast(`${formatDateTR(session.date)} gününe geçildi`, 'info');
+                                        }}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#6b705c] hover:bg-slate-100 transition-colors cursor-pointer"
+                                        title="Ajandada bu güne git"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onEditSession(session)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                        title="Seansı Düzenle"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm(`"${session.clientName}" seansını silmek istediğinize emin misiniz?`)) {
+                                            onDeleteSession(session.id);
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                        title="Seansı Sil"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Group Bottom Subtotal Summary */}
+                      <div className="p-3 bg-[#fdfbf7] border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                        <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                          <span>Toplam: <strong className="text-slate-800">{group.sessions.length} Seans</strong></span>
+                          <span>•</span>
+                          <span>Net Hakediş: <strong className="text-emerald-700 font-semibold">{formatCurrency(group.stats.netIncome)}</strong></span>
+                          {group.stats.totalDeductions > 0 && (
+                            <>
+                              <span>•</span>
+                              <span>Kesintiler: <strong className="text-amber-700">-{formatCurrency(group.stats.totalDeductions)}</strong></span>
+                            </>
+                          )}
+                          {group.stats.validSessions > 0 && (
+                            <>
+                              <span>•</span>
+                              <span>Ortalama: <strong>{formatCurrency(Math.round(group.stats.totalRevenue / group.stats.validSessions))}/seans</strong></span>
+                            </>
+                          )}
+                        </div>
+
+                        {onOpenClientHistory && group.clientKey !== 'İsimsiz / Kişisel' && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenClientHistory(group.clientName)}
+                            className="text-[11px] font-bold text-[#6b705c] hover:text-[#585c4c] hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Danışan Dosyasını Aç</span>
+                            <ChevronRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
