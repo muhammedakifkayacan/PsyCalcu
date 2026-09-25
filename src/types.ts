@@ -133,6 +133,7 @@ export interface AppSettings {
   clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule };
   hasSeenTour?: boolean; // whether user has completed or dismissed the onboarding tour
   closedMonths?: Record<string, ClosedMonthRecord>; // e.g. { "2026-08": ClosedMonthRecord }
+  hasCompletedInitialCalendarSync?: boolean; // whether initial full calendar sync has been completed once
 }
 
 export interface ClosedMonthRecord {

@@ -123,7 +123,8 @@ const autoCorrectPastSessions = (
   accountingStartDate?: string | null,
   defaultOnlinePrice?: number,
   defaultFaceToFacePrice?: number,
-  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule },
+  closedMonths?: Record<string, ClosedMonthRecord>
 ): Session[] => {
   if (!Array.isArray(sessionList)) return [];
 
@@ -134,6 +135,12 @@ const autoCorrectPastSessions = (
 
   const healedAndRestored = sessionList.map(s => {
     if (!s) return s;
+
+    // LOCKED / CLOSED MONTH PROTECTION:
+    // If session belongs to a closed month, keep it completely locked and untouched!
+    if (closedMonths && isDateInClosedMonth(s.date, closedMonths)) {
+      return s;
+    }
 
     // 1. Pre-2026-07-01 historical pre-app data cutoff (preserve if manually edited by user)
     if (s.date && s.date < cutoffDate && !s.isManuallyEdited) {
@@ -2031,8 +2038,18 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const parsed = parseICS(icsText, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, item.type, registrationCreatedAt, settings.autoMarkShortEventsAsNonSession ?? true);
+          const effectiveAccountingStartDate = settings.accountingStartDate
+            ? settings.accountingStartDate.split('T')[0]
+            : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
+          const isInitialDone = Boolean(
+            settings.hasCompletedInitialCalendarSync ||
+            safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true'
+          );
+
           parsed.forEach(ev => {
             if (ev.id && ev.notes) {
+              if (isDateInClosedMonth(ev.date, settings.closedMonths)) return;
+              if (isInitialDone && effectiveAccountingStartDate && ev.date < effectiveAccountingStartDate) return;
               newCache[ev.id] = ev.notes;
               fetchedAny = true;
             }
@@ -3288,8 +3305,40 @@ export default function App() {
       return undefined;
     };
 
-    // Unrestricted past cutoff: all past calendar sessions are processed and synced
-    const cutOffDateStr = '1970-01-01';
+    // Multi-index existing sessions for robust matching across ID variations, recurrence exceptions, and reschedules
+    const currentMemorySessions = (sessionsRef.current && sessionsRef.current.length > 0)
+      ? sessionsRef.current
+      : (sessions && sessions.length > 0 ? sessions : []);
+
+    let effectiveSessions = currentMemorySessions;
+    if (effectiveSessions.length === 0) {
+      try {
+        const userKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
+        const savedStr = safeStorage.getItem(userKey) || safeStorage.getItem('psycalcu_sessions');
+        if (savedStr) {
+          const parsed = JSON.parse(savedStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            effectiveSessions = parsed;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Helper to determine effective accounting start date (YYYY-MM-DD)
+    const effectiveAccountingStartDate = settings.accountingStartDate
+      ? settings.accountingStartDate.split('T')[0]
+      : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
+
+    // Track if complete calendar sync has been performed at least once
+    const isInitialCalendarSyncDone = Boolean(
+      settings.hasCompletedInitialCalendarSync ||
+      safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true' ||
+      effectiveSessions.length > 0
+    );
+
+    const cutOffDateStr = (isInitialCalendarSyncDone && effectiveAccountingStartDate)
+      ? effectiveAccountingStartDate
+      : '1970-01-01';
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched
@@ -3316,25 +3365,6 @@ export default function App() {
 
     // Track incoming IDs for fast direct lookups
     const incomingIds = new Set(newSessions.map(ns => ns.id));
-
-    // Multi-index existing sessions for robust matching across ID variations, recurrence exceptions, and reschedules
-    const currentMemorySessions = (sessionsRef.current && sessionsRef.current.length > 0)
-      ? sessionsRef.current
-      : (sessions && sessions.length > 0 ? sessions : []);
-
-    let effectiveSessions = currentMemorySessions;
-    if (effectiveSessions.length === 0) {
-      try {
-        const userKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
-        const savedStr = safeStorage.getItem(userKey) || safeStorage.getItem('psycalcu_sessions');
-        if (savedStr) {
-          const parsed = JSON.parse(savedStr);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            effectiveSessions = parsed;
-          }
-        }
-      } catch (e) {}
-    }
 
     // CRITICAL QUOTA & DATA LOSS SHIELD:
     // If existing sessions have not been loaded into state or local cache yet and initial sync is pending,
@@ -3385,10 +3415,15 @@ export default function App() {
     const updatedList: any[] = [];
 
     newSessions.forEach(ns => {
-      // PERIOD LOCKING PROTOCOL:
-      // If this incoming event falls into a closed month, skip it completely.
-      // Calendar sync locks closed periods and strictly only syncs events after the closed months.
+      // 1. CLOSED / LOCKED MONTH PROTECTION:
+      // Kitlenen ayın etkinliklerini kesinlikle kontrol etme / eşitleme!
       if (isDateInClosedMonth(ns.date, settings.closedMonths)) {
+        return;
+      }
+
+      // 2. ACCOUNTING START DATE PROTECTION (AFTER INITIAL FULL SYNC):
+      // Takvim eşitleme tamamını bir kere yaptıktan sonra, muhasebe başlangıç tarihinden öncekini bir daha kontrol etme!
+      if (isInitialCalendarSyncDone && effectiveAccountingStartDate && ns.date < effectiveAccountingStartDate) {
         return;
       }
 
@@ -3621,6 +3656,13 @@ export default function App() {
         return;
       }
 
+      // ACCOUNTING START DATE PROTECTION:
+      // After initial calendar sync is done, sessions before accountingStartDate must NEVER be checked or deleted!
+      if (isInitialCalendarSyncDone && effectiveAccountingStartDate && s.date < effectiveAccountingStartDate) {
+        sessionsToKeep.push(s);
+        return;
+      }
+
       if (s.isSyncedFromCalendar && 
           !s.isFromMultiCalendar &&
           activeSyncedTypes && 
@@ -3675,9 +3717,21 @@ export default function App() {
           registrationCreatedAt,
           settings.defaultOnlinePrice,
           settings.defaultFaceToFacePrice,
-          settings.clientCustomPrices
+          settings.clientCustomPrices,
+          settings.closedMonths
         );
       });
+    }
+
+    // Mark initial full calendar sync as completed once
+    if (!settings.hasCompletedInitialCalendarSync && (addedCount > 0 || updatedCount > 0 || deletedCount > 0 || effectiveSessions.length > 0)) {
+      try {
+        safeStorage.setItem('psycalcu_has_completed_initial_calendar_sync', 'true', user?.uid);
+      } catch (e) {}
+      setSettings(prev => ({
+        ...prev,
+        hasCompletedInitialCalendarSync: true
+      }));
     }
 
     return { 
