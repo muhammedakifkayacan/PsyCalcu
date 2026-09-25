@@ -1874,7 +1874,7 @@ export default function App() {
         }
       }
     } catch (e) {}
-    return 'agenda';
+    return 'stats';
   });
   const hasManuallyChangedTabRef = useRef(false);
 
@@ -6245,6 +6245,11 @@ export default function App() {
                   onNavigateToAudit={() => setActiveTab('audit')}
                   setActiveTab={setActiveTab}
                   onOpenMonthClosingModal={openMonthClosingModal}
+                  onTogglePayment={handleTogglePaymentStatus}
+                  onEditSession={(s) => {
+                    setEditingSession(s);
+                    setIsSessionModalOpen(true);
+                  }}
                 />
               )}
             </motion.div>

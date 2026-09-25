@@ -410,16 +410,36 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             )}
           </AnimatePresence>
 
-          {/* SECOND ROW: TWO-WAY PRIMARY SWITCH (GÜNLÜK AJANDA | BORÇ TAKİP) */}
+          {/* SECOND ROW: THREE-WAY PRIMARY SWITCH (MUHASEBE | GÜNLÜK AJANDA | BORÇ TAKİP) */}
           <div className="flex items-center justify-center pt-1 border-t border-[#f5f5f0]">
-            <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-xs md:max-w-sm justify-center">
+            <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-sm md:max-w-md justify-center">
               
+              {/* Muhasebe Tab Switch Button */}
+              <motion.button
+                id="tab-stats-main"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleTabClick('stats')}
+                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                }`}
+              >
+                {activeTab === 'stats' && (
+                  <motion.div
+                    layoutId="mainHeaderSwitchIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Muhasebe</span>
+              </motion.button>
+
               {/* Agenda Tab Switch Button */}
               <motion.button
                 id="tab-agenda-main"
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('agenda')}
-                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 select-none touch-manipulation ${
+                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
                   activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
@@ -431,7 +451,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                   />
                 )}
                 <CalendarIcon className="w-3.5 h-3.5" />
-                <span>Günlük Ajanda</span>
+                <span>Ajanda</span>
               </motion.button>
 
               {/* Debt Tracker Tab Switch Button */}
@@ -439,7 +459,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 id="tab-debts"
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('debts')}
-                className={`relative flex-1 py-1.5 md:py-2 px-4 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-2 select-none touch-manipulation ${
+                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
                   activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >

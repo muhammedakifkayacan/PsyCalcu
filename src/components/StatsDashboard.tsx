@@ -1,34 +1,39 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Session, AppSettings, Expense, ExpenseCategory } from '../types';
 import { 
-  Laptop, MapPin, Ban, ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Filter, Clock, Search, X, Coins,
-  Plus, Edit2, Trash2, Building, Zap, UserCheck, ShoppingBag, Megaphone, Landmark, Sparkles, CreditCard, Wallet,
-  Receipt, DollarSign, Tag, Check, Banknote, FileSpreadsheet, Calculator, ChevronRight, Lock, ShieldCheck, CheckCircle2
+  ChevronLeft, 
+  ChevronRight, 
+  Lock, 
+  Search, 
+  X, 
+  Plus, 
+  Trash2, 
+  Edit2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { usePrivacy } from '../context/PrivacyContext';
-import { getAccountingDateRange, getTodayLocalDate } from '../utils/dateUtils';
-import { formatMonthKey, getUnclosedPastMonths } from '../utils/monthCloseUtils';
+import { formatMonthKey, isMonthClosed } from '../utils/monthCloseUtils';
+import { getTodayLocalDate } from '../utils/dateUtils';
 
-export const EXPENSE_CATEGORIES: Record<ExpenseCategory, { label: string; icon: any; color: string; bg: string; border: string }> = {
-  salary: { label: 'Maaş & Personel', icon: UserCheck, color: 'text-indigo-700', bg: 'bg-indigo-50/90', border: 'border-indigo-200' },
-  utilities: { label: 'Fatura & Abonelik', icon: Zap, color: 'text-blue-700', bg: 'bg-blue-50/90', border: 'border-blue-200' },
-  rent: { label: 'Ofis Kirası & Aidat', icon: Building, color: 'text-amber-800', bg: 'bg-amber-50/90', border: 'border-amber-200' },
-  maintenance: { label: 'Bakım & Temizlik', icon: Sparkles, color: 'text-cyan-700', bg: 'bg-cyan-50/90', border: 'border-cyan-200' },
-  supplies: { label: 'Mutfak & Sarf', icon: ShoppingBag, color: 'text-emerald-700', bg: 'bg-emerald-50/90', border: 'border-emerald-200' },
-  marketing: { label: 'Pazarlama & Reklam', icon: Megaphone, color: 'text-purple-700', bg: 'bg-purple-50/90', border: 'border-purple-200' },
-  tax: { label: 'Vergi & Resmi', icon: Landmark, color: 'text-rose-700', bg: 'bg-rose-50/90', border: 'border-rose-200' },
-  other: { label: 'Diğer Kasadan Ödeme', icon: Coins, color: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-200' }
+export const EXPENSE_CATEGORIES: Record<ExpenseCategory, { label: string; color: string }> = {
+  salary: { label: 'Maaş & Personel', color: 'text-indigo-700' },
+  utilities: { label: 'Fatura & Abonelik', color: 'text-blue-700' },
+  rent: { label: 'Ofis Kirası & Aidat', color: 'text-amber-800' },
+  maintenance: { label: 'Bakım & Temizlik', color: 'text-cyan-700' },
+  supplies: { label: 'Mutfak & Sarf', color: 'text-emerald-700' },
+  marketing: { label: 'Pazarlama & Reklam', color: 'text-purple-700' },
+  tax: { label: 'Vergi & Resmi', color: 'text-rose-700' },
+  other: { label: 'Diğer Kasadan Ödeme', color: 'text-slate-700' }
 };
 
 export const PAYMENT_METHODS = {
-  cash: { label: 'Nakit / Kasa', icon: Wallet },
-  bank: { label: 'Banka / Havale', icon: Landmark },
-  card: { label: 'Kredi Kartı', icon: CreditCard }
+  cash: { label: 'Nakit / Kasa' },
+  bank: { label: 'Banka / Havale' },
+  card: { label: 'Kredi Kartı' }
 };
 
-interface StatsDashboardProps {
+export interface StatsDashboardProps {
   sessions: Session[];
   settings: AppSettings;
   expenses?: Expense[];
@@ -36,10 +41,12 @@ interface StatsDashboardProps {
   onUpdateExpense?: (expense: Expense) => void;
   onDeleteExpense?: (id: string) => void;
   showExplanations?: boolean;
-  showToast?: (message: string, type?: 'success' | 'error' | 'info', extraData?: any, onUndo?: () => void, undoLabel?: string) => void;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
   onNavigateToAudit?: () => void;
   setActiveTab?: (tab: any) => void;
   onOpenMonthClosingModal?: (monthKey?: string) => void;
+  onTogglePayment?: (sessionId: string) => void;
+  onEditSession?: (session: Session) => void;
 }
 
 export default function StatsDashboard({
@@ -49,349 +56,176 @@ export default function StatsDashboard({
   onAddExpense,
   onUpdateExpense,
   onDeleteExpense,
-  showExplanations = true,
   showToast,
-  onNavigateToAudit,
-  setActiveTab,
-  onOpenMonthClosingModal
+  onOpenMonthClosingModal,
+  onTogglePayment,
+  onEditSession
 }: StatsDashboardProps) {
-  const { formatMoney } = usePrivacy();
-  const [preset, setPreset] = useState<string>('thisMonth');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [selectedCard, setSelectedCard] = useState<'gross' | 'pending' | 'expenses' | 'net' | null>(null);
-  const [detailSearchQuery, setDetailSearchQuery] = useState('');
-  const [isHighlighted, setIsHighlighted] = useState(false);
+  const { formatMoney, formatClientName } = usePrivacy();
 
-  // Sub-tabs inside accounting details section
-  const [expenseSubTab, setExpenseSubTab] = useState<'sessions' | 'general'>('general');
-  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
+  // Selected Month (Default: current month in "YYYY-MM" format)
+  const currentMonthKey = useMemo(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
 
-  // Modal State for Expenses
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(currentMonthKey);
+  const [filter, setFilter] = useState<'all' | 'paid' | 'pending'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Secondary Collapsible for General Clinic Expenses (Preserves logic without cluttering main view)
+  const [isExpensesSectionOpen, setIsExpensesSectionOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [formTitle, setFormTitle] = useState('');
-  const [formCategory, setFormCategory] = useState<ExpenseCategory>('utilities');
-  const [formAmount, setFormAmount] = useState('');
-  const [formDate, setFormDate] = useState(() => getTodayLocalDate());
-  const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'bank' | 'card'>('cash');
-  const [formNotes, setFormNotes] = useState('');
+  const [expenseTitle, setExpenseTitle] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('utilities');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDate, setExpenseDate] = useState(() => getTodayLocalDate());
 
-  const unclosedPastMonths = useMemo(() => {
-    return getUnclosedPastMonths(sessions, settings.closedMonths);
-  }, [sessions, settings.closedMonths]);
+  // Check if selected month is closed
+  const isCurrentMonthClosed = useMemo(() => {
+    return isMonthClosed(selectedMonthKey, settings.closedMonths);
+  }, [selectedMonthKey, settings.closedMonths]);
 
-  const closedMonthEntries = useMemo(() => {
-    if (!settings.closedMonths) return [];
-    return Object.values(settings.closedMonths).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  }, [settings.closedMonths]);
-
-  const handleGoToAudit = () => {
-    if (onNavigateToAudit) {
-      onNavigateToAudit();
-    } else if (setActiveTab) {
-      setActiveTab('audit');
-    }
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    const [y, m] = selectedMonthKey.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    setSelectedMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const handleCardClick = (cardType: 'gross' | 'pending' | 'expenses' | 'net') => {
-    setSelectedCard(prev => {
-      const next = prev === cardType ? null : cardType;
-      if (next) {
-        setIsHighlighted(true);
-        setTimeout(() => setIsHighlighted(false), 2000);
-
-        setTimeout(() => {
-          const el = document.getElementById('accounting-details-section');
-          if (el) {
-            const header = document.querySelector('nav');
-            const headerHeight = header ? header.offsetHeight : 80;
-            const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
-            const offsetPosition = elementPosition - headerHeight - 16;
-
-            window.scrollTo({
-              top: offsetPosition,
-              behavior: 'smooth'
-            });
-          }
-        }, 120);
-      }
-      return next;
-    });
+  const handleNextMonth = () => {
+    const [y, m] = selectedMonthKey.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    setSelectedMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  // Compute calculated start & end dates based on selected preset
-  const dateRange = useMemo(() => {
-    return getAccountingDateRange(preset, customStartDate, customEndDate);
-  }, [preset, customStartDate, customEndDate]);
-
-  // Filter sessions by date range
-  const filteredSessions = useMemo(() => {
-    return sessions.filter(s => {
-      if (s.type === 'non-session') return false;
-      if (dateRange.start && s.date < dateRange.start) return false;
-      if (dateRange.end && s.date > dateRange.end) return false;
-      return true;
-    });
-  }, [sessions, dateRange]);
-
-  const zeroPriceAuditCount = useMemo(() => {
-    return filteredSessions.filter(s => s.type !== 'cancelled' && (!s.price || s.price === 0)).length;
-  }, [filteredSessions]);
-
-  // Filter general clinic custom expenses by date range
-  const filteredCustomExpenses = useMemo(() => {
-    return expenses.filter(e => {
-      if (dateRange.start && e.date < dateRange.start) return false;
-      if (dateRange.end && e.date > dateRange.end) return false;
-      return true;
-    });
-  }, [expenses, dateRange]);
-
-  // Compute analytics including custom clinic expenses
-  const analytics = useMemo(() => {
-    const todayStr = new Date().toLocaleDateString('sv-SE');
-    let grossIncome = 0;
-    let babysitterFees = 0;
-    let officeRentExpenses = 0;
-    let kdvExpenses = 0;
-    let onlineCount = 0;
-    let faceToFaceCount = 0;
-    let cancelledCount = 0;
-    let pendingReceivables = 0;
-    let futureUnpaidIncome = 0;
-    let sessionExpensesCount = 0;
-
-    // Breakdown by payment method for collected income
-    const paymentMethodBreakdown = {
-      card: 0,
-      cash: 0,
-      transfer: 0,
-      unspecified: 0
-    };
-
-    // Group by date for chart
-    const dateGroups: Record<string, { date: string; gross: number; expenses: number; net: number }> = {};
-
-    filteredSessions.forEach(s => {
-      const sPrice = Number(s.price) || 0;
-      const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
-      const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
-      const isInclusive = s.isKdvInclusive !== false;
-      const kRate = s.kdvRate ?? settings.defaultKdvRate ?? 20;
-      const sKdvCut = s.hasKDV 
-        ? (s.kdvAmount ?? (isInclusive ? Math.round((sPrice * kRate) / (100 + kRate)) : Math.round((sPrice * kRate) / 100)))
-        : 0;
-      const sGross = s.hasKDV && !isInclusive ? (sPrice + sKdvCut) : sPrice;
-
-      if (s.type === 'cancelled') {
-        cancelledCount++;
-      } else {
-        if (s.type === 'online') {
-          onlineCount++;
-        } else {
-          faceToFaceCount++;
-        }
-
-        const paidPart = s.paymentStatus === 'paid'
-          ? sGross
-          : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
-        const unpaidPart = s.paymentStatus === 'paid'
-          ? 0
-          : (s.paymentStatus === 'partial' ? Math.max(0, sGross - (Number(s.paidAmount) || 0)) : sGross);
-
-        if (paidPart > 0) {
-          grossIncome += paidPart;
-          babysitterFees += sBabyFee;
-          officeRentExpenses += sOfficeFee;
-          kdvExpenses += sKdvCut;
-          if (sBabyFee > 0 || sOfficeFee > 0 || sKdvCut > 0) {
-            sessionExpensesCount++;
-          }
-
-          if (s.paymentMethod === 'card') {
-            paymentMethodBreakdown.card += paidPart;
-          } else if (s.paymentMethod === 'cash') {
-            paymentMethodBreakdown.cash += paidPart;
-          } else if (s.paymentMethod === 'transfer') {
-            paymentMethodBreakdown.transfer += paidPart;
-          } else {
-            paymentMethodBreakdown.unspecified += paidPart;
-          }
-        }
-        
-        if (unpaidPart > 0) {
-          if (s.date <= todayStr) {
-            pendingReceivables += unpaidPart;
-          } else {
-            futureUnpaidIncome += unpaidPart;
-          }
-        }
-      }
-
-      // Grouping by date
-      const dLabel = s.date;
-      if (!dateGroups[dLabel]) {
-        dateGroups[dLabel] = { date: dLabel, gross: 0, expenses: 0, net: 0 };
-      }
-
-      const paidPartForGroup = s.paymentStatus === 'paid'
-        ? sGross
-        : (s.paymentStatus === 'partial' ? (Number(s.paidAmount) || 0) : 0);
-
-      if (s.type !== 'cancelled' && paidPartForGroup > 0) {
-        dateGroups[dLabel].gross += paidPartForGroup;
-        dateGroups[dLabel].expenses += (sBabyFee + sOfficeFee + sKdvCut);
-      }
-    });
-
-    // Custom general expenses total
-    const customExpensesTotal = filteredCustomExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-    // Add custom expenses to date groups for bar chart accuracy
-    filteredCustomExpenses.forEach(e => {
-      const dLabel = e.date;
-      if (!dateGroups[dLabel]) {
-        dateGroups[dLabel] = { date: dLabel, gross: 0, expenses: 0, net: 0 };
-      }
-      dateGroups[dLabel].expenses += Number(e.amount) || 0;
-    });
-
-    const sessionExpensesTotal = babysitterFees + officeRentExpenses + kdvExpenses;
-    const totalExpenses = sessionExpensesTotal + customExpensesTotal;
-    const netIncome = Math.max(0, grossIncome - totalExpenses);
-
-    // Convert date groups to sorted array for chart
-    const chartData = Object.values(dateGroups)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-15)
-      .map(g => {
-        const parts = g.date.split('-');
-        const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : g.date;
-        return {
-          tarih: formattedDate,
-          'Brüt Gelir': g.gross,
-          'Toplam Gider': g.expenses,
-          'Net Gelir': Math.max(0, g.gross - g.expenses)
-        };
+  // Sessions belonging to selected month (excluding non-sessions)
+  const monthSessions = useMemo(() => {
+    return sessions
+      .filter(s => s.type !== 'non-session' && s.date && s.date.startsWith(selectedMonthKey))
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return (a.time || '').localeCompare(b.time || '');
       });
+  }, [sessions, selectedMonthKey]);
 
-    // Session Type Data
-    const typeData = [
-      { name: 'Online', value: onlineCount, color: '#34d399' },
-      { name: 'Yüzyüze', value: faceToFaceCount, color: '#f59e0b' },
-      { name: 'İptal', value: cancelledCount, color: '#f87171' }
-    ].filter(t => t.value > 0);
+  // General clinic expenses belonging to selected month
+  const monthCustomExpenses = useMemo(() => {
+    return expenses.filter(e => e.date && e.date.startsWith(selectedMonthKey));
+  }, [expenses, selectedMonthKey]);
+
+  // Financial Summary calculation
+  const summary = useMemo(() => {
+    let totalGross = 0;
+    let paidAmount = 0;
+    let pendingAmount = 0;
+    let activeSessionCount = 0;
+
+    monthSessions.forEach(s => {
+      if (s.type === 'cancelled') return;
+      activeSessionCount++;
+
+      const price = Number(s.price) || 0;
+      totalGross += price;
+
+      if (s.paymentStatus === 'paid') {
+        paidAmount += price;
+      } else if (s.paymentStatus === 'partial') {
+        const paid = Number(s.paidAmount) || 0;
+        paidAmount += paid;
+        pendingAmount += Math.max(0, price - paid);
+      } else {
+        pendingAmount += price;
+      }
+    });
+
+    const customExpensesTotal = monthCustomExpenses.reduce(
+      (acc, e) => acc + (Number(e.amount) || 0), 
+      0
+    );
+
+    const netIncome = Math.max(0, paidAmount - customExpensesTotal);
 
     return {
-      grossIncome,
-      babysitterFees,
-      officeRentExpenses,
-      kdvExpenses,
-      sessionExpensesTotal,
+      totalGross,
+      paidAmount,
+      pendingAmount,
+      sessionCount: activeSessionCount,
       customExpensesTotal,
-      totalExpenses,
-      netIncome,
-      pendingReceivables,
-      futureUnpaidIncome,
-      onlineCount,
-      faceToFaceCount,
-      cancelledCount,
-      sessionExpensesCount,
-      chartData,
-      typeData,
-      paymentMethodBreakdown
+      netIncome
     };
-  }, [filteredSessions, filteredCustomExpenses, settings.defaultKdvRate]);
+  }, [monthSessions, monthCustomExpenses]);
 
-  // Filter detailed list of sessions
-  const detailedFilteredSessions = useMemo(() => {
-    const todayStr = new Date().toLocaleDateString('sv-SE');
-    let list = filteredSessions;
+  // Filtered sessions for the main table
+  const filteredSessions = useMemo(() => {
+    let list = monthSessions.filter(s => s.type !== 'cancelled');
 
-    if (selectedCard === 'gross') {
-      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || (s.paymentStatus === 'partial' && (s.paidAmount || 0) > 0)));
-    } else if (selectedCard === 'pending') {
-      list = list.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid' && s.date <= todayStr);
-    } else if (selectedCard === 'expenses') {
-      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || s.paymentStatus === 'partial') && (s.hasBabysitterFee || s.hasOfficeRentFee));
-    } else if (selectedCard === 'net') {
-      list = list.filter(s => s.type !== 'cancelled' && (s.paymentStatus === 'paid' || (s.paymentStatus === 'partial' && (s.paidAmount || 0) > 0)));
+    if (filter === 'paid') {
+      list = list.filter(s => s.paymentStatus === 'paid');
+    } else if (filter === 'pending') {
+      list = list.filter(s => s.paymentStatus !== 'paid');
     }
 
-    if (detailSearchQuery.trim()) {
-      const q = detailSearchQuery.toLowerCase();
-      list = list.filter(s => {
-        const clientMatch = s.clientName?.toLowerCase().includes(q);
-        const notesMatch = s.notes?.toLowerCase().includes(q);
-        const dateMatch = s.date?.toLowerCase().includes(q);
-        const timeMatch = s.time?.toLowerCase().includes(q);
-        return clientMatch || notesMatch || dateMatch || timeMatch;
-      });
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => 
+        (s.clientName || '').toLowerCase().includes(q) ||
+        (s.notes || '').toLowerCase().includes(q)
+      );
     }
 
-    return [...list].sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return b.time.localeCompare(a.time);
-    });
-  }, [filteredSessions, selectedCard, detailSearchQuery]);
+    return list;
+  }, [monthSessions, filter, searchQuery]);
 
-  // Filter general clinic expenses
-  const detailedFilteredCustomExpenses = useMemo(() => {
-    let list = filteredCustomExpenses;
+  // Quick stats counts for filters
+  const paidCount = useMemo(() => {
+    return monthSessions.filter(s => s.type !== 'cancelled' && s.paymentStatus === 'paid').length;
+  }, [monthSessions]);
 
-    if (expenseCategoryFilter !== 'all') {
-      list = list.filter(e => e.category === expenseCategoryFilter);
-    }
+  const pendingCount = useMemo(() => {
+    return monthSessions.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid').length;
+  }, [monthSessions]);
 
-    if (detailSearchQuery.trim()) {
-      const q = detailSearchQuery.toLowerCase();
-      list = list.filter(e => {
-        const titleMatch = e.title?.toLowerCase().includes(q);
-        const notesMatch = e.notes?.toLowerCase().includes(q);
-        const dateMatch = e.date?.toLowerCase().includes(q);
-        const categoryMatch = EXPENSE_CATEGORIES[e.category]?.label.toLowerCase().includes(q);
-        return titleMatch || notesMatch || dateMatch || categoryMatch;
-      });
-    }
-
-    return [...list].sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return (b.createdAt || 0) - (a.createdAt || 0);
-    });
-  }, [filteredCustomExpenses, expenseCategoryFilter, detailSearchQuery]);
-
-  // Modal Handlers
-  const handleOpenAddModal = () => {
-    setEditingExpense(null);
-    setFormTitle('');
-    setFormCategory('utilities');
-    setFormAmount('');
-    setFormDate(getTodayLocalDate());
-    setFormPaymentMethod('cash');
-    setFormNotes('');
-    setIsExpenseModalOpen(true);
+  // Format helpers
+  const formatShortDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}.${parts[1]}`;
   };
 
-  const handleOpenEditModal = (expense: Expense) => {
-    setEditingExpense(expense);
-    setFormTitle(expense.title);
-    setFormCategory(expense.category);
-    setFormAmount(String(expense.amount));
-    setFormDate(expense.date);
-    setFormPaymentMethod(expense.paymentMethod || 'cash');
-    setFormNotes(expense.notes || '');
-    setIsExpenseModalOpen(true);
+  const formatLongDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsedAmount = parseFloat(formAmount.replace(',', '.'));
-    if (!formTitle.trim()) {
-      showToast?.('Lütfen gider başlığı veya açıklamasını giriniz.', 'error');
+  // Toggle single session payment
+  const handlePaymentToggle = (sessionId: string) => {
+    if (isCurrentMonthClosed) {
+      showToast?.('Bu ay kapatıldığı için seans durumu değiştirilemez.', 'info');
       return;
     }
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (onTogglePayment) {
+      onTogglePayment(sessionId);
+    }
+  };
+
+  // Expense modal handlers
+  const handleSaveExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amountNum = parseFloat(expenseAmount.replace(',', '.'));
+    if (!expenseTitle.trim()) {
+      showToast?.('Lütfen gider başlığı giriniz.', 'error');
+      return;
+    }
+    if (isNaN(amountNum) || amountNum <= 0) {
       showToast?.('Lütfen geçerli bir tutar giriniz.', 'error');
       return;
     }
@@ -399,1218 +233,532 @@ export default function StatsDashboard({
     if (editingExpense) {
       onUpdateExpense?.({
         ...editingExpense,
-        title: formTitle.trim(),
-        category: formCategory,
-        amount: parsedAmount,
-        date: formDate,
-        paymentMethod: formPaymentMethod,
-        notes: formNotes.trim()
+        title: expenseTitle.trim(),
+        category: expenseCategory,
+        amount: amountNum,
+        date: expenseDate
       });
+      showToast?.('Gider başarıyla güncellendi.', 'success');
     } else {
       onAddExpense?.({
-        title: formTitle.trim(),
-        category: formCategory,
-        amount: parsedAmount,
-        date: formDate,
-        paymentMethod: formPaymentMethod,
-        notes: formNotes.trim()
+        title: expenseTitle.trim(),
+        category: expenseCategory,
+        amount: amountNum,
+        date: expenseDate,
+        paymentMethod: 'cash'
       });
+      showToast?.('Gider başarıyla eklendi.', 'success');
     }
 
     setIsExpenseModalOpen(false);
   };
 
+  const handleOpenAddExpense = () => {
+    setEditingExpense(null);
+    setExpenseTitle('');
+    setExpenseCategory('utilities');
+    setExpenseAmount('');
+    setExpenseDate(`${selectedMonthKey}-01`);
+    setIsExpenseModalOpen(true);
+  };
+
+  const handleOpenEditExpense = (item: Expense) => {
+    setEditingExpense(item);
+    setExpenseTitle(item.title);
+    setExpenseCategory(item.category);
+    setExpenseAmount(String(item.amount));
+    setExpenseDate(item.date);
+    setIsExpenseModalOpen(true);
+  };
+
   return (
-    <div className="space-y-6" id="stats-dashboard-container">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       
-      {/* Date Range Selector Widget */}
-      <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-6 shadow-sm space-y-4" id="accounting-date-filters">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-[#6b705c]/10 rounded-xl flex items-center justify-center text-[#6b705c]">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-[#6b705c] tracking-wider">MUHASEBE TARİH ARALIĞI</h4>
-              {showExplanations && (
-                <p className="text-xs text-slate-400 animate-fade-in">Raporları ve tüm gelir/gider grafiklerinizi dilediğiniz tarih aralığına göre süzün</p>
-              )}
-            </div>
+      {/* 1. TOP HEADER: MONTH TITLE, STATUS & NAVIGATION */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-[#e5e1d8]">
+        
+        {/* Month Title & Status Badge */}
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 uppercase">
+              {formatMonthKey(selectedMonthKey)}
+            </h2>
+
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+              isCurrentMonthClosed 
+                ? 'bg-slate-100 text-slate-700 border-slate-300' 
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isCurrentMonthClosed ? 'bg-slate-500' : 'bg-emerald-600'}`} />
+              {isCurrentMonthClosed ? 'Kapatıldı' : 'Açık'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {onOpenMonthClosingModal && (
+          {/* Month Status Hint */}
+          {isCurrentMonthClosed ? (
+            <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1.5 font-medium">
+              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span>Bu ay kapatıldı. Takvimde yapılan sonraki değişiklikler bu aya uygulanmaz.</span>
+            </p>
+          ) : (
+            onOpenMonthClosingModal && (
               <button
                 type="button"
-                onClick={() => onOpenMonthClosingModal()}
-                className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Ayı kapat ve seansları mühürle"
+                onClick={() => onOpenMonthClosingModal(selectedMonthKey)}
+                className="text-xs text-slate-500 hover:text-slate-900 mt-1.5 inline-flex items-center gap-1 transition-colors cursor-pointer"
               >
-                <Lock className="w-3.5 h-3.5 text-slate-500" />
+                <Lock className="w-3 h-3 text-slate-400" />
                 <span>Ayı Kapat</span>
-                {unclosedPastMonths.length > 0 && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                )}
+              </button>
+            )
+          )}
+        </div>
+
+        {/* Month Selector Buttons: [ Önceki Ay ] [ Bu Ay ] [ Sonraki Ay ] */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="px-3 py-1.5 rounded-xl border border-[#e5e1d8] bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1 transition-all cursor-pointer shadow-3xs"
+            title="Önceki Ay"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            <span>Önceki Ay</span>
+          </button>
+
+          {selectedMonthKey !== currentMonthKey && (
+            <button
+              type="button"
+              onClick={() => setSelectedMonthKey(currentMonthKey)}
+              className="px-2.5 py-1.5 rounded-xl border border-[#e5e1d8] bg-white hover:bg-slate-50 text-xs font-semibold text-slate-600 transition-all cursor-pointer shadow-3xs"
+              title="Mevcut Aya Dön"
+            >
+              Bu Ay
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="px-3 py-1.5 rounded-xl border border-[#e5e1d8] bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1 transition-all cursor-pointer shadow-3xs"
+            title="Sonraki Ay"
+          >
+            <span>Sonraki Ay</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* 2. FINANCIAL SUMMARY: 4 CLEAN MINIMAL METRICS (TOPLAM, ÖDENEN, BEKLEYEN, SEANS) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-2">
+        <div className="p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-1">
+          <p className="text-xs font-medium text-slate-500">Toplam</p>
+          <p className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+            {formatMoney(summary.totalGross)}
+          </p>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-1">
+          <p className="text-xs font-medium text-emerald-700">Ödenen</p>
+          <p className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600">
+            {formatMoney(summary.paidAmount)}
+          </p>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-1">
+          <p className="text-xs font-medium text-amber-700">Bekleyen</p>
+          <p className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600">
+            {formatMoney(summary.pendingAmount)}
+          </p>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-1">
+          <p className="text-xs font-medium text-slate-500">Seans</p>
+          <p className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-700">
+            {summary.sessionCount} seans
+          </p>
+        </div>
+      </div>
+
+      {/* 3. FILTERS BAR: TÜMÜ | ÖDENDİ | BEKLEYEN + QUIET SEARCH */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <div className="inline-flex items-center p-1 bg-[#f5f5f0] border border-[#e5e1d8] rounded-xl text-xs">
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+              filter === 'all'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Tümü ({summary.sessionCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('paid')}
+            className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+              filter === 'paid'
+                ? 'bg-white text-emerald-700 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Ödendi ({paidCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('pending')}
+            className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+              filter === 'pending'
+                ? 'bg-white text-amber-800 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Bekliyor ({pendingCount})
+          </button>
+        </div>
+
+        {/* Client Search Input (clean and secondary) */}
+        {monthSessions.length > 3 && (
+          <div className="relative w-full sm:w-56">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Danışan ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] placeholder:text-slate-400 shadow-3xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleGoToAudit}
-              className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer group"
-              title="Sağlama tablosuna git"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
-              <span>Sağlama Tablosu</span>
-              <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </button>
-            <div className="text-xs text-slate-500 flex items-center gap-1.5 px-1">
-              <span>{filteredSessions.length} seans</span>
-              <span>·</span>
-              <span>{filteredCustomExpenses.length} gider</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Preset Selector */}
-        <div className="flex flex-wrap gap-2 pt-1 relative z-10">
-          {[
-            { id: 'all', label: 'Tüm Zamanlar' },
-            { id: 'thisMonth', label: 'Bu Ay' },
-            { id: 'lastMonth', label: 'Geçen Ay' },
-            { id: 'last30Days', label: 'Son 30 Gün' },
-            { id: 'last3Months', label: 'Son 3 Ay' },
-            { id: 'custom', label: 'Özel Aralık 📅' },
-          ].map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPreset(p.id)}
-              className={`relative px-4 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-                preset === p.id
-                  ? 'text-white border-transparent'
-                  : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-[#f5f5f0]'
-              }`}
-            >
-              {preset === p.id && (
-                <motion.div
-                  layoutId="statsPresetTabIndicator"
-                  className="absolute inset-0 bg-[#6b705c] rounded-xl -z-10 shadow-sm"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Custom Date Pickers */}
-        {preset === 'custom' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#fdfbf7] p-4 rounded-2xl border border-[#e5e1d8]/60 max-w-xl animate-fadeIn">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">BAŞLANGIÇ TARİHİ</label>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#a5a58d] tracking-wider block">BİTİŞ TARİHİ</label>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-              />
-            </div>
           </div>
         )}
       </div>
 
-      {/* Financial Scorecards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Gross Income Card */}
-        <div 
-          onClick={() => handleCardClick('gross')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
-            selectedCard === 'gross' 
-              ? 'border-emerald-500 ring-2 ring-emerald-500/15 bg-emerald-50/20 shadow-xs' 
-              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
-          }`}
-          id="scorecard-gross"
-        >
-          <div>
-            <div className="flex justify-between items-start">
-              <span className="text-[10px] tracking-wider text-[#a5a58d] font-bold">ÖDENEN BRÜT GELİR</span>
-              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'gross' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100'}`}>
-                <ArrowUpRight className="w-4 h-4" />
-              </span>
-            </div>
-            <div className="mt-2">
-              <h3 className="text-2xl font-serif text-[#6b705c]">{formatMoney(analytics.grossIncome, { decimals: 2 })}</h3>
-              <p className="text-[10px] text-slate-400 mt-1">Ödemesi tamamlanmış seans cirosu.</p>
-            </div>
-          </div>
-          
-          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
-            {selectedCard === 'gross' ? (
-              <>
-                <span className="font-bold text-emerald-600 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  AKTİF FİLTRE
-                </span>
-                <span className="text-emerald-500/80 underline font-medium">Sıfırla</span>
-              </>
-            ) : (
-              <>
-                <span className="text-slate-400 group-hover:text-emerald-600 transition-colors">Aşağıda Listele</span>
-                <span className="text-slate-300 group-hover:text-emerald-500 group-hover:translate-y-0.5 transition-all">↴</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Pending Receivables Card */}
-        <div 
-          onClick={() => handleCardClick('pending')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
-            selectedCard === 'pending' 
-              ? 'border-amber-500 ring-2 ring-amber-500/15 bg-amber-50/20 shadow-xs' 
-              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
-          }`}
-          id="scorecard-pending"
-        >
-          <div>
-            <div className="flex justify-between items-start">
-              <span className="text-[10px] tracking-wider text-amber-600 font-bold">BEKLEYEN ALACAK</span>
-              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600 group-hover:bg-amber-100'}`}>
-                <Clock className="w-4 h-4" />
-              </span>
-            </div>
-            <div className="mt-2 space-y-2">
-              <div>
-                <h3 className="text-2xl font-serif text-amber-600">{formatMoney(analytics.pendingReceivables, { decimals: 2 })}</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">Tarihi bugün veya geçmişte olan, ödenmemiş seanslar.</p>
-              </div>
-              
-              {(analytics.futureUnpaidIncome > 0 || analytics.grossIncome > 0) && (
-                <div className="text-[10px] text-slate-500 border-t border-amber-500/10 pt-2 space-y-1">
-                  {analytics.futureUnpaidIncome > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Gelecek Planlanan:</span>
-                      <span className="font-semibold text-slate-600">{formatMoney(analytics.futureUnpaidIncome, { prefix: '+' })}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center border-t border-slate-100/80 pt-1 font-bold text-[#6b705c]">
-                    <span>Tahmini Toplam Ciro:</span>
-                    <span>{formatMoney(analytics.grossIncome + analytics.pendingReceivables + analytics.futureUnpaidIncome)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
-            {selectedCard === 'pending' ? (
-              <>
-                <span className="font-bold text-amber-600 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                  AKTİF FİLTRE
-                </span>
-                <span className="text-amber-500/80 underline font-medium">Sıfırla</span>
-              </>
-            ) : (
-              <>
-                <span className="text-slate-400 group-hover:text-amber-600 transition-colors">Aşağıda Listele</span>
-                <span className="text-slate-300 group-hover:text-amber-500 group-hover:translate-y-0.5 transition-all">↴</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Total Expenses Card */}
-        <div 
-          onClick={() => handleCardClick('expenses')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
-            selectedCard === 'expenses' 
-              ? 'border-orange-500 ring-2 ring-orange-500/15 bg-orange-50/20 shadow-xs' 
-              : 'bg-white border-[#e5e1d8] shadow-sm hover:border-[#6b705c]/30'
-          }`}
-          id="scorecard-expenses"
-        >
-          <div>
-            <div className="flex justify-between items-start">
-              <span className="text-[10px] tracking-wider text-rose-600 font-bold">TOPLAM GİDERLER</span>
-              <span className={`p-1.5 rounded-full transition-colors ${selectedCard === 'expenses' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 group-hover:bg-orange-100'}`}>
-                <ArrowDownRight className="w-4 h-4" />
-              </span>
-            </div>
-            <div className="mt-2 space-y-1">
-              <h3 className="text-2xl font-serif text-slate-700">{formatMoney(analytics.totalExpenses, { decimals: 2 })}</h3>
-              <p className="text-[10px] text-slate-400 leading-normal">
-                {formatMoney(analytics.sessionExpensesTotal)} seans gideri
-                {analytics.customExpensesTotal > 0 ? ` + ${formatMoney(analytics.customExpensesTotal)} genel klinik` : ''}
-              </p>
-            </div>
-          </div>
-          
-          <div className="mt-3 pt-2.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[10px] transition-all">
-            {selectedCard === 'expenses' ? (
-              <>
-                <span className="font-bold text-orange-600 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
-                  AKTİF FİLTRE
-                </span>
-                <span className="text-orange-500/80 underline font-medium">Sıfırla</span>
-              </>
-            ) : (
-              <>
-                <span className="text-slate-400 group-hover:text-orange-600 transition-colors">Gider Yönetimi</span>
-                <span className="text-slate-300 group-hover:text-orange-500 group-hover:translate-y-0.5 transition-all">↴</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Net Profit Card */}
-        <div 
-          onClick={() => handleCardClick('net')}
-          className={`p-5 rounded-[2rem] border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md flex flex-col justify-between group relative overflow-hidden ${
-            selectedCard === 'net' 
-              ? 'bg-[#505445] border-[#505445] text-white shadow-md' 
-              : 'bg-[#6b705c] text-white border-[#6b705c] shadow-sm hover:bg-[#5f6352]'
-          }`}
-          id="scorecard-net"
-        >
-          <div>
-            <div className="flex justify-between items-start">
-              <span className="text-[10px] tracking-wider text-white/80 font-bold">DÖNEM NET KÂR</span>
-              <span className="p-1.5 rounded-full bg-white/15 text-white transition-colors group-hover:bg-white/25">
-                <TrendingUp className="w-4 h-4" />
-              </span>
-            </div>
-            <div className="mt-2">
-              <h3 className="text-2xl font-serif">{formatMoney(analytics.netIncome, { decimals: 2 })}</h3>
-              <p className="text-[10px] text-white/70 mt-1">Tüm giderler düşülmüş net kazanç.</p>
-            </div>
-          </div>
-          
-          <div className="mt-3 pt-2.5 border-t border-dashed border-white/10 flex items-center justify-between text-[10px] transition-all">
-            {selectedCard === 'net' ? (
-              <>
-                <span className="font-bold text-white flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                  AKTİF FİLTRE
-                </span>
-                <span className="text-white/80 underline font-medium">Sıfırla</span>
-              </>
-            ) : (
-              <>
-                <span className="text-white/60 group-hover:text-white transition-colors">Aşağıda Listele</span>
-                <span className="text-white/40 group-hover:text-white group-hover:translate-y-0.5 transition-all">↴</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* RECONCILIATION & AUDIT CALL TO ACTION BANNER */}
-      <div 
-        onClick={handleGoToAudit}
-        className="bg-gradient-to-br from-[#fdfbf7] via-white to-[#f5f5f0] rounded-[2rem] border border-[#e5e1d8] p-5 sm:p-6 shadow-3xs hover:shadow-md hover:border-[#6b705c]/50 transition-all duration-300 cursor-pointer group relative overflow-hidden"
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#6b705c] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 group-hover:bg-[#585c4c] transition-all">
-              <Calculator className="w-6 h-6" />
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm sm:text-base font-bold text-slate-800 group-hover:text-[#6b705c] transition-colors flex items-center gap-2">
-                  Hesap Tutmadı mı? Seans Sağlaması Yapın
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#6b705c]/10 text-[#6b705c] border border-[#6b705c]/20">
-                  Canlı Sağlama Aracı
-                </span>
-                {zeroPriceAuditCount > 0 && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                    ⚠️ {zeroPriceAuditCount} adet 0 ₺ seans var
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
-                Banka dökümünüz veya ajandanızla sistem rakamları uyuşmadığında; <strong>Seans Sağlama Tablosu</strong> ile kayıtları satır satır seçerek <strong>canlı toplam</strong> alabilir, 0 ₺ veya iptal seansları süzebilir ve mutabakatı kolayca tamamlayabilirsiniz.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 self-start md:self-center">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleGoToAudit();
-              }}
-              className="px-5 py-2.5 rounded-xl bg-[#6b705c] hover:bg-[#585c4c] text-white font-bold text-xs transition-all shadow-xs flex items-center gap-2 group-hover:shadow-sm cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Sağlama Ekranına Git</span>
-              <ChevronRight className="w-4 h-4 text-white/80 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-        </div>
-
-        {/* Subtle Watermark Decoration */}
-        <FileSpreadsheet className="absolute -right-6 -bottom-6 w-32 h-32 text-[#6b705c]/5 pointer-events-none group-hover:scale-110 group-hover:text-[#6b705c]/8 transition-all duration-500" />
-      </div>
-
-      {/* Main Details & Accounting Explorer */}
-      <div 
-        className={`rounded-[2rem] border p-6 space-y-5 animate-fadeIn transition-all duration-700 ${
-          isHighlighted 
-            ? 'bg-amber-50/20 border-amber-400 ring-4 ring-amber-500/20 shadow-md scale-[1.005]' 
-            : 'bg-white border-[#e5e1d8] shadow-sm'
-        }`} 
-        id="accounting-details-section"
-      >
-        {selectedCard && (
-          <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50/60 text-amber-900 text-xs rounded-2xl border border-amber-200 animate-fadeIn">
-            <span className="text-sm">✨</span>
-            <div className="flex-1 leading-relaxed">
-              <span className="font-bold text-amber-800">Seçtiğiniz alana ait döküm listeleniyor: </span>
-              <span className="text-slate-600">
-                Aşağıdaki tablo, tıkladığınız <strong className="text-[#6b705c] font-bold">{selectedCard === 'gross' ? 'Ödenen Brüt Gelir' : selectedCard === 'pending' ? 'Bekleyen Alacak' : selectedCard === 'expenses' ? 'Ödenen Giderler' : 'Dönem Net Kârı'}</strong> özet kartına göre filtrelenmiştir.
-              </span>
-            </div>
-            <button 
-              onClick={() => setSelectedCard(null)} 
-              className="p-1 hover:bg-amber-100 rounded-full text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
-              title="Filtreyi Temizle"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Section Header & View Toggle (Sessions vs General Clinic Expenses) */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#f5f5f0] pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="text-xs font-bold text-[#6b705c] tracking-widest uppercase flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-[#cb997e]" />
-                {selectedCard === 'gross' && 'Ödenen Brüt Gelir Seansları'}
-                {selectedCard === 'pending' && 'Bekleyen Alacak Seansları'}
-                {selectedCard === 'expenses' && 'Gider Dökümü & Genel Kasadan Ödemeler'}
-                {selectedCard === 'net' && 'Dönem Net Kâr Seansları'}
-                {selectedCard === null && 'Dönem Muhasebe Dökümü & Genel Giderler'}
-              </h4>
-            </div>
-            <p className="text-xs text-slate-400">
-              Maaşlar, faturalar, kasadan yapılan ödemeler veya seans başı giderlerinizi tek yerden inceleyin.
+      {/* 4. MAIN ACCOUNTING TABLE (RESPONSIVE: CLASSIC TABLE ON DESKTOP, CLEAN CARDS ON MOBILE) */}
+      <div className="bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs overflow-hidden">
+        {filteredSessions.length === 0 ? (
+          <div className="py-14 px-4 text-center">
+            <p className="text-sm font-semibold text-slate-700">Bu ay için seans bulunamadı</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+              {searchQuery 
+                ? 'Arama kriterlerinize uygun seans kaydı bulunmuyor.' 
+                : 'Telefon takviminizdeki seanslar otomatik olarak senkronize edilir.'}
             </p>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Toggle Sub-tabs for Expenses */}
-            {(selectedCard === 'expenses' || selectedCard === null) && (
-              <div className="flex items-center p-1 bg-[#f5f5f0] rounded-xl border border-[#e5e1d8]/60 text-xs">
-                <button
-                  onClick={() => setExpenseSubTab('general')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    expenseSubTab === 'general' ? 'bg-white text-[#6b705c] shadow-3xs font-bold' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Receipt className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Genel Klinik Giderleri</span>
-                  <span className="bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
-                    {filteredCustomExpenses.length}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setExpenseSubTab('sessions')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    expenseSubTab === 'sessions' ? 'bg-white text-[#6b705c] shadow-3xs font-bold' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Seans Başı Giderler</span>
-                  <span className="bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
-                    {analytics.sessionExpensesCount}
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* Button to Add New Clinic Expense */}
-            <button
-              onClick={handleOpenAddModal}
-              className="px-3.5 py-2 rounded-xl bg-[#6b705c] hover:bg-[#5b604c] text-white text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Gider Ekle (Maaş/Fatura/Kasa)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* View Content: GENERAL CLINIC EXPENSES */}
-        {(selectedCard === 'expenses' && expenseSubTab === 'general') || (selectedCard === null && expenseSubTab === 'general') ? (
-          <div className="space-y-4 animate-fade-in">
-            {/* Filter & Search Bar for Custom Expenses */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#fdfbf7] p-3.5 rounded-2xl border border-[#e5e1d8]">
-              {/* Category Chips Filter */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1 custom-scrollbar text-xs">
-                <button
-                  onClick={() => setExpenseCategoryFilter('all')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                    expenseCategoryFilter === 'all'
-                      ? 'bg-[#6b705c] text-white shadow-3xs'
-                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-[#e5e1d8]'
-                  }`}
-                >
-                  Tümü ({filteredCustomExpenses.length})
-                </button>
-                {Object.entries(EXPENSE_CATEGORIES).map(([catKey, catMeta]) => {
-                  const CatIcon = catMeta.icon;
-                  const count = filteredCustomExpenses.filter(e => e.category === catKey).length;
-                  if (count === 0 && expenseCategoryFilter !== catKey) return null;
-                  return (
-                    <button
-                      key={catKey}
-                      onClick={() => setExpenseCategoryFilter(catKey)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                        expenseCategoryFilter === catKey
-                          ? 'bg-[#6b705c] text-white shadow-3xs font-bold'
-                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-[#e5e1d8]'
-                      }`}
-                    >
-                      <CatIcon className="w-3.5 h-3.5" />
-                      <span>{catMeta.label}</span>
-                      <span className="text-[10px] opacity-80">({count})</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full sm:w-64 shrink-0">
-                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
-                <input
-                  type="text"
-                  placeholder="Gider adı, not veya tutar ara..."
-                  value={detailSearchQuery}
-                  onChange={(e) => setDetailSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-white border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] placeholder:text-slate-400"
-                />
-                {detailSearchQuery && (
-                  <button 
-                    onClick={() => setDetailSearchQuery('')}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* List of General Clinic Expenses */}
-            {detailedFilteredCustomExpenses.length === 0 ? (
-              <div className="text-center py-12 bg-[#fdfbf7]/60 rounded-2xl border border-dashed border-[#e5e1d8] space-y-3">
-                <Receipt className="w-10 h-10 text-slate-300 mx-auto" />
-                <p className="text-xs text-slate-500 font-medium">
-                  {detailSearchQuery || expenseCategoryFilter !== 'all'
-                    ? 'Aradığınız kriterlere uygun klinik gideri bulunamadı.'
-                    : 'Seçili dönemde kayıtlı genel klinik gideri (maaş, fatura, kasadan ödeme) bulunmuyor.'}
-                </p>
-                <button
-                  onClick={handleOpenAddModal}
-                  className="px-4 py-2 text-xs font-bold bg-[#6b705c] text-white rounded-xl hover:bg-[#5b604c] transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>İlk Gideri Ekle</span>
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
-                {detailedFilteredCustomExpenses.map(item => {
-                  const catMeta = EXPENSE_CATEGORIES[item.category] || EXPENSE_CATEGORIES.other;
-                  const CatIcon = catMeta.icon;
-                  const payMeta = PAYMENT_METHODS[item.paymentMethod || 'cash'] || PAYMENT_METHODS.cash;
-                  const PayIcon = payMeta.icon;
-
-                  let displayDate = item.date;
-                  try {
-                    const dObj = new Date(item.date);
-                    displayDate = dObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
-                  } catch (e) {}
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-4 rounded-2xl border border-[#e5e1d8]/70 hover:border-[#6b705c]/40 bg-white shadow-2xs hover:shadow-xs transition-all flex items-start justify-between gap-3 group"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${catMeta.bg} ${catMeta.color} ${catMeta.border}`}>
-                          <CatIcon className="w-5 h-5" />
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h5 className="font-bold text-slate-800 text-sm leading-snug">{item.title}</h5>
-                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wider border ${catMeta.bg} ${catMeta.color} ${catMeta.border}`}>
-                              {catMeta.label}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-[#a5a58d]" />
-                              {displayDate}
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-semibold">
-                              <PayIcon className="w-3 h-3 text-slate-500" />
-                              {payMeta.label}
-                            </span>
-                          </div>
-
-                          {item.notes && (
-                            <p className="text-xs text-slate-600 bg-[#fdfbf7] p-2 rounded-xl border border-[#e5e1d8]/50 italic">
-                              "{item.notes}"
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end justify-between gap-3 self-stretch shrink-0">
-                        <span className="text-base font-bold text-rose-700 font-serif">
-                          -{formatMoney(item.amount, { decimals: 2 })}
-                        </span>
-
-                        <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleOpenEditModal(item)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Düzenle"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => onDeleteExpense?.(item.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Gideri Sil"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         ) : (
-          /* View Content: SESSIONS or OTHER SCORECARD FILTERED LIST */
-          <div className="space-y-3 animate-fade-in">
-            {/* Search Bar */}
-            <div className="flex justify-between items-center gap-3">
-              <div className="text-xs text-slate-500 font-semibold">
-                Filtrelenen Seans Sayısı: <span className="text-[#6b705c] font-bold">{detailedFilteredSessions.length} adet</span>
-              </div>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#a5a58d]" />
-                <input
-                  type="text"
-                  placeholder="Danışan adı, tarih veya notlarda ara..."
-                  value={detailSearchQuery}
-                  onChange={(e) => setDetailSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] placeholder:text-slate-400"
-                />
-                {detailSearchQuery && (
-                  <button 
-                    onClick={() => setDetailSearchQuery('')}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+          <>
+            {/* DESKTOP TABLE: Tarih | Seans | Süre | Ücret | Durum */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[#e5e1d8] bg-[#fdfbf7]/70 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4 w-28">Tarih</th>
+                    <th className="py-3 px-4">Seans</th>
+                    <th className="py-3 px-4 w-28">Süre</th>
+                    <th className="py-3 px-4 w-36 text-right">Ücret</th>
+                    <th className="py-3 px-4 w-32 text-center">Durum</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f5f5f0]">
+                  {filteredSessions.map(session => {
+                    const isPaid = session.paymentStatus === 'paid';
+                    return (
+                      <tr 
+                        key={session.id}
+                        onClick={() => onEditSession?.(session)}
+                        className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
+                      >
+                        {/* Tarih */}
+                        <td className="py-3.5 px-4 text-xs font-semibold text-slate-600">
+                          {formatShortDate(session.date)}
+                        </td>
+
+                        {/* Seans (Danışan) */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-slate-900 text-sm">
+                            {formatClientName(session.clientName)}
+                          </div>
+                          {session.notes && (
+                            <div className="text-[11px] text-slate-400 truncate max-w-xs mt-0.5">
+                              {session.notes}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Süre */}
+                        <td className="py-3.5 px-4 text-xs text-slate-500 font-medium">
+                          {session.duration || 50} dk
+                        </td>
+
+                        {/* Ücret */}
+                        <td className="py-3.5 px-4 text-sm font-bold text-slate-900 text-right">
+                          {formatMoney(session.price)}
+                        </td>
+
+                        {/* Durum (Tek Tıkla Ödendi / Bekliyor Değiştir) */}
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePaymentToggle(session.id);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${
+                              isPaid
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 shadow-3xs'
+                                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 shadow-3xs'
+                            }`}
+                            title="Ödeme durumunu değiştirmek için tıklayın"
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-600' : 'bg-amber-600'}`} />
+                            {isPaid ? 'Ödendi' : 'Bekliyor'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            {/* List of Sessions */}
-            {detailedFilteredSessions.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs italic bg-[#fdfbf7]/50 rounded-2xl border border-dashed border-[#e5e1d8]">
-                {detailSearchQuery ? 'Aradığınız kriterlere uygun seans bulunamadı.' : 'Bu kategoride listelenecek seans bulunmuyor.'}
-              </div>
-            ) : (
-              <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2.5 custom-scrollbar">
-                {detailedFilteredSessions.map(s => {
-                  const sPrice = Number(s.price) || 0;
-                  const sBabyFee = s.hasBabysitterFee ? (Number(s.babysitterFeeAmount) || 0) : 0;
-                  const sOfficeFee = s.hasOfficeRentFee ? (Number(s.officeRentFeeAmount) || 0) : 0;
-                  const isInclusive = s.isKdvInclusive !== false;
-                  const kRate = s.kdvRate ?? settings.defaultKdvRate ?? 20;
-                  const sKdvCut = s.hasKDV 
-                    ? (s.kdvAmount ?? (isInclusive ? Math.round((sPrice * kRate) / (100 + kRate)) : Math.round((sPrice * kRate) / 100)))
-                    : 0;
-                  const sGross = s.hasKDV && !isInclusive ? (sPrice + sKdvCut) : sPrice;
-                  const totalSExp = sBabyFee + sOfficeFee + sKdvCut;
-                  
-                  const isOnline = s.type === 'online';
-                  const isCancelled = s.type === 'cancelled';
-                  const isPaid = s.paymentStatus === 'paid';
-
-                  let displayDate = s.date;
-                  try {
-                    const dObj = new Date(s.date);
-                    displayDate = dObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
-                  } catch (e) {}
-
-                  const expParts: string[] = [];
-                  if (sBabyFee > 0) expParts.push(`${formatMoney(sBabyFee)} bakıcı`);
-                  if (sOfficeFee > 0) expParts.push(`${formatMoney(sOfficeFee)} ofis`);
-                  if (sKdvCut > 0) expParts.push(`${formatMoney(sKdvCut)} KDV (${isInclusive ? 'Dahil' : 'Hariç'})`);
-
-                  return (
-                    <div 
-                      key={s.id} 
-                      className="border border-[#e5e1d8]/60 hover:border-[#6b705c]/40 rounded-2xl p-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-[#fdfbf7]/20"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
-                          isCancelled ? 'bg-red-50 text-red-600' : isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                        }`}>
-                          {isCancelled ? 'İ' : isOnline ? 'O' : 'Y'}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h5 className="font-bold text-slate-800 text-sm">{s.clientName}</h5>
-                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wider ${
-                              isCancelled 
-                                ? 'bg-red-50 text-red-600 border border-red-100' 
-                                : isOnline 
-                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                                  : 'bg-amber-50 text-amber-600 border border-amber-100'
-                            }`}>
-                              {isCancelled ? 'İPTAL' : isOnline ? 'ONLINE' : 'YÜZYÜZE'}
-                            </span>
-                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wider ${
-                              s.paymentStatus === 'paid' 
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                                : s.paymentStatus === 'partial'
-                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                  : 'bg-red-50 text-red-700 border border-red-100'
-                            }`}>
-                              {s.paymentStatus === 'paid' 
-                                ? 'ÖDENDİ' 
-                                : s.paymentStatus === 'partial'
-                                  ? `◐ KISMİ (₺${(s.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
-                                  : 'ÖDENMEDİ'}
-                            </span>
-                            {s.paymentStatus === 'paid' && s.paymentMethod && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-slate-50 text-slate-600 border border-slate-200"
-                                title={`Ödeme Yöntemi: ${
-                                  s.paymentMethod === 'card' ? 'Kredi Kartı' : s.paymentMethod === 'cash' ? 'Nakit' : 'Banka / Havale'
-                                }`}
-                              >
-                                {s.paymentMethod === 'card' ? (
-                                  <CreditCard className="w-2.5 h-2.5 text-blue-600" />
-                                ) : s.paymentMethod === 'cash' ? (
-                                  <Banknote className="w-2.5 h-2.5 text-emerald-600" />
-                                ) : (
-                                  <Landmark className="w-2.5 h-2.5 text-purple-600" />
-                                )}
-                                <span>
-                                  {s.paymentMethod === 'card' ? 'Kart' : s.paymentMethod === 'cash' ? 'Nakit' : 'Havale'}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {displayDate} • {s.time} {s.notes ? `• ${s.notes}` : ''}
-                          </p>
-                        </div>
+            {/* MOBILE VIEW: Satır / Kart Yapısı */}
+            {/*
+              Ahmet Yılmaz
+              02 Eylül · 60 dk
+              1.500 TL                    Ödendi
+            */}
+            <div className="divide-y divide-[#f5f5f0] md:hidden">
+              {filteredSessions.map(session => {
+                const isPaid = session.paymentStatus === 'paid';
+                return (
+                  <div 
+                    key={session.id}
+                    onClick={() => onEditSession?.(session)}
+                    className="p-4 flex flex-col gap-2 hover:bg-slate-50/70 transition-colors cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-bold text-slate-900 text-sm">
+                        {formatClientName(session.clientName)}
                       </div>
-
-                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100">
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-medium">
-                            {s.hasKDV && !isInclusive ? 'Tahsilat (KDV Dahil)' : 'Seans Ücreti'}
-                          </span>
-                          <span className="text-sm font-bold text-slate-800">{formatMoney(sGross, { decimals: 2 })}</span>
-                          {s.hasKDV && !isInclusive && (
-                            <span className="text-[9px] text-slate-400 block font-normal">
-                              ({formatMoney(sPrice)} + KDV)
-                            </span>
-                          )}
-                        </div>
-                        
-                        {totalSExp > 0 && (
-                          <div className="text-right bg-orange-50/40 px-2.5 py-1 rounded-xl border border-orange-100/50">
-                            <span className="text-[9px] text-orange-600 block font-bold tracking-wider uppercase">Seans Gideri / Kesintisi</span>
-                            <span className="text-[11px] font-semibold text-slate-600">
-                              {formatMoney(totalSExp)} 
-                              {expParts.length > 0 && (
-                                <span className="text-[9px] text-slate-400 font-normal ml-1">
-                                  ({expParts.join(' + ')})
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
+                      <div className="text-xs text-slate-500 mt-0.5 font-medium">
+                        {formatLongDate(session.date)} · {session.duration || 50} dk
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-base font-bold text-slate-900">
+                        {formatMoney(session.price)}
+                      </span>
+
+                      {/* Durum Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePaymentToggle(session.id);
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${
+                          isPaid
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                        }`}
+                        title="Ödeme durumunu değiştirmek için tıklayın"
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-600' : 'bg-amber-600'}`} />
+                        {isPaid ? 'Ödendi' : 'Bekliyor'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Revenue over time Chart */}
-        <div className="lg:col-span-8 bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm">
-          <div className="mb-4">
-            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider">
-              {preset === 'all' ? 'GENEL' : 'DÖNEMLİK'} MUHASEBE TRENDİ
-            </h4>
-            {showExplanations && (
-              <p className="text-xs text-slate-400 animate-fade-in">Güne göre brüt gelir, toplam giderler (seans başı + genel klinik) ve net kazanç</p>
+      {/* 5. SECONDARY SECTION: KLİNİK GİDERLERİ & NET KÂR (COLLAPSIBLE / NON-INTRUSIVE) */}
+      <div className="pt-2">
+        <button
+          type="button"
+          onClick={() => setIsExpensesSectionOpen(!isExpensesSectionOpen)}
+          className="flex items-center justify-between w-full py-2.5 px-3 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-[#f5f5f0]/60 hover:bg-[#f5f5f0] rounded-xl border border-[#e5e1d8] transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <span>Klinik Giderleri & Net Kâr</span>
+            {summary.customExpensesTotal > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-800">
+                {formatMoney(summary.customExpensesTotal)}
+              </span>
             )}
           </div>
-          
-          <div className="h-64 w-full" id="accounting-recharts-bar">
-            {analytics.chartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
-                Seçili tarih aralığında grafik oluşturulacak veri bulunmuyor.
+          <div className="flex items-center gap-1.5 text-slate-500">
+            <span>{isExpensesSectionOpen ? 'Gizle' : 'Detay'}</span>
+            {isExpensesSectionOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </div>
+        </button>
+
+        {isExpensesSectionOpen && (
+          <div className="mt-3 p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f5f5f0]">
+              <div>
+                <p className="text-xs font-bold text-slate-800">Ay Sonu Net Kâr</p>
+                <p className="text-xl font-bold text-[#6b705c] mt-0.5">
+                  {formatMoney(summary.netIncome)}
+                </p>
               </div>
+
+              {onAddExpense && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddExpense}
+                  className="px-3 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Gider Ekle</span>
+                </button>
+              )}
+            </div>
+
+            {/* Expenses List */}
+            {monthCustomExpenses.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-3">Bu ay için kaydedilmiş genel klinik gideri yok.</p>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1eb" />
-                  <XAxis dataKey="tarih" stroke="#a5a58d" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#a5a58d" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '1rem', border: '1px solid #e5e1d8' }} 
-                    labelStyle={{ fontWeight: 'bold', color: '#6b705c', fontSize: '11px' }}
-                    itemStyle={{ fontSize: '11px' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  <Bar dataKey="Brüt Gelir" fill="#6b705c" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Toplam Gider" fill="#e11d48" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Net Gelir" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Session Distributions Chart */}
-        <div className="lg:col-span-4 bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm flex flex-col justify-between">
-          <div>
-            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider mb-1">SEANS DAĞILIMLARI</h4>
-            {showExplanations && (
-              <p className="text-xs text-slate-400 font-sans animate-fade-in">Seçili dönemdeki seans türlerinin oranları</p>
-            )}
-          </div>
-
-          <div className="flex-1 flex items-center justify-center h-48 py-2">
-            {analytics.typeData.length === 0 ? (
-              <div className="text-xs text-slate-400 italic">Veri bulunmuyor</div>
-            ) : (
-              <div className="relative w-full h-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analytics.typeData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={65}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {analytics.typeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '0.5rem' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute text-center">
-                  <span className="block text-2xl font-serif text-[#6b705c] font-bold">
-                    {filteredSessions.filter(s => s.type !== 'cancelled').length}
-                  </span>
-                  <span className="text-[9px] text-[#a5a58d] tracking-widest font-bold">DÖNEM AKTİF</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2 border-t border-[#f5f5f0] pt-3">
-            <div className="flex justify-between items-center text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                <span className="text-slate-600">Online Seans</span>
-              </div>
-              <span className="font-semibold text-[#6b705c]">{analytics.onlineCount} adet</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                <span className="text-slate-600">Yüzyüze Seans</span>
-              </div>
-              <span className="font-semibold text-[#6b705c]">{analytics.faceToFaceCount} adet</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-                <span className="text-slate-600">İptal Seans</span>
-              </div>
-              <span className="font-semibold text-[#6b705c]">{analytics.cancelledCount} adet</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Payment Methods Breakdown Widget */}
-      <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h4 className="text-sm font-bold text-[#6b705c] tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-[#cb997e]" />
-              ÖDEME YÖNTEMLERİNE GÖRE TAHSİLAT DAĞILIMI
-            </h4>
-            {showExplanations && (
-              <p className="text-xs text-slate-400 animate-fade-in">
-                Seçili dönemde tahsil edilen seans gelirlerinin kart, nakit ve havale/EFT kırılımı
-              </p>
-            )}
-          </div>
-          <div className="text-xs font-semibold text-slate-500 bg-[#f5f5f0] px-3 py-1.5 rounded-full border border-[#e5e1d8]/50 self-start sm:self-auto">
-            Toplam Tahsilat: <span className="text-[#6b705c] font-bold">{formatMoney(analytics.grossIncome, { decimals: 2 })}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-          {/* Credit Card */}
-          <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-xs">
-                <CreditCard className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Kredi Kartı / POS</span>
-                <h5 className="text-base font-bold text-slate-800 font-serif">
-                  {formatMoney(analytics.paymentMethodBreakdown.card, { decimals: 2 })}
-                </h5>
-              </div>
-            </div>
-            {analytics.grossIncome > 0 && (
-              <span className="text-xs font-bold text-blue-600 bg-white/80 px-2 py-0.5 rounded-lg border border-blue-200/60">
-                %{Math.round((analytics.paymentMethodBreakdown.card / analytics.grossIncome) * 100)}
-              </span>
-            )}
-          </div>
-
-          {/* Cash */}
-          <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                <Banknote className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Nakit / Elden</span>
-                <h5 className="text-base font-bold text-slate-800 font-serif">
-                  {formatMoney(analytics.paymentMethodBreakdown.cash, { decimals: 2 })}
-                </h5>
-              </div>
-            </div>
-            {analytics.grossIncome > 0 && (
-              <span className="text-xs font-bold text-emerald-600 bg-white/80 px-2 py-0.5 rounded-lg border border-emerald-200/60">
-                %{Math.round((analytics.paymentMethodBreakdown.cash / analytics.grossIncome) * 100)}
-              </span>
-            )}
-          </div>
-
-          {/* Bank Transfer */}
-          <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
-                <Landmark className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">Havale / EFT</span>
-                <h5 className="text-base font-bold text-slate-800 font-serif">
-                  {formatMoney(analytics.paymentMethodBreakdown.transfer, { decimals: 2 })}
-                </h5>
-              </div>
-            </div>
-            {analytics.grossIncome > 0 && (
-              <span className="text-xs font-bold text-purple-600 bg-white/80 px-2 py-0.5 rounded-lg border border-purple-200/60">
-                %{Math.round((analytics.paymentMethodBreakdown.transfer / analytics.grossIncome) * 100)}
-              </span>
-            )}
-          </div>
-
-          {/* Unspecified / Other */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-500 text-white flex items-center justify-center shadow-xs">
-                <Wallet className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">Belirtilmemiş</span>
-                <h5 className="text-base font-bold text-slate-800 font-serif">
-                  {formatMoney(analytics.paymentMethodBreakdown.unspecified, { decimals: 2 })}
-                </h5>
-              </div>
-            </div>
-            {analytics.grossIncome > 0 && analytics.paymentMethodBreakdown.unspecified > 0 && (
-              <span className="text-xs font-bold text-slate-600 bg-white/80 px-2 py-0.5 rounded-lg border border-slate-200">
-                %{Math.round((analytics.paymentMethodBreakdown.unspecified / analytics.grossIncome) * 100)}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* KAPATILAN DÖNEMLER (CLOSED ACCOUNTING PERIODS) */}
-      <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-5 h-5 text-[#6b705c]" />
-            <h4 className="text-sm font-bold text-slate-800 tracking-wide">Kapatılan Dönemler</h4>
-            {closedMonthEntries.length > 0 && (
-              <span className="text-xs text-slate-400">({closedMonthEntries.length})</span>
-            )}
-          </div>
-
-          <div>
-            {onOpenMonthClosingModal && (
-              <button
-                type="button"
-                onClick={() => onOpenMonthClosingModal()}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Lock className="w-3.5 h-3.5 text-slate-300" />
-                <span>Ayı Kapat</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {closedMonthEntries.length === 0 ? (
-          <div className="py-8 text-center rounded-2xl bg-slate-50/50 border border-dashed border-slate-200 space-y-2">
-            <Lock className="w-6 h-6 text-slate-300 mx-auto" />
-            <p className="text-xs text-slate-500 font-medium">Henüz kapatılmış dönem bulunmuyor.</p>
-            {unclosedPastMonths.length > 0 && onOpenMonthClosingModal && (
-              <button
-                type="button"
-                onClick={() => onOpenMonthClosingModal(unclosedPastMonths[0])}
-                className="mt-1 px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5"
-              >
-                <span>{formatMonthKey(unclosedPastMonths[0])} Ayını Kapat</span>
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-slate-400 text-[11px] font-medium border-b border-slate-100">
-                <tr>
-                  <th className="py-2.5 px-3">Dönem</th>
-                  <th className="py-2.5 px-3">Kapanış</th>
-                  <th className="py-2.5 px-3">Kapatan</th>
-                  <th className="py-2.5 px-3 text-center">Seans</th>
-                  <th className="py-2.5 px-3 text-right">Brüt Gelir</th>
-                  <th className="py-2.5 px-3 text-right">Giderler</th>
-                  <th className="py-2.5 px-3 text-right">Net Kâr</th>
-                  <th className="py-2.5 px-3 text-center">Durum</th>
-                  <th className="py-2.5 px-3 text-right">İşlem</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {closedMonthEntries.map((record) => (
-                  <tr key={record.monthKey} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-2.5 px-3 font-semibold text-slate-800">
-                      {formatMonthKey(record.monthKey)}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500">
-                      {new Date(record.closedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500">
-                      {record.closedBy || 'Terapist'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">
-                      {record.sessionCount}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-medium text-slate-800">
-                      {formatMoney(record.totalIncome)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-medium text-rose-600">
-                      {formatMoney(record.totalExpenses)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-800">
-                      {formatMoney(record.netIncome)}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className="text-xs text-emerald-700 font-medium">
-                        ✓ Kilitli
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      {onOpenMonthClosingModal && (
+              <div className="divide-y divide-[#f5f5f0]">
+                {monthCustomExpenses.map(item => (
+                  <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-800">{item.title}</p>
+                      <p className="text-[10px] text-slate-400">{item.date} · {EXPENSE_CATEGORIES[item.category]?.label || 'Genel'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-rose-600">-{formatMoney(item.amount)}</span>
+                      {onUpdateExpense && (
                         <button
                           type="button"
-                          onClick={() => onOpenMonthClosingModal(record.monthKey)}
-                          className="text-xs text-slate-500 hover:text-slate-900 transition-colors"
+                          onClick={() => handleOpenEditExpense(item)}
+                          className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
                         >
-                          İncele
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-                    </td>
-                  </tr>
+                      {onDeleteExpense && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Bu gideri silmek istediğinize emin misiniz?')) {
+                              onDeleteExpense(item.id);
+                              showToast?.('Gider silindi.', 'info');
+                            }
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Expense Modal (Add & Edit) */}
-      <AnimatePresence>
-        {isExpenseModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-[2rem] border border-[#e5e1d8] shadow-2xl max-w-lg w-full overflow-hidden"
-            >
-              <div className="p-6 bg-[#6b705c] text-white flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-white/10 rounded-xl">
-                    <Receipt className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base">
-                      {editingExpense ? 'Gideri Düzenle' : 'Yeni Klinik Gideri Ekle'}
-                    </h3>
-                    <p className="text-xs text-white/80">Maaş, fatura veya kasadan yapılan ödemeler</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsExpenseModalOpen(false)}
-                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/80 hover:text-white cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+      {/* EXPENSE ADD / EDIT MODAL */}
+      {isExpenseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-[#e5e1d8] p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-[#f5f5f0]">
+              <h3 className="text-sm font-bold text-slate-800">
+                {editingExpense ? 'Gideri Düzenle' : 'Yeni Klinik Gideri'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsExpenseModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExpense} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Gider Başlığı</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Örn: Ofis internet faturası"
+                  value={expenseTitle}
+                  onChange={(e) => setExpenseTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                />
               </div>
 
-              <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">Gider Başlığı / Açıklama *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Örn: Temmuz Ayı Sekreter Maaşı, Elektrik Faturası, Mutfak Alışverişi..."
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium"
-                  />
-                </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Tutar (₺)</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  placeholder="0"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">Gider Kategorisi</label>
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value as ExpenseCategory)}
-                      className="w-full px-3 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium cursor-pointer"
-                    >
-                      {Object.entries(EXPENSE_CATEGORIES).map(([key, meta]) => (
-                        <option key={key} value={key}>
-                          {meta.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory)}
+                  className="w-full px-3 py-2 border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] bg-white"
+                >
+                  {Object.entries(EXPENSE_CATEGORIES).map(([key, meta]) => (
+                    <option key={key} value={key}>{meta.label}</option>
+                  ))}
+                </select>
+              </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">Tutar (₺) *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Örn: 1500"
-                      value={formAmount}
-                      onChange={(e) => setFormAmount(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-bold text-slate-800"
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Tarih</label>
+                <input
+                  type="date"
+                  required
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
+                />
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">Ödeme Tarihi</label>
-                    <input
-                      type="date"
-                      required
-                      value={formDate}
-                      onChange={(e) => setFormDate(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">Ödeme Yöntemi</label>
-                    <select
-                      value={formPaymentMethod}
-                      onChange={(e) => setFormPaymentMethod(e.target.value as any)}
-                      className="w-full px-3 py-2.5 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c] font-medium cursor-pointer"
-                    >
-                      <option value="cash">Nakit / Kasa Ödemesi</option>
-                      <option value="bank">Banka / Havale / EFT</option>
-                      <option value="card">Kredi Kartı / Banka Kartı</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">Ek Notlar / Detaylar</label>
-                  <textarea
-                    rows={2}
-                    placeholder="Varsa fatura no, ödeyen/alan bilgisi veya ek açıklamalar..."
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl focus:outline-none focus:border-[#6b705c]"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsExpenseModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    Vazgeç
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold text-white bg-[#6b705c] hover:bg-[#5b604c] rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{editingExpense ? 'Gideri Güncelle' : 'Kaydet'}</span>
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsExpenseModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl border border-[#e5e1d8] text-slate-600 hover:bg-slate-50 font-semibold"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-[#6b705c] hover:bg-[#585c4c] text-white font-semibold"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
+
     </div>
   );
 }
