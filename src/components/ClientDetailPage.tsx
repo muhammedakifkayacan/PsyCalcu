@@ -54,6 +54,7 @@ interface ClientDetailPageProps {
   onMarkAllPaid?: (clientName: string) => void;
 }
 
+const TURKISH_MONTHS_FULL = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const TURKISH_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 const TURKISH_DAYS_FULL = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const TURKISH_DAYS_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
@@ -720,165 +721,138 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         </div>
       ) : viewLayout === 'cards' ? (
         /* ========================================================================= */
-        /* CARDS GRID VIEW                                                           */
+        /* CARDS GRID VIEW - APPLE-STYLE HIERARCHY & DATE FOCUS                      */
         /* ========================================================================= */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
           {displaySessions.map((session, index) => {
             const isCancelled = session.type === 'cancelled';
             const isPaid = session.paymentStatus === 'paid';
             const isPartial = session.paymentStatus === 'partial';
             
-            // Safe date parsing for Turkish display
+            // Safe date parsing for prominent Turkish display
             const dateParts = (session.date || '').split('-');
-            let formattedDate = session.date;
+            let year = '';
+            let monthFull = '';
+            let monthShort = '';
+            let dayNum = session.date || '';
             let dayName = '';
+            
             if (dateParts.length === 3) {
               const y = parseInt(dateParts[0], 10);
               const m = parseInt(dateParts[1], 10) - 1;
               const d = parseInt(dateParts[2], 10);
-              const monthName = TURKISH_MONTHS_SHORT[m] || dateParts[1];
+              year = dateParts[0];
+              monthFull = TURKISH_MONTHS_FULL[m] || dateParts[1];
+              monthShort = TURKISH_MONTHS_SHORT[m] || dateParts[1];
+              dayNum = String(d);
               const dateObj = new Date(y, m, d);
-              dayName = TURKISH_DAYS_SHORT[dateObj.getDay()] || '';
-              formattedDate = `${d} ${monthName} ${y}`;
+              dayName = TURKISH_DAYS_FULL[dateObj.getDay()] || '';
             }
 
             return (
               <div
                 key={session.id || index}
-                className={`rounded-2xl border transition-all p-4 shadow-3xs flex flex-col justify-between gap-3.5 hover:shadow-md ${
+                className={`group rounded-2xl border transition-all duration-200 p-4 sm:p-5 flex flex-col justify-between gap-3.5 hover:shadow-md ${
                   isCancelled
-                    ? 'opacity-60 bg-slate-50 border-slate-200'
+                    ? 'opacity-55 bg-slate-50/70 border-slate-200'
                     : isPaid
-                    ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-500/20 hover:border-emerald-400'
+                    ? 'bg-[#fcfdfa] border-emerald-300/90 shadow-2xs hover:border-emerald-400'
                     : isPartial
-                    ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-500/20 hover:border-amber-400'
-                    : 'bg-white border-slate-200 hover:border-slate-300'
+                    ? 'bg-[#fffdf9] border-amber-300/90 shadow-2xs hover:border-amber-400'
+                    : 'bg-white border-slate-200/80 shadow-2xs hover:border-slate-300'
                 }`}
               >
-                {/* Card Header: Type Selector / Badge (top-left) + Date & Time (top-right) */}
-                <div className="flex items-start justify-between gap-2">
-                  {/* Type Selector Dropdown / Badge */}
+                {/* 1. HERO HEADER: PROMINENT DATE (FOCAL POINT) + SLEEK PAYMENT PILL */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-snug">
+                      {dayNum} {monthFull} {year}
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="font-semibold text-slate-700">{dayName}</span>
+                      <span className="text-slate-300">·</span>
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {session.time || '00:00'} ({session.duration || 50} dk)
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Sleek Apple-Style Payment Status Button (1-Click Toggle) */}
                   <button
                     type="button"
-                    onClick={() => {
-                      const nextType: SessionType = session.type === 'online' ? 'face-to-face' : (session.type === 'face-to-face' ? 'cancelled' : 'online');
-                      handleInlineTypeChange(session, nextType);
-                    }}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-extrabold border transition-all cursor-pointer shadow-3xs active:scale-95 ${
-                      isCancelled 
-                        ? 'bg-rose-100 text-rose-800 border-rose-200' 
-                        : session.type === 'face-to-face' 
-                          ? 'bg-amber-100 text-amber-900 border-amber-200' 
-                          : 'bg-sky-100 text-sky-900 border-sky-200'
+                    onClick={() => handleInlinePaymentToggle(session)}
+                    className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shadow-3xs active:scale-95 ${
+                      isPaid 
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' 
+                        : isPartial 
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100' 
+                        : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                     }`}
-                    title="Seans Türünü Değiştir (Tıkla: Online ↔ Yüzyüze ↔ İptal)"
+                    title="Ödeme durumunu değiştirmek için tıklayın (Ödendi ↔ Bekliyor)"
                   >
-                    {isCancelled ? (
-                      <Ban className="w-3.5 h-3.5" />
-                    ) : session.type === 'face-to-face' ? (
-                      <MapPin className="w-3.5 h-3.5" />
+                    {isPaid ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                        <span>Ödendi</span>
+                      </>
+                    ) : isPartial ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span>Kısmi ({formatMoney(session.paidAmount || 0)})</span>
+                      </>
                     ) : (
-                      <Laptop className="w-3.5 h-3.5" />
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-rose-500" />
+                        <span>Bekliyor</span>
+                      </>
                     )}
-                    <span>{isCancelled ? 'İptal' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'Online'}</span>
                   </button>
-
-                  {/* Date & Time info */}
-                  <div className="text-right">
-                    <div className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center justify-end gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{formattedDate}</span>
-                      {dayName && <span className="text-slate-400 font-medium">({dayName})</span>}
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-semibold flex items-center justify-end gap-1 mt-0.5">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      <span>{session.time || '00:00'} · {session.duration || 50} dk</span>
-                    </div>
-                  </div>
                 </div>
 
-                {/* Card Body: Financial Box & Extra Expense Chips */}
-                <div className="space-y-2.5 pt-1">
-                  {/* Price & Payment Status Row */}
-                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
-                    isPaid 
-                      ? 'bg-emerald-100/50 border-emerald-200' 
-                      : isPartial 
-                        ? 'bg-amber-100/40 border-amber-200' 
-                        : 'bg-slate-50/90 border-slate-100'
-                  }`}>
-                    {/* Inline Price Editor */}
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Seans Ücreti</span>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-xs font-bold text-slate-400">₺</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="50"
-                          value={session.price}
-                          onChange={e => handleInlinePriceChange(session, Number(e.target.value) || 0)}
-                          className={`w-20 bg-transparent text-base font-extrabold focus:outline-none ${isCancelled ? 'line-through text-slate-400' : isPaid ? 'text-emerald-900 font-black' : 'text-slate-900'}`}
-                          title="Ücreti doğrudan değiştirmek için yazın"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Inline Payment Status Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleInlinePaymentToggle(session)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs active:scale-95 ${
-                        isPaid 
-                          ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-sm' 
-                          : isPartial 
-                            ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' 
-                            : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                      }`}
-                      title="Ödeme Durumunu Değiştir (Tıkla: Ödendi ↔ Ödenmedi)"
-                    >
-                      {isPaid ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                          <span>✓ ÖDENDİ</span>
-                        </>
-                      ) : isPartial ? (
-                        <>
-                          <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
-                          <span>KISMİ (₺{session.paidAmount})</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
-                          <span>BEKLİYOR</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Extra Expense Tags (Bakıcı & Ofis) */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                {/* 2. SECONDARY DETAILS: TYPE, FEE & EXPENSES (CLEAN UNBOXED METADATA) */}
+                <div className="flex items-center justify-between gap-3 pt-1 text-xs">
+                  {/* Left: Type tag & extra metadata */}
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <button
                       type="button"
                       onClick={() => {
-                        onSaveSession({
-                          ...session,
-                          hasBabysitterFee: !session.hasBabysitterFee,
-                          babysitterFeeAmount: !session.hasBabysitterFee ? (session.babysitterFeeAmount || settings.defaultBabysitterFee || 250) : 0
-                        });
+                        const nextType: SessionType = session.type === 'online' ? 'face-to-face' : (session.type === 'face-to-face' ? 'cancelled' : 'online');
+                        handleInlineTypeChange(session, nextType);
                       }}
-                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
-                        session.hasBabysitterFee 
-                          ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                          : 'bg-slate-50 text-slate-400 border-slate-200 hover:text-slate-600'
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        isCancelled 
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 line-through' 
+                          : session.type === 'face-to-face' 
+                          ? 'bg-amber-50/80 text-amber-900 border-amber-200/80 hover:bg-amber-100' 
+                          : 'bg-sky-50/80 text-sky-900 border-sky-200/80 hover:bg-sky-100'
                       }`}
-                      title="Bakıcı Ücreti Dahil/Hariç Yap"
+                      title="Tıkla: Seans türünü değiştir (Online ↔ Yüz Yüze ↔ İptal)"
                     >
-                      <Baby className="w-3 h-3" />
-                      <span>Bakıcı: ₺{session.babysitterFeeAmount || settings.defaultBabysitterFee || 250}</span>
+                      {isCancelled ? <Ban className="w-3 h-3" /> : session.type === 'face-to-face' ? <MapPin className="w-3 h-3" /> : <Laptop className="w-3 h-3" />}
+                      <span>{isCancelled ? 'İptal' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'Online'}</span>
                     </button>
 
-                    {session.type === 'face-to-face' && (
+                    {/* Extra Expense subtle indicators */}
+                    {session.hasBabysitterFee && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSaveSession({
+                            ...session,
+                            hasBabysitterFee: !session.hasBabysitterFee,
+                            babysitterFeeAmount: !session.hasBabysitterFee ? (session.babysitterFeeAmount || settings.defaultBabysitterFee || 250) : 0
+                          });
+                        }}
+                        className="text-[11px] text-blue-700 bg-blue-50/70 border border-blue-200/70 px-2 py-0.5 rounded-md font-medium flex items-center gap-1 cursor-pointer hover:bg-blue-100"
+                        title="Bakıcı ücreti"
+                      >
+                        <Baby className="w-3 h-3 text-blue-600" />
+                        <span>Bakıcı ₺{session.babysitterFeeAmount || settings.defaultBabysitterFee || 250}</span>
+                      </button>
+                    )}
+
+                    {session.type === 'face-to-face' && session.hasOfficeRentFee && (
                       <button
                         type="button"
                         onClick={() => {
@@ -888,49 +862,54 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                             officeRentFeeAmount: !session.hasOfficeRentFee ? (session.officeRentFeeAmount || settings.defaultOfficeRentFee || 200) : 0
                           });
                         }}
-                        className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
-                          session.hasOfficeRentFee 
-                            ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                            : 'bg-slate-50 text-slate-400 border-slate-200 hover:text-slate-600'
-                        }`}
-                        title="Ofis Kira Payı Dahil/Hariç Yap"
+                        className="text-[11px] text-purple-700 bg-purple-50/70 border border-purple-200/70 px-2 py-0.5 rounded-md font-medium flex items-center gap-1 cursor-pointer hover:bg-purple-100"
+                        title="Ofis kira payı"
                       >
-                        <Building className="w-3 h-3" />
-                        <span>Ofis: ₺{session.officeRentFeeAmount || settings.defaultOfficeRentFee || 200}</span>
+                        <Building className="w-3 h-3 text-purple-600" />
+                        <span>Ofis ₺{session.officeRentFeeAmount || settings.defaultOfficeRentFee || 200}</span>
                       </button>
                     )}
                   </div>
 
-                  {/* Session Notes */}
-                  {session.notes ? (
-                    <p className="text-xs text-slate-600 italic bg-white/70 px-2.5 py-1.5 rounded-lg border border-slate-200/80 line-clamp-2">
-                      "{session.notes}"
-                    </p>
-                  ) : null}
+                  {/* Right: Fee Typography (Clear & Clean) */}
+                  <div className="text-right shrink-0">
+                    <span className={`text-base sm:text-lg font-black tracking-tight ${
+                      isCancelled ? 'line-through text-slate-300' : isPaid ? 'text-emerald-700' : 'text-slate-900'
+                    }`}>
+                      {formatMoney(session.price)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Card Footer: Action Buttons */}
-                <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 gap-2 text-xs">
-                  {onJumpToDate && (
+                {/* 3. NOTES (If present, subtle and calm) */}
+                {session.notes && (
+                  <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
+                    "{session.notes}"
+                  </p>
+                )}
+
+                {/* 4. HAIRLINE FOOTER: QUIET ACTION CONTROLS */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-slate-100/80 text-xs">
+                  {onJumpToDate ? (
                     <button
                       type="button"
                       onClick={() => onJumpToDate(session.date)}
-                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors flex items-center gap-1 text-[11px] font-bold cursor-pointer"
-                      title="Ajandada Bu Güne Git"
+                      className="text-[11px] font-semibold text-slate-400 hover:text-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Ajandada bu güne git"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Ajandada Git</span>
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Ajandada Göster</span>
                     </button>
-                  )}
+                  ) : <span />}
 
-                  <div className="flex items-center gap-1.5 ml-auto">
+                  <div className="flex items-center gap-1 text-slate-400">
                     <button
                       type="button"
                       onClick={() => onOpenEditModal(session)}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition-all shadow-3xs cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-semibold text-xs transition-colors flex items-center gap-1 cursor-pointer"
                       title="Detaylı Düzenle"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
+                      <Edit3 className="w-3 h-3" />
                       <span>Düzenle</span>
                     </button>
 
@@ -941,8 +920,8 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                           onDeleteSession(session.id);
                         }
                       }}
-                      className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
-                      title="Seansı Sil"
+                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      title="Sil"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
