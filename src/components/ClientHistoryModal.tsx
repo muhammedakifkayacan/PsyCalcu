@@ -24,7 +24,9 @@ import {
   Building,
   ChevronDown,
   ChevronUp,
-  BarChart3
+  BarChart3,
+  Baby,
+  Edit3
 } from 'lucide-react';
 import { Session, AppSettings, getNormalizedClientName, areClientNamesEquivalent } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -39,6 +41,9 @@ interface ClientHistoryModalProps {
   onJumpToDate?: (date: string) => void;
   settings: AppSettings;
 }
+
+const TURKISH_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+const TURKISH_DAYS_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
 export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
   isOpen,
@@ -439,151 +444,185 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
             </div>
           </div>
 
-          {/* Session List Container */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 bg-slate-50/40">
+          {/* Session List Container (Cards Grid) */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50/60">
             {displaySessions.length === 0 ? (
-              <div className="py-12 text-center space-y-2">
+              <div className="py-12 text-center space-y-2 bg-white rounded-2xl border border-slate-200">
                 <FileText className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-sm font-semibold text-slate-600">Bu filtreye uygun seans kaydı bulunamadı.</p>
                 <p className="text-xs text-slate-400">Arama kelimesini veya seçtiğiniz filtreleri sıfırlamayı deneyebilirsiniz.</p>
               </div>
             ) : (
-              displaySessions.map((session, index) => {
-                const isCancelled = session.type === 'cancelled';
-                const isPaid = session.paymentStatus === 'paid';
-                const isPartial = session.paymentStatus === 'partial';
-                const sessionDateObj = new Date(session.date);
-                const formattedDate = sessionDateObj.toLocaleDateString('tr-TR', {
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                });
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {displaySessions.map((session, index) => {
+                  const isCancelled = session.type === 'cancelled';
+                  const isPaid = session.paymentStatus === 'paid';
+                  const isPartial = session.paymentStatus === 'partial';
+                  
+                  // Safe date parsing for Turkish display
+                  const dateParts = (session.date || '').split('-');
+                  let formattedDate = session.date;
+                  let dayName = '';
+                  if (dateParts.length === 3) {
+                    const y = parseInt(dateParts[0], 10);
+                    const m = parseInt(dateParts[1], 10) - 1;
+                    const d = parseInt(dateParts[2], 10);
+                    const monthName = TURKISH_MONTHS_SHORT[m] || dateParts[1];
+                    const dateObj = new Date(y, m, d);
+                    dayName = TURKISH_DAYS_SHORT[dateObj.getDay()] || '';
+                    formattedDate = `${d} ${monthName} ${y}`;
+                  }
 
-                return (
-                  <div
-                    key={session.id || index}
-                    className={`bg-white rounded-2xl border transition-all p-3.5 sm:p-4 shadow-3xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-emerald-300 ${
-                      isCancelled ? 'opacity-60 bg-slate-50/80 border-slate-200' : 'border-slate-200/80'
-                    }`}
-                  >
-                    {/* Left: Date, Time & Badges */}
-                    <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  return (
+                    <div
+                      key={session.id || index}
+                      className={`rounded-2xl border transition-all p-3.5 shadow-3xs flex flex-col justify-between gap-3 hover:shadow-md ${
                         isCancelled 
-                          ? 'bg-rose-100 text-rose-700' 
-                          : session.type === 'face-to-face' 
-                            ? 'bg-amber-100 text-amber-800' 
-                            : 'bg-emerald-100 text-emerald-800'
-                      }`}>
-                        {isCancelled ? (
-                          <Ban className="w-4 h-4" />
-                        ) : session.type === 'face-to-face' ? (
-                          <MapPin className="w-4 h-4" />
-                        ) : (
-                          <Laptop className="w-4 h-4" />
-                        )}
+                          ? 'opacity-60 bg-slate-50 border-slate-200' 
+                          : isPaid
+                          ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-500/20 hover:border-emerald-400'
+                          : isPartial
+                          ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-500/20 hover:border-amber-400'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {/* Top Row: Type Badge + Date & Time */}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-extrabold border shadow-3xs ${
+                          isCancelled 
+                            ? 'bg-rose-100 text-rose-800 border-rose-200' 
+                            : session.type === 'face-to-face' 
+                              ? 'bg-amber-100 text-amber-900 border-amber-200' 
+                              : 'bg-sky-100 text-sky-900 border-sky-200'
+                        }`}>
+                          {isCancelled ? (
+                            <Ban className="w-3.5 h-3.5" />
+                          ) : session.type === 'face-to-face' ? (
+                            <MapPin className="w-3.5 h-3.5" />
+                          ) : (
+                            <Laptop className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isCancelled ? 'İptal' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'Online'}</span>
+                        </span>
+
+                        <div className="text-right">
+                          <div className="font-extrabold text-xs text-slate-900 flex items-center justify-end gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{formattedDate}</span>
+                            {dayName && <span className="text-slate-400 font-medium">({dayName})</span>}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-semibold flex items-center justify-end gap-1 mt-0.5">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>{session.time || '00:00'} · {session.duration || 50} dk</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs sm:text-sm text-slate-900">
-                            {formattedDate}
-                          </span>
-                          <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" />
-                            {session.time || '00:00'}
-                          </span>
-                          
-                          {/* Type Badge */}
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            isCancelled 
-                              ? 'bg-rose-100 text-rose-700' 
-                              : session.type === 'face-to-face' 
-                                ? 'bg-amber-100 text-amber-800' 
-                                : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            {isCancelled ? 'İptal' : session.type === 'face-to-face' ? 'Yüz Yüze' : 'Online'}
-                          </span>
+                      {/* Middle: Financial Box & Expense Badges */}
+                      <div className="space-y-2">
+                        <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                          isPaid 
+                            ? 'bg-emerald-100/50 border-emerald-200' 
+                            : isPartial 
+                              ? 'bg-amber-100/40 border-amber-200' 
+                              : 'bg-slate-50/90 border-slate-100'
+                        }`}>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Seans Ücreti</span>
+                            <span className={`text-sm font-extrabold ${isCancelled ? 'line-through text-slate-400' : isPaid ? 'text-emerald-900 font-black' : 'text-slate-900'}`}>
+                              {formatMoney(session.price)}
+                            </span>
+                          </div>
 
-                          {/* Extra Expense Badges */}
-                          {session.hasBabysitterFee && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 flex items-center gap-1" title="Bakıcı Ücreti Dahil">
-                              👶 ₺{session.babysitterFeeAmount || settings.defaultBabysitterFee}
-                            </span>
-                          )}
-                          {session.hasOfficeRentFee && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100 flex items-center gap-1" title="Ofis Kira Payı">
-                              🏢 ₺{session.officeRentFeeAmount || settings.defaultOfficeRentFee}
-                            </span>
-                          )}
+                          {/* Payment status badge */}
+                          <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1 shadow-3xs border ${
+                            isPaid 
+                              ? 'bg-emerald-600 text-white border-emerald-700' 
+                              : isPartial 
+                                ? 'bg-amber-100 text-amber-800 border-amber-300' 
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {isPaid ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                <span>✓ ÖDENDİ</span>
+                              </>
+                            ) : isPartial ? (
+                              <>
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                                <span>KISMİ (₺{session.paidAmount})</span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                                <span>BEKLİYOR</span>
+                              </>
+                            )}
+                          </span>
                         </div>
 
-                        {/* Session Notes Snippet */}
+                        {/* Extra expenses badges */}
+                        {(session.hasBabysitterFee || session.hasOfficeRentFee) && (
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold">
+                            {session.hasBabysitterFee && (
+                              <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                                <Baby className="w-3 h-3" />
+                                <span>Bakıcı: ₺{session.babysitterFeeAmount || settings.defaultBabysitterFee || 250}</span>
+                              </span>
+                            )}
+                            {session.hasOfficeRentFee && (
+                              <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                                <Building className="w-3 h-3" />
+                                <span>Ofis: ₺{session.officeRentFeeAmount || settings.defaultOfficeRentFee || 200}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Session Notes */}
                         {session.notes && (
-                          <p className="text-xs text-slate-600 line-clamp-1 italic bg-slate-50 px-2 py-0.5 rounded border border-slate-100 inline-block">
+                          <p className="text-xs text-slate-600 italic bg-white/70 px-2.5 py-1 rounded-lg border border-slate-200/70 line-clamp-1">
                             "{session.notes}"
                           </p>
                         )}
                       </div>
-                    </div>
 
-                    {/* Right: Financial & Actions */}
-                    <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                      <div className="text-left sm:text-right">
-                        <div className={`font-extrabold text-sm sm:text-base ${isCancelled ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                          {formatMoney(session.price)}
-                        </div>
-                        <div className="text-[11px] font-bold">
-                          {isCancelled ? (
-                            <span className="text-slate-400">İptal Edildi</span>
-                          ) : isPaid ? (
-                            <span className="text-emerald-700 flex items-center gap-1 sm:justify-end">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ödendi
-                            </span>
-                          ) : isPartial ? (
-                            <span className="text-amber-700 flex items-center gap-1 sm:justify-end">
-                              Kısmi (₺{(session.paidAmount || 0).toLocaleString('tr-TR')})
-                            </span>
-                          ) : (
-                            <span className="text-rose-600 flex items-center gap-1 sm:justify-end">
-                              <AlertCircle className="w-3 h-3 text-rose-500" /> Ödenmedi
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-1.5">
+                      {/* Bottom: Action buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-2 text-xs">
                         {onJumpToDate && (
                           <button
+                            type="button"
                             onClick={() => {
                               onJumpToDate(session.date);
                               onClose();
                             }}
-                            className="p-2 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                             title="Takvimde Bu Güne Git"
                           >
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Ajandada Git</span>
                           </button>
                         )}
 
                         {onSelectSession && (
                           <button
+                            type="button"
                             onClick={() => {
                               onSelectSession(session);
+                              onClose();
                             }}
-                            className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-3xs cursor-pointer"
+                            className="ml-auto px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition-all shadow-3xs cursor-pointer"
                             title="Seansı Düzenle"
                           >
-                            Düzenle
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Düzenle</span>
                           </button>
                         )}
                       </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
 
