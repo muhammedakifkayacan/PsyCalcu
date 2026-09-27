@@ -6487,6 +6487,7 @@ export default function App() {
                     setEditingSession(s);
                     setIsSessionModalOpen(true);
                   }}
+                  onOpenClientHistory={handleOpenClientPage}
                 />
               )}
             </motion.div>
