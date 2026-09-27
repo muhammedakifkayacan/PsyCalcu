@@ -305,23 +305,37 @@ export default function StatsDashboard({
     return monthSessions.filter(s => s.type !== 'cancelled' && s.paymentStatus !== 'paid').length;
   }, [monthSessions]);
 
-  // Format helpers
+  // Format helpers (uses textual/abbreviated Turkish month names instead of numbers)
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    return `${parts[2]}.${parts[1]}`;
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+      const d = new Date(year, month, day);
+      return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+    } catch {
+      return dateStr;
+    }
   };
 
   const formatLongDate = (dateStr: string) => {
     if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    const d = new Date(year, month, day);
-    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+      const d = new Date(year, month, day);
+      return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
   };
 
   // Toggle single session payment

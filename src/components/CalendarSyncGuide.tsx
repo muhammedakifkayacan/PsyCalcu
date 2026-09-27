@@ -1639,7 +1639,9 @@ export default function CalendarSyncGuide({
                               </span>
                             </div>
                             <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
-                              <span className="font-semibold text-[#6b705c]">{session.date.split('-').reverse().join('.')}</span>
+                              <span className="font-semibold text-[#6b705c]">
+                                {new Date(session.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                              </span>
                               <span>•</span>
                               <span>{session.time}</span>
                               <span>•</span>
@@ -1653,7 +1655,7 @@ export default function CalendarSyncGuide({
                             onClick={() => {
                               onGoToDate(session.date);
                               setActiveTab('agenda');
-                              showToast(`${session.clientName} seansının bulunduğu ${session.date.split('-').reverse().join('.')} tarihine yönlendirildiniz.`, 'info');
+                              showToast(`${session.clientName} seansının bulunduğu ${new Date(session.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihine yönlendirildiniz.`, 'info');
                             }}
                             className="self-end sm:sm:self-auto px-3 py-1 bg-[#6b705c]/10 hover:bg-[#6b705c] hover:text-white text-[#6b705c] rounded-full text-[10px] font-bold transition-all cursor-pointer"
                           >
