@@ -6106,6 +6106,7 @@ export default function App() {
                               const isCancelled = session.type === 'cancelled';
                               const isFaceToFace = session.type === 'face-to-face';
                               const isTenant = session.type === 'rent-income';
+                              const isPaid = session.paymentStatus === 'paid';
 
                               return (
                                 <motion.div
@@ -6119,6 +6120,8 @@ export default function App() {
                                   className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
                                     isCancelled
                                       ? 'bg-rose-50/40 border-rose-200 text-rose-800 opacity-60 line-through'
+                                      : isPaid
+                                      ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs hover:border-emerald-500 hover:bg-emerald-100'
                                       : isTenant
                                       ? 'bg-indigo-50/60 border-indigo-200 text-indigo-900 hover:border-indigo-400'
                                       : isFaceToFace
@@ -6131,15 +6134,19 @@ export default function App() {
                                       <Clock className="w-3 h-3" />
                                       {session.time || 'Saat yok'}
                                     </span>
-                                    <span
-                                      className={`w-2 h-2 rounded-full ${
-                                        session.paymentStatus === 'paid'
-                                          ? 'bg-emerald-500'
-                                          : isCancelled
-                                          ? 'bg-rose-400'
-                                          : 'bg-amber-500'
-                                      }`}
-                                    />
+                                    {isPaid ? (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.2 rounded-full shadow-2xs">
+                                        ✓ Ödendi
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={`w-2 h-2 rounded-full ${
+                                          isCancelled
+                                            ? 'bg-rose-400'
+                                            : 'bg-amber-500'
+                                        }`}
+                                      />
+                                    )}
                                   </div>
                                   <button
                                     type="button"

@@ -398,24 +398,34 @@ export const MonthClosingModal: React.FC<MonthClosingModalProps> = ({
                   ) : (
                     displayedSessions.map((s) => {
                       const isZero = (Number(s.price) || 0) === 0 && s.type !== 'cancelled';
+                      const isPaid = s.paymentStatus === 'paid';
+                      const isPartial = s.paymentStatus === 'partial';
                       const isEditingPrice = editingPriceId === s.id;
 
                       return (
                         <tr 
                           key={s.id} 
-                          className={`hover:bg-slate-50/80 transition-colors ${isZero ? 'bg-amber-50/40' : ''}`}
+                          className={`transition-colors ${
+                            isPaid
+                              ? 'bg-emerald-50/80 hover:bg-emerald-100/80 border-l-4 border-l-emerald-500'
+                              : isPartial
+                              ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                              : isZero
+                              ? 'bg-amber-50/50 hover:bg-amber-100/50 border-l-4 border-l-amber-400'
+                              : 'bg-white hover:bg-slate-50 border-l-4 border-l-slate-200'
+                          }`}
                         >
-                          <td className="py-2 px-3 whitespace-nowrap text-slate-600">
-                            {new Date(s.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-                            <span className="text-slate-400 ml-1.5">{s.time}</span>
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-700">
+                            <span className="font-bold">{new Date(s.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                            <span className="text-slate-500 ml-1.5 font-mono text-[11px]">{s.time}</span>
                           </td>
-                          <td className="py-2 px-3 font-medium text-slate-800">
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">
                             {formatClientName(s.clientName)}
                           </td>
-                          <td className="py-2 px-3 text-slate-600">
-                            {s.type === 'online' ? 'Online' : s.type === 'face-to-face' ? 'Yüz Yüze' : 'İptal'}
+                          <td className="py-2.5 px-3 text-slate-600">
+                            {s.type === 'online' ? '🌐 Online' : s.type === 'face-to-face' ? '🛋️ Yüz Yüze' : '❌ İptal'}
                           </td>
-                          <td className="py-2 px-3 font-medium">
+                          <td className="py-2.5 px-3 font-medium">
                             {isEditingPrice ? (
                               <div className="flex items-center gap-1">
                                 <input
@@ -431,7 +441,7 @@ export const MonthClosingModal: React.FC<MonthClosingModalProps> = ({
                                 />
                                 <button
                                   onClick={() => handleSavePrice(s.id)}
-                                  className="p-1 bg-slate-900 text-white rounded hover:bg-slate-800"
+                                  className="p-1 bg-slate-900 text-white rounded hover:bg-slate-800 cursor-pointer"
                                 >
                                   <Check className="w-3 h-3" />
                                 </button>
@@ -440,33 +450,49 @@ export const MonthClosingModal: React.FC<MonthClosingModalProps> = ({
                               <div 
                                 onClick={() => handleStartEditPrice(s)}
                                 className={`cursor-pointer inline-flex items-center gap-1 group ${
-                                  isZero ? 'text-amber-700 font-semibold' : 'text-slate-800'
+                                  isZero ? 'text-amber-700 font-bold' : isPaid ? 'text-emerald-900 font-bold' : 'text-slate-900'
                                 }`}
                                 title="Fiyatı değiştirmek için tıkla"
                               >
-                                {formatMoney(Number(s.price) || 0)}
+                                <span>{formatMoney(Number(s.price) || 0)}</span>
                                 <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400" />
                               </div>
                             )}
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <button
+                              type="button"
                               onClick={() => {
                                 if (onUpdateSessionPaymentStatus) {
                                   const next = s.paymentStatus === 'paid' ? 'unpaid' : 'paid';
                                   onUpdateSessionPaymentStatus(s.id, next);
                                 }
                               }}
-                              className={`text-[11px] font-medium transition-colors cursor-pointer ${
-                                s.paymentStatus === 'paid'
-                                  ? 'text-emerald-700 hover:text-emerald-800'
-                                  : s.paymentStatus === 'partial'
-                                  ? 'text-amber-700 hover:text-amber-800'
-                                  : 'text-slate-500 hover:text-slate-700'
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer shadow-3xs ${
+                                isPaid
+                                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                  : isPartial
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                               }`}
-                              title="Değiştirmek için tıkla"
+                              title="Ödeme durumunu değiştirmek için tıkla"
                             >
-                              {s.paymentStatus === 'paid' ? '✓ Ödendi' : s.paymentStatus === 'partial' ? 'Kısmi' : 'Bekliyor'}
+                              {isPaid ? (
+                                <>
+                                  <CheckCircle className="w-3 h-3 text-white" />
+                                  <span>ÖDENDİ</span>
+                                </>
+                              ) : isPartial ? (
+                                <>
+                                  <Clock className="w-3 h-3 text-amber-700" />
+                                  <span>KISMİ</span>
+                                </>
+                              ) : (
+                                <>
+                                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                                  <span>BEKLİYOR</span>
+                                </>
+                              )}
                             </button>
                           </td>
                           <td className="py-2 px-3 text-slate-500 text-[11px]">

@@ -1625,6 +1625,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                 {filteredSessions.map((session) => {
                   const isNonSession = session.type === 'non-session';
                   const isCancelled = session.type === 'cancelled';
+                  const isPaid = session.paymentStatus === 'paid';
                   const isZeroPrice = (session.price === 0 || !session.price) && !isNonSession && !isCancelled;
                   const isSelected = selectedSessionIds.has(session.id);
                   const room = (settings.rooms || []).find(r => r.id === session.roomId);
@@ -1636,11 +1637,13 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                       className={`group hover:bg-[#fdfbf7] cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15 border-l-4 border-l-[#6b705c]'
+                          : isPaid
+                          ? 'bg-emerald-50/50 hover:bg-emerald-100/60 border-l-4 border-l-emerald-500'
                           : isNonSession 
                           ? 'bg-slate-50/50 opacity-75' 
                           : isZeroPrice 
-                          ? 'bg-amber-50/30' 
-                          : ''
+                          ? 'bg-amber-50/30 border-l-4 border-l-amber-400' 
+                          : 'border-l-4 border-l-transparent'
                       }`}
                     >
                       {/* Checkbox Column */}
@@ -1995,6 +1998,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                             {group.sessions.map((session) => {
                               const isNonSession = session.type === 'non-session';
                               const isCancelled = session.type === 'cancelled';
+                              const isPaid = session.paymentStatus === 'paid';
                               const isZeroPrice = (session.price === 0 || !session.price) && !isNonSession && !isCancelled;
                               const isSelected = selectedSessionIds.has(session.id);
                               const room = (settings.rooms || []).find(r => r.id === session.roomId);
@@ -2006,6 +2010,8 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                                   className={`group/row hover:bg-[#fdfbf7] cursor-pointer transition-colors ${
                                     isSelected
                                       ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15'
+                                      : isPaid
+                                      ? 'bg-emerald-50/50 hover:bg-emerald-100/60'
                                       : isNonSession 
                                       ? 'bg-slate-50/50 opacity-75' 
                                       : isZeroPrice 
