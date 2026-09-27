@@ -6304,28 +6304,41 @@ export default function App() {
                           </div>
 
                           <div className="my-1 space-y-1 overflow-hidden max-h-[52px]">
-                            {daySessions.slice(0, 2).map((s) => (
-                              <div
-                                key={s.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingSession(s);
-                                  setIsSessionModalOpen(true);
-                                }}
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold truncate flex items-center justify-between border ${
-                                  s.type === 'cancelled'
-                                    ? 'bg-rose-50 border-rose-200 text-rose-700 line-through'
-                                    : s.type === 'rent-income'
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
-                                    : s.type === 'face-to-face'
-                                    ? 'bg-amber-50 border-amber-200 text-slate-800'
-                                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                                }`}
-                                title={`${s.time} - ${s.clientName}`}
-                              >
-                                <span className="truncate">{s.time} {s.clientName}</span>
-                              </div>
-                            ))}
+                            {daySessions.slice(0, 2).map((s) => {
+                              const isPaid = s.paymentStatus === 'paid';
+                              const isPartial = s.paymentStatus === 'partial';
+                              const isCancelled = s.type === 'cancelled';
+                              const isFaceToFace = s.type === 'face-to-face';
+                              const isTenant = s.type === 'rent-income';
+
+                              return (
+                                <div
+                                  key={s.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSession(s);
+                                    setIsSessionModalOpen(true);
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold truncate flex items-center justify-between border transition-all ${
+                                    isCancelled
+                                      ? 'bg-rose-50 border-rose-200 text-rose-700 line-through'
+                                      : isPaid
+                                      ? 'bg-emerald-600 text-white border-emerald-700 font-bold shadow-xs'
+                                      : isPartial
+                                      ? 'bg-amber-100 border-amber-300 text-amber-900 font-bold'
+                                      : isTenant
+                                      ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                                      : isFaceToFace
+                                      ? 'bg-amber-50 border-amber-200 text-slate-800'
+                                      : 'bg-slate-100 border-slate-200 text-slate-700'
+                                  }`}
+                                  title={`${s.time} - ${s.clientName} (${isPaid ? 'Tamamı Ödendi' : isPartial ? 'Kısmi Ödeme' : 'Ödeme Bekliyor'})`}
+                                >
+                                  <span className="truncate">{s.time} {s.clientName}</span>
+                                  {isPaid && <Check className="w-2.5 h-2.5 ml-0.5 shrink-0 text-white stroke-[2.5]" />}
+                                </div>
+                              );
+                            })}
                             {daySessions.length > 2 && (
                               <span className="text-[9px] text-[#6b705c] font-extrabold block text-center">
                                 +{daySessions.length - 2} daha
@@ -6370,15 +6383,28 @@ export default function App() {
                     <p className="text-xs text-slate-500 italic text-center py-4">Bu seçili günde kayıtlı seans bulunmuyor.</p>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {getFilteredSessionsForDate(selectedDate).map((session) => (
-                        <div
-                          key={session.id}
-                          onClick={() => {
-                            setEditingSession(session);
-                            setIsSessionModalOpen(true);
-                          }}
-                          className="p-3 bg-white rounded-xl border border-[#e5e1d8] hover:border-[#6b705c] cursor-pointer transition-all flex flex-col justify-between"
-                        >
+                      {getFilteredSessionsForDate(selectedDate).map((session) => {
+                        const isPaid = session.paymentStatus === 'paid';
+                        const isPartial = session.paymentStatus === 'partial';
+                        const isCancelled = session.type === 'cancelled';
+
+                        return (
+                          <div
+                            key={session.id}
+                            onClick={() => {
+                              setEditingSession(session);
+                              setIsSessionModalOpen(true);
+                            }}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                              isCancelled
+                                ? 'bg-rose-50/40 border-rose-200 opacity-60'
+                                : isPaid
+                                ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-500/20 hover:border-emerald-500 hover:bg-emerald-100/60 shadow-xs'
+                                : isPartial
+                                ? 'bg-amber-50/90 border-amber-300 ring-1 ring-amber-400/20 hover:border-amber-500 shadow-3xs'
+                                : 'bg-white border-[#e5e1d8] hover:border-[#6b705c]'
+                            }`}
+                          >
                           <div>
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1">
@@ -6417,7 +6443,8 @@ export default function App() {
                             <span className="font-bold text-slate-800">{formatMoney(session.price)}</span>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
                   )}
                 </div>

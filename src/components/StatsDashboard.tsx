@@ -10,7 +10,10 @@ import {
   Trash2, 
   Edit2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  CheckCircle,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { usePrivacy } from '../context/PrivacyContext';
 import { formatMonthKey, isMonthClosed } from '../utils/monthCloseUtils';
@@ -470,20 +473,30 @@ export default function StatsDashboard({
                 <tbody className="divide-y divide-[#f5f5f0]">
                   {filteredSessions.map(session => {
                     const isPaid = session.paymentStatus === 'paid';
+                    const isPartial = session.paymentStatus === 'partial';
+                    const isZero = (Number(session.price) || 0) === 0 && session.type !== 'cancelled';
                     return (
                       <tr 
                         key={session.id}
                         onClick={() => onEditSession?.(session)}
-                        className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
+                        className={`transition-colors cursor-pointer group ${
+                          isPaid
+                            ? 'bg-emerald-50/80 hover:bg-emerald-100/80 border-l-4 border-l-emerald-500 text-emerald-950'
+                            : isPartial
+                            ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                            : isZero
+                            ? 'bg-amber-50/40 hover:bg-amber-100/50 border-l-4 border-l-amber-400'
+                            : 'bg-white hover:bg-slate-50 border-l-4 border-l-slate-200'
+                        }`}
                       >
                         {/* Tarih */}
-                        <td className="py-3.5 px-4 text-xs font-semibold text-slate-600">
+                        <td className="py-3.5 px-4 text-xs font-semibold text-slate-700 whitespace-nowrap">
                           {formatShortDate(session.date)}
                         </td>
 
                         {/* Seans (Danışan) */}
                         <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-900 text-sm">
+                          <div className={`font-semibold text-sm ${isPaid ? 'text-emerald-950' : 'text-slate-900'}`}>
                             {formatClientName(session.clientName)}
                           </div>
                           {session.notes && (
@@ -499,7 +512,7 @@ export default function StatsDashboard({
                         </td>
 
                         {/* Ücret */}
-                        <td className="py-3.5 px-4 text-sm font-bold text-slate-900 text-right">
+                        <td className={`py-3.5 px-4 text-sm font-bold text-right ${isPaid ? 'text-emerald-900 font-mono' : 'text-slate-900'}`}>
                           {formatMoney(session.price)}
                         </td>
 
@@ -511,15 +524,31 @@ export default function StatsDashboard({
                               e.stopPropagation();
                               handlePaymentToggle(session.id);
                             }}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer select-none shadow-3xs ${
                               isPaid
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 shadow-3xs'
-                                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 shadow-3xs'
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : isPartial
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                             }`}
                             title="Ödeme durumunu değiştirmek için tıklayın"
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-600' : 'bg-amber-600'}`} />
-                            {isPaid ? 'Ödendi' : 'Bekliyor'}
+                            {isPaid ? (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5 text-white" />
+                                <span>ÖDENDİ</span>
+                              </>
+                            ) : isPartial ? (
+                              <>
+                                <Clock className="w-3.5 h-3.5 text-amber-700" />
+                                <span>KISMİ</span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                                <span>BEKLİYOR</span>
+                              </>
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -530,22 +559,27 @@ export default function StatsDashboard({
             </div>
 
             {/* MOBILE VIEW: Satır / Kart Yapısı */}
-            {/*
-              Ahmet Yılmaz
-              02 Eylül · 60 dk
-              1.500 TL                    Ödendi
-            */}
             <div className="divide-y divide-[#f5f5f0] md:hidden">
               {filteredSessions.map(session => {
                 const isPaid = session.paymentStatus === 'paid';
+                const isPartial = session.paymentStatus === 'partial';
+                const isZero = (Number(session.price) || 0) === 0 && session.type !== 'cancelled';
                 return (
                   <div 
                     key={session.id}
                     onClick={() => onEditSession?.(session)}
-                    className="p-4 flex flex-col gap-2 hover:bg-slate-50/70 transition-colors cursor-pointer"
+                    className={`p-4 flex flex-col gap-2 transition-colors cursor-pointer ${
+                      isPaid
+                        ? 'bg-emerald-50/80 hover:bg-emerald-100/80 border-l-4 border-l-emerald-500'
+                        : isPartial
+                        ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                        : isZero
+                        ? 'bg-amber-50/40 hover:bg-amber-100/50 border-l-4 border-l-amber-400'
+                        : 'bg-white hover:bg-slate-50 border-l-4 border-l-slate-200'
+                    }`}
                   >
                     <div>
-                      <div className="font-bold text-slate-900 text-sm">
+                      <div className={`font-bold text-sm ${isPaid ? 'text-emerald-950' : 'text-slate-900'}`}>
                         {formatClientName(session.clientName)}
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5 font-medium">
@@ -554,7 +588,7 @@ export default function StatsDashboard({
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-base font-bold text-slate-900">
+                      <span className={`text-base font-bold ${isPaid ? 'text-emerald-900 font-mono' : 'text-slate-900'}`}>
                         {formatMoney(session.price)}
                       </span>
 
@@ -565,15 +599,31 @@ export default function StatsDashboard({
                           e.stopPropagation();
                           handlePaymentToggle(session.id);
                         }}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer select-none shadow-3xs ${
                           isPaid
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                            : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            : isPartial
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                         }`}
                         title="Ödeme durumunu değiştirmek için tıklayın"
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-600' : 'bg-amber-600'}`} />
-                        {isPaid ? 'Ödendi' : 'Bekliyor'}
+                        {isPaid ? (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5 text-white" />
+                            <span>ÖDENDİ</span>
+                          </>
+                        ) : isPartial ? (
+                          <>
+                            <Clock className="w-3.5 h-3.5 text-amber-700" />
+                            <span>KISMİ</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span>BEKLİYOR</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

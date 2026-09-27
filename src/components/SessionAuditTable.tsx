@@ -1840,6 +1840,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
               const isExpanded = expandedClientKeys.has(group.clientKey);
               const isAllGroupSelected = group.sessions.length > 0 && group.sessions.every(s => selectedSessionIds.has(s.id));
               const isSomeGroupSelected = group.sessions.some(s => selectedSessionIds.has(s.id)) && !isAllGroupSelected;
+              const isAllPaid = !group.stats.hasUnpaid && group.stats.totalRevenue > 0;
 
               return (
                 <div 
@@ -1847,6 +1848,8 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                   className={`border rounded-2xl transition-all overflow-hidden ${
                     isExpanded 
                       ? 'border-[#6b705c]/40 bg-white shadow-md' 
+                      : isAllPaid
+                      ? 'border-emerald-300 bg-emerald-50/15 hover:border-emerald-400 hover:shadow-xs'
                       : 'border-[#e5e1d8] bg-white hover:border-[#6b705c]/30 hover:shadow-xs'
                   }`}
                 >
@@ -1854,7 +1857,11 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                   <div 
                     onClick={() => toggleClientExpanded(group.clientKey)}
                     className={`p-3.5 sm:p-4.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none transition-colors ${
-                      isExpanded ? 'bg-[#fdfbf7] border-b border-[#e5e1d8]' : 'hover:bg-[#fdfbf7]/60'
+                      isExpanded 
+                        ? 'bg-[#fdfbf7] border-b border-[#e5e1d8]' 
+                        : isAllPaid
+                        ? 'bg-emerald-50/30 hover:bg-emerald-50/60'
+                        : 'hover:bg-[#fdfbf7]/60'
                     }`}
                   >
                     {/* Left: Checkbox, Chevron, Client Name, and Badges */}
@@ -2009,14 +2016,14 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                                   onClick={() => onEditSession(session)}
                                   className={`group/row hover:bg-[#fdfbf7] cursor-pointer transition-colors ${
                                     isSelected
-                                      ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15'
+                                      ? 'bg-[#6b705c]/10 hover:bg-[#6b705c]/15 border-l-4 border-l-[#6b705c]'
                                       : isPaid
-                                      ? 'bg-emerald-50/50 hover:bg-emerald-100/60'
+                                      ? 'bg-emerald-50/70 hover:bg-emerald-100/70 border-l-4 border-l-emerald-500 font-medium'
                                       : isNonSession 
-                                      ? 'bg-slate-50/50 opacity-75' 
+                                      ? 'bg-slate-50/50 opacity-75 border-l-4 border-l-transparent' 
                                       : isZeroPrice 
-                                      ? 'bg-amber-50/30' 
-                                      : ''
+                                      ? 'bg-amber-50/30 border-l-4 border-l-amber-400' 
+                                      : 'border-l-4 border-l-transparent'
                                   }`}
                                 >
                                   {/* Checkbox Column */}
