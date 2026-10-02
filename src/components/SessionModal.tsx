@@ -364,6 +364,8 @@ export default function SessionModal({
       paidAmount: calcPaidAmount,
       paymentMethod: isCancelledOrNonSession ? undefined : (paymentMethod ? (paymentMethod as PaymentMethod) : undefined),
       roomId: roomId || undefined,
+      updatedAt: Date.now(),
+      isManuallyEdited: true
     };
 
     onSave(sessionData);

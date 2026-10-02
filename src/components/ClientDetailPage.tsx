@@ -264,7 +264,9 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   const handleInlinePriceChange = (session: Session, newPrice: number) => {
     onSaveSession({
       ...session,
-      price: newPrice
+      price: newPrice,
+      updatedAt: Date.now(),
+      isManuallyEdited: true
     });
   };
 
@@ -273,7 +275,9 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
     onSaveSession({
       ...session,
       paymentStatus: nextStatus,
-      paidAmount: nextStatus === 'paid' ? session.price : 0
+      paidAmount: nextStatus === 'paid' ? session.price : 0,
+      updatedAt: Date.now(),
+      isManuallyEdited: true
     });
   };
 
@@ -281,7 +285,9 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
     onSaveSession({
       ...session,
       type: newType,
-      hasOfficeRentFee: newType === 'face-to-face' ? true : false
+      hasOfficeRentFee: newType === 'face-to-face' ? true : false,
+      updatedAt: Date.now(),
+      isManuallyEdited: true
     });
   };
 

@@ -1450,30 +1450,63 @@ export default function App() {
           newSessionsStr !== lastSavedRef.current.sessions ||
           newExpensesStr !== lastSavedRef.current.expenses
         ) {
-          // Reconcile with local session state so local payments & manual prices are not lost
+          // Reconcile with local session state so local payments & manual prices are never lost
           const currentLocal = sessionsRef.current || [];
           const localMap = new Map(currentLocal.map(s => [s.id, s]));
+          const remoteIds = new Set((newSessions as Session[]).map(s => s.id));
+
           const reconciledSessions = (newSessions as Session[]).map(ns => {
             const ls = localMap.get(ns.id);
             if (!ls) return ns;
-            const lsIsPaid = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
-            const nsIsPaid = ns.paymentStatus === 'paid' || ns.paymentStatus === 'partial' || (Number(ns.paidAmount) || 0) > 0;
+
             const lsTime = ls.updatedAt || 0;
             const nsTime = ns.updatedAt || 0;
-            if ((lsIsPaid && !nsIsPaid) || (ls.isManuallyEdited && !ns.isManuallyEdited) || (lsTime > nsTime)) {
-              return { ...ns, ...ls, updatedAt: Math.max(lsTime, nsTime) };
+
+            const lsHasPayment = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
+            const nsHasPayment = ns.paymentStatus === 'paid' || ns.paymentStatus === 'partial' || (Number(ns.paidAmount) || 0) > 0;
+
+            const lsPrice = Number(ls.price) || 0;
+            const nsPrice = Number(ns.price) || 0;
+
+            // Preserve local payment/price edits if local was updated more recently OR if local has financial data and remote is missing it
+            const localIsNewer = lsTime > nsTime;
+            const localHasPaymentData = lsHasPayment && !nsHasPayment && lsTime >= nsTime;
+            const localHasPriceData = lsPrice > 0 && nsPrice === 0 && lsTime >= nsTime;
+            const localIsManuallyEdited = ls.isManuallyEdited && !ns.isManuallyEdited && lsTime >= nsTime;
+
+            if (localIsNewer || localHasPaymentData || localHasPriceData || localIsManuallyEdited) {
+              return {
+                ...ns,
+                ...ls,
+                price: (lsPrice > 0 && nsPrice === 0) ? ls.price : (localIsNewer ? ls.price : ns.price),
+                paymentStatus: (lsHasPayment && !nsHasPayment) ? ls.paymentStatus : (localIsNewer ? ls.paymentStatus : ns.paymentStatus),
+                paidAmount: (lsHasPayment && !nsHasPayment) ? ls.paidAmount : (localIsNewer ? ls.paidAmount : ns.paidAmount),
+                paymentMethod: ls.paymentMethod || ns.paymentMethod,
+                isManuallyEdited: ls.isManuallyEdited || ns.isManuallyEdited,
+                updatedAt: Math.max(lsTime, nsTime)
+              };
             }
+
             return ns;
           });
 
+          // Retain local-only sessions that haven't synced to Firestore yet
+          const localOnlySessions = currentLocal.filter(
+            ls => !remoteIds.has(ls.id) && (ls.isManuallyEdited || (ls.updatedAt && Date.now() - ls.updatedAt < 600000))
+          );
+
+          const finalSessions = [...reconciledSessions, ...localOnlySessions];
+
           isRemoteUpdatingRef.current = true;
           if (newSettings) setSettings(newSettings);
-          setSessions(reconciledSessions);
+          setSessions(finalSessions);
           setExpenses(newExpenses);
+
+          const finalSessionsStr = JSON.stringify(finalSessions);
 
           lastSavedRef.current = {
             settings: newSettingsStr,
-            sessions: newSessionsStr,
+            sessions: finalSessionsStr,
             expenses: newExpensesStr
           };
 
@@ -1565,7 +1598,7 @@ export default function App() {
 
     setIsCloudSaving(true);
 
-    // Debounce cloud save by 2500ms to reduce write frequency while preserving responsiveness
+    // Debounce cloud save by 300ms to ensure instant multi-device synchronization and prevent race conditions
     const timer = setTimeout(() => {
       activeSavesCountRef.current++;
       saveUserData(user.uid, settings, sessions, expenses).then(() => {
@@ -1594,7 +1627,7 @@ export default function App() {
           console.error("Bulut kayıt hatası:", err);
         }
       });
-    }, 2500);
+    }, 300);
 
     return () => {
       clearTimeout(timer);
