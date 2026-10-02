@@ -1263,6 +1263,8 @@ export default function StatsDashboard({
                 <label className="block font-semibold text-slate-700 mb-1">Tutar (₺)</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
                   step="any"
                   required
                   placeholder="0"

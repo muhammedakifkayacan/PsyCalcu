@@ -193,6 +193,7 @@ export default function SettingsModal({
               <Phone className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
                 type="tel"
+                inputMode="tel"
                 value={therapistPhone}
                 onChange={(e) => setTherapistPhone(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
@@ -290,6 +291,8 @@ export default function SettingsModal({
                 <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
                   required
                   min="0"
                   value={defaultOnlinePrice === 0 ? '' : defaultOnlinePrice}
@@ -316,6 +319,8 @@ export default function SettingsModal({
                 <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
                   required
                   min="0"
                   value={defaultFaceToFacePrice === 0 ? '' : defaultFaceToFacePrice}
@@ -341,6 +346,8 @@ export default function SettingsModal({
               <Baby className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9]*"
                 required
                 min="0"
                 value={defaultBabysitterFee === 0 ? '' : defaultBabysitterFee}
@@ -364,6 +371,8 @@ export default function SettingsModal({
               <Landmark className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9]*"
                 required
                 min="0"
                 value={defaultOfficeRentFee === 0 ? '' : defaultOfficeRentFee}
@@ -443,6 +452,8 @@ export default function SettingsModal({
                   <Percent className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
                   <input
                     type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     required
                     min="0"
                     max="100"

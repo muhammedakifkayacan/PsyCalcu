@@ -669,6 +669,8 @@ export default function SessionModal({
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#a5a58d] pointer-events-none z-10">₺</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
                   required
                   min="0"
                   disabled={isSessionInClosedMonth || type === 'cancelled' || type === 'non-session'}
@@ -775,6 +777,8 @@ export default function SessionModal({
                     <div className="relative w-36">
                       <input
                         type="number"
+                        inputMode="decimal"
+                        pattern="[0-9]*"
                         min="0"
                         max={Number(price) || 0}
                         step="50"
@@ -899,6 +903,8 @@ export default function SessionModal({
                         <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
                         <input
                           type="number"
+                          inputMode="decimal"
+                          pattern="[0-9]*"
                           min="0"
                           disabled={isSessionInClosedMonth}
                           value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
@@ -953,6 +959,8 @@ export default function SessionModal({
                           <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
                           <input
                             type="number"
+                            inputMode="decimal"
+                            pattern="[0-9]*"
                             min="0"
                             disabled={isSessionInClosedMonth}
                             value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
@@ -1076,6 +1084,8 @@ export default function SessionModal({
                                     <span className="absolute left-2 top-1 text-[10px] font-bold text-slate-400">%</span>
                                     <input
                                       type="number"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
                                       min="0"
                                       max="100"
                                       disabled={isSessionInClosedMonth}

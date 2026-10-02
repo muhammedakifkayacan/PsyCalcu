@@ -664,6 +664,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
                                       <span className="text-xs text-slate-400">₺</span>
                                       <input
                                         type="number"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*"
                                         min="0"
                                         step="50"
                                         value={state.newOnlinePrice}
@@ -678,6 +680,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
                                       <span className="text-xs text-slate-400">₺</span>
                                       <input
                                         type="number"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*"
                                         min="0"
                                         step="50"
                                         value={state.newFaceToFacePrice}
@@ -691,6 +695,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
                                       <span className="text-xs text-slate-400">₺</span>
                                       <input
                                         type="number"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*"
                                         min="0"
                                         step="50"
                                         value={state.newPrice}
@@ -715,6 +721,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
                                   {state.hasBabysitterFee && (
                                     <input
                                       type="number"
+                                      inputMode="decimal"
+                                      pattern="[0-9]*"
                                       min="0"
                                       step="50"
                                       value={state.babysitterFeeAmount}
@@ -738,6 +746,8 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
                                   {state.hasOfficeRentFee && (
                                     <input
                                       type="number"
+                                      inputMode="decimal"
+                                      pattern="[0-9]*"
                                       min="0"
                                       step="50"
                                       value={state.officeRentFeeAmount}

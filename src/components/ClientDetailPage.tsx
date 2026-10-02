@@ -1076,6 +1076,8 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                     <span className="text-xs font-bold text-slate-400">₺</span>
                     <input
                       type="number"
+                      inputMode="decimal"
+                      pattern="[0-9]*"
                       min="0"
                       step="50"
                       value={session.price}

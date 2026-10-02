@@ -430,6 +430,8 @@ export const MonthClosingModal: React.FC<MonthClosingModalProps> = ({
                               <div className="flex items-center gap-1">
                                 <input
                                   type="number"
+                                  inputMode="decimal"
+                                  pattern="[0-9]*"
                                   value={tempPriceInput}
                                   onChange={(e) => setTempPriceInput(e.target.value)}
                                   className="w-20 px-1.5 py-0.5 text-xs border border-slate-300 rounded bg-white font-medium"

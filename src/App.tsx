@@ -319,7 +319,26 @@ export default function App() {
     return DEFAULT_SETTINGS;
   });
 
-  // Load sessions from safeStorage or use empty array
+  // Global UX Listener: Automatically scroll focused inputs into view above the virtual keyboard on mobile
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+        // Immediate scroll and delayed scroll after mobile virtual keyboard slides up
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 320);
+      }
+    };
+
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+    };
+  }, []);
   const [sessions, setSessions] = useState<Session[]>(() => {
     let saved = safeStorage.getItem('psycalcu_sessions');
     if (!saved) {
