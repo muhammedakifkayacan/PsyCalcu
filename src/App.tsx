@@ -89,6 +89,9 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { validateSessionAction, incrementWeeklyManualActionCount } from './utils/sessionLimit';
 import { safeStorage, pruneStorage } from './utils/storage';
 import { DataBackupSnapshot } from './types';
+import { TrashBinModal } from './components/TrashBinModal';
+import { mutationQueue } from './utils/mutationQueue';
+import { idbGet, idbSet } from './utils/idbStorage';
 
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
@@ -149,7 +152,15 @@ const autoCorrectPastSessions = (
   const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
 
   const healedAndRestored = sessionList.map(s => {
-    if (!s) return s;
+    if (!s) return null;
+
+    // 0. Soft-delete 30-day TTL Auto-Prune (Zero-bloat safeguard):
+    if (s.isDeleted) {
+      if (s.deletedAt && Date.now() - s.deletedAt > 30 * 24 * 60 * 60 * 1000) {
+        return null;
+      }
+      return s;
+    }
 
     // LOCKED / CLOSED MONTH PROTECTION:
     // If session belongs to a closed month, keep it completely locked and untouched!
@@ -240,7 +251,8 @@ const autoCorrectPastSessions = (
     return s;
   });
 
-  return autoHealSmartClientPrices(healedAndRestored, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices);
+  const validList = healedAndRestored.filter(Boolean) as Session[];
+  return autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -470,6 +482,9 @@ export default function App() {
   const [isCloudSaving, setIsCloudSaving] = useState(false);
   const isCloudSavingRef = useRef(false);
   useEffect(() => { isCloudSavingRef.current = isCloudSaving; }, [isCloudSaving]);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [pendingMutationsCount, setPendingMutationsCount] = useState(0);
+  const [isTrashBinOpen, setIsTrashBinOpen] = useState(false);
   const [ownerSessionFilter, setOwnerSessionFilter] = useState<'all' | 'mine' | 'tenant'>('all');
   const [agendaStatusFilter, setAgendaStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'cancelled'>('all');
   const [agendaRoomFilter, setAgendaRoomFilter] = useState<string>('all');
@@ -1637,6 +1652,87 @@ export default function App() {
     };
   }, [settings, sessions, expenses, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
 
+  // Offline Mutation Queue Flusher
+  const flushPendingMutations = useCallback(async () => {
+    if (!user || !navigator.onLine || isQuotaExceeded) return;
+    const queue = mutationQueue.getQueue(user.uid);
+    if (queue.length === 0) return;
+
+    try {
+      setIsCloudSaving(true);
+      await saveUserData(
+        user.uid, 
+        settingsRef.current, 
+        sessionsRef.current, 
+        expensesRef.current || [], 
+        'Çevrimdışı Bekleyen İşlemlerin Buluta Aktarılması'
+      );
+      mutationQueue.clear(user.uid);
+      setPendingMutationsCount(0);
+      showToast(`${queue.length} adet çevrimdışı işlem bulut ile başarıyla eşitlendi.`, 'success');
+    } catch (err) {
+      console.warn("Outbox flush error:", err);
+    } finally {
+      setIsCloudSaving(false);
+    }
+  }, [user, isQuotaExceeded]);
+
+  // Online / Offline Network Listeners
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      flushPendingMutations();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [flushPendingMutations]);
+
+  // Load offline mutation queue count and IndexedDB cache
+  useEffect(() => {
+    if (user?.uid) {
+      mutationQueue.loadFromIdb(user.uid).then(q => {
+        setPendingMutationsCount(q.length);
+      });
+    }
+  }, [user?.uid]);
+
+  // Manual one-click sync handler (for header badge)
+  const handleManualSyncNow = async () => {
+    if (!user) return;
+    if (!navigator.onLine) {
+      showToast('Cihazınız çevrimdışı. İnternet bağlantısı sağlandığında otomatik eşitlenecektir.', 'info');
+      return;
+    }
+    setIsCloudSaving(true);
+    try {
+      await saveUserData(
+        user.uid, 
+        settingsRef.current, 
+        sessionsRef.current, 
+        expensesRef.current || [], 
+        'Kullanıcı Tarafından Canlı Eşitleme'
+      );
+      mutationQueue.clear(user.uid);
+      setPendingMutationsCount(0);
+      showToast('Tüm verileriniz bulutta güvende ve başarıyla eşitlendi.', 'success');
+    } catch (err: any) {
+      if (checkIsQuotaError(err)) {
+        setIsQuotaExceeded(true);
+      } else {
+        showToast('Eşitleme sırasında hata oluştu. Verileriniz yerelde güvendedir.', 'error');
+      }
+    } finally {
+      setIsCloudSaving(false);
+    }
+  };
+
   // Automatic Background Calendar Sync on App Load
   const hasAutoSyncedRef = useRef(false);
 
@@ -1720,7 +1816,7 @@ export default function App() {
 
   // Helper to filter sessions for any specific date using active agenda filters
   const getFilteredSessionsForDate = useCallback((dateStr: string) => {
-    let daySessions = sessions.filter(s => s.date === dateStr).sort((a, b) => a.time.localeCompare(b.time));
+    let daySessions = sessions.filter(s => !s.isDeleted && s.date === dateStr).sort((a, b) => a.time.localeCompare(b.time));
 
     if (settings.userRole === 'owner') {
       if (ownerSessionFilter === 'mine') {
@@ -2476,10 +2572,14 @@ export default function App() {
     return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
   }, []);
 
+  // Active and Soft-Deleted session separation (Geri Dönüşüm Kutusu)
+  const deletedSessions = useMemo(() => sessions.filter(s => Boolean(s.isDeleted)), [sessions]);
+  const activeSessions = useMemo(() => sessions.filter(s => !s.isDeleted), [sessions]);
+
   // Filtered sessions for the selected day
   const filteredSessions = useMemo(() => {
     return sessions
-      .filter(s => s.date === selectedDate)
+      .filter(s => !s.isDeleted && s.date === selectedDate)
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [sessions, selectedDate]);
 
@@ -2532,7 +2632,7 @@ export default function App() {
     if (!headerSearchQuery.trim()) return [];
     const q = headerSearchQuery.trim().toLowerCase();
     const cleanQ = headerSearchQuery.replace(/[\s\u00A0]+/g, ' ').trim().toLowerCase();
-    return sessions.filter(s => {
+    return activeSessions.filter(s => {
       const clientClean = (s.clientName || '').replace(/[\s\u00A0]+/g, ' ').toLowerCase();
       const clientMatch = clientClean.includes(cleanQ) || s.clientName.toLowerCase().includes(q);
       const noteText = s.isSyncedFromCalendar ? (tempNotesCache[s.id] || '') : (s.notes || '');
@@ -2547,7 +2647,7 @@ export default function App() {
     }).sort((a, b) => {
       return b.date.localeCompare(a.date) || b.time.localeCompare(a.time);
     });
-  }, [sessions, headerSearchQuery]);
+  }, [activeSessions, headerSearchQuery, tempNotesCache]);
 
   // Debt Calculations
   const debtsData = useMemo(() => {
@@ -2570,7 +2670,7 @@ export default function App() {
     const effectiveAccountingStart = settings.accountingStartDate || (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
 
     // Filter non-cancelled, non-session, unpaid, and realized (past or present) sessions
-    const unpaidSessions = sessions.filter(s => {
+    const unpaidSessions = activeSessions.filter(s => {
       if (s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
       // Do not count sessions strictly before the accounting start cutoff as active debts
       if (effectiveAccountingStart && s.date && s.date < effectiveAccountingStart) return false;
@@ -2843,19 +2943,91 @@ export default function App() {
       return;
     }
     triggerConfirm(
-      'Seansı Sil',
-      'Bu seansı silmek istediğinizden emin misiniz?',
+      'Seansı Çöp Kutusu\'na Taşı',
+      'Bu seans Geri Dönüşüm Kutusu\'na taşınacak ve 30 gün boyunca istediğiniz zaman geri yükleyebileceksiniz. Emin misiniz?',
       () => {
         if (!session) return;
-        setSessions(prev => prev.filter(s => s.id !== id));
+        setSessions(prev => prev.map(s => {
+          if (s.id === id) {
+            return {
+              ...s,
+              isDeleted: true,
+              deletedAt: Date.now(),
+              updatedAt: Date.now(),
+              isManuallyEdited: true
+            };
+          }
+          return s;
+        }));
+
+        if (!navigator.onLine && user) {
+          mutationQueue.enqueue('DELETE_SESSION', { id }, user.uid);
+          setPendingMutationsCount(mutationQueue.getQueueCount(user.uid));
+        }
+
         const undoFn = () => {
-          setSessions(prev => [...prev, session]);
+          setSessions(prev => prev.map(s => {
+            if (s.id === id) {
+              return {
+                ...s,
+                isDeleted: false,
+                deletedAt: undefined,
+                updatedAt: Date.now(),
+                isManuallyEdited: true
+              };
+            }
+            return s;
+          }));
           showToast('Silinen seans geri yüklendi.', 'success');
         };
-        showToast(`${session.clientName} seansı silindi.`, 'info', { title: 'Seans Silindi' }, undoFn);
+        showToast(`${session.clientName} seansı Çöp Kutusu'na taşındı (30 gün saklanır).`, 'info', { title: 'Çöp Kutusu' }, undoFn);
       },
       true
     );
+  };
+
+  const handleRestoreSession = (sessionToRestore: Session) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id === sessionToRestore.id) {
+        return {
+          ...s,
+          isDeleted: false,
+          deletedAt: undefined,
+          updatedAt: Date.now(),
+          isManuallyEdited: true
+        };
+      }
+      return s;
+    }));
+    showToast(`${sessionToRestore.clientName} seansı başarıyla ajandaya geri yüklendi.`, 'success');
+  };
+
+  const handleRestoreAllDeleted = () => {
+    setSessions(prev => prev.map(s => {
+      if (s.isDeleted) {
+        return {
+          ...s,
+          isDeleted: false,
+          deletedAt: undefined,
+          updatedAt: Date.now(),
+          isManuallyEdited: true
+        };
+      }
+      return s;
+    }));
+    showToast('Tüm silinen seanslar başarıyla geri yüklendi.', 'success');
+    setIsTrashBinOpen(false);
+  };
+
+  const handlePermanentDeleteSession = (sessionId: string) => {
+    setSessions(prev => prev.filter(s => s.id !== sessionId));
+    showToast('Seans kalıcı olarak silindi.', 'info');
+  };
+
+  const handleEmptyTrash = () => {
+    setSessions(prev => prev.filter(s => !s.isDeleted));
+    showToast('Çöp kutusu tamamen temizlendi.', 'info');
+    setIsTrashBinOpen(false);
   };
 
   const handleClearAllSessions = () => {
@@ -3802,6 +3974,21 @@ export default function App() {
     const sessionsToKeep: Session[] = [];
     const isSingleCalendarMode = !settings.faceToFaceCalendarWebcalUrl || !settings.onlineCalendarWebcalUrl;
 
+    // EXTERNAL CALENDAR ZERO-DATA / OUTAGE SAFETY GUARD:
+    // If incoming calendar feed returned 0 events while user had active calendar sessions,
+    // do NOT wipe sessions. This indicates an external network timeout or calendar service outage.
+    const activeCalendarSyncedCount = effectiveSessions.filter(s => 
+      !s.isDeleted &&
+      (s.isSyncedFromCalendar || (s.id && s.id.startsWith('ics_'))) && 
+      s.date >= cutOffDateStr && 
+      !isDateInClosedMonth(s.date, settings.closedMonths)
+    ).length;
+
+    const isSuspiciousZeroData = activeCalendarSyncedCount >= 3 && newSessions.length === 0;
+    if (isSuspiciousZeroData) {
+      showToast('Dış takvimden (Google/Apple) boş veri döndü. Mevcut seanslarınız korundu.', 'info');
+    }
+
     effectiveSessions.forEach(s => {
       // 1. If an existing session was migrated to a new ID in toUpdate, don't keep the old duplicate
       if (replacedOldIds.has(s.id)) {
@@ -3849,7 +4036,26 @@ export default function App() {
         const isMatched = incomingIds.has(s.id) || matchedExistingIds.has(s.id);
 
         if (!isMatched) {
-          // Calendar event was removed, deleted, or moved in Google/Apple Calendar
+          // Zero-data / Outage safeguard: Never delete if external calendar returned empty
+          if (isSuspiciousZeroData) {
+            sessionsToKeep.push(s);
+            return;
+          }
+
+          // Financial Ledger Safeguard: A paid or manually edited session must NEVER be deleted by calendar sync!
+          const hasRecordedAccounting = s.paymentStatus === 'paid' || 
+                                     s.paymentStatus === 'partial' || 
+                                     (Number(s.paidAmount) || 0) > 0 || 
+                                     s.isManuallyEdited;
+          if (hasRecordedAccounting) {
+            sessionsToKeep.push({
+              ...s,
+              isSyncedFromCalendar: false // Decouple from calendar to keep permanently in accounting ledger
+            });
+            return;
+          }
+
+          // Move removed calendar session to Soft Delete (Trash Bin for 30 days)
           deletedList.push({
             id: s.id,
             clientName: s.clientName,
@@ -3858,7 +4064,13 @@ export default function App() {
             type: s.type
           });
           deletedCount++;
-          return; // Filter it out (delete it from PsyCalcu!)
+          sessionsToKeep.push({
+            ...s,
+            isDeleted: true,
+            deletedAt: Date.now(),
+            updatedAt: Date.now()
+          });
+          return;
         }
       }
       sessionsToKeep.push(s);
@@ -4858,12 +5070,17 @@ export default function App() {
           setIsClientPricingModalOpen(true);
         }}
         onOpenMonthClosingModal={openMonthClosingModal}
-        unclosedMonthsCount={getUnclosedPastMonths(sessions, settings.closedMonths).length}
+        unclosedMonthsCount={getUnclosedPastMonths(activeSessions, settings.closedMonths).length}
+        isOnline={isOnline}
+        pendingMutationsCount={pendingMutationsCount}
+        deletedSessionsCount={deletedSessions.length}
+        onOpenTrashBin={() => setIsTrashBinOpen(true)}
+        onSyncNow={handleManualSyncNow}
       />
 
       {/* Month Closing Notification Banner for start of month */}
       <MonthClosingBanner
-        sessions={sessions}
+        sessions={activeSessions}
         settings={settings}
         onOpenMonthClosingModal={openMonthClosingModal}
       />
@@ -5494,7 +5711,7 @@ export default function App() {
                                 const isToday = cell.dateStr === getTodayLocalDate();
                                 
                                 // Check if there are sessions on this day
-                                const daySessions = sessions.filter(s => s.date === cell.dateStr);
+                                const daySessions = activeSessions.filter(s => s.date === cell.dateStr);
                                 const hasSessions = daySessions.length > 0;
                                 const hasPriceIncrease = daySessions.some(s => 
                                   s.type !== 'cancelled' && (
@@ -5576,7 +5793,7 @@ export default function App() {
                     {dateRibbon.map((day) => {
                       const isSelected = day.dateStr === selectedDate;
                       const isToday = day.dateStr === getTodayLocalDate();
-                      const daySessions = sessions.filter(s => s.date === day.dateStr);
+                      const daySessions = activeSessions.filter(s => s.date === day.dateStr);
                       const hasSessions = daySessions.length > 0;
                       const hasPriceIncrease = daySessions.some(s => 
                         s.type !== 'cancelled' && (
@@ -6523,7 +6740,7 @@ export default function App() {
                 />
               ) : (
                 <StatsDashboard 
-                  sessions={sessions} 
+                  sessions={activeSessions} 
                   settings={settings} 
                   expenses={expenses}
                   onAddExpense={handleAddExpense}
@@ -6814,7 +7031,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               <SessionAuditTable
-                sessions={sessions}
+                sessions={activeSessions}
                 settings={settings}
                 onEditSession={(session) => {
                   setEditingSession(session);
@@ -7051,7 +7268,7 @@ export default function App() {
 
               {/* Email Report Generator Component */}
               <EmailReportGenerator
-                sessions={sessions}
+                sessions={activeSessions}
                 settings={settings}
                 showToast={showToast}
                 userEmail={user?.email || undefined}
@@ -7511,7 +7728,7 @@ export default function App() {
             >
               <ClientDetailPage
                 clientName={selectedClientName}
-                sessions={sessions}
+                sessions={activeSessions}
                 settings={settings}
                 previousTabName={
                   previousTab === 'agenda' ? 'Ajanda' :
@@ -7615,7 +7832,7 @@ export default function App() {
         isOpen={isClientPricingModalOpen}
         onClose={() => setIsClientPricingModalOpen(false)}
         initialTab={clientPricingInitialTab}
-        sessions={sessions}
+        sessions={activeSessions}
         settings={settings}
         expenses={expenses}
         snapshots={backupSnapshots}
@@ -7652,6 +7869,17 @@ export default function App() {
           showToast(`"${snapshot.label}" yedeği başarıyla geri yüklendi!`, 'success');
           setIsClientPricingModalOpen(false);
         }}
+      />
+
+      {/* Soft-Delete Trash Bin Modal (30-day TTL recovery) */}
+      <TrashBinModal
+        isOpen={isTrashBinOpen}
+        onClose={() => setIsTrashBinOpen(false)}
+        deletedSessions={deletedSessions}
+        onRestoreSession={handleRestoreSession}
+        onRestoreAll={handleRestoreAllDeleted}
+        onPermanentDelete={handlePermanentDeleteSession}
+        onEmptyTrash={handleEmptyTrash}
       />
 
       {/* Session Add/Edit Modal Component */}

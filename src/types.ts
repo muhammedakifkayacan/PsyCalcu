@@ -28,6 +28,8 @@ export interface Session {
   updatedAt?: number; // timestamp in ms for conflict-free sync
   isManuallyEdited?: boolean; // track if user manually adjusted price/duration/costs
   roomId?: string; // Room association for property owners
+  isDeleted?: boolean; // Soft delete flag (retained in Trash Bin for 30 days)
+  deletedAt?: number; // timestamp in ms when session was moved to trash bin
 }
 
 export interface Room {

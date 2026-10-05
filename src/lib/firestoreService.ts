@@ -1,6 +1,7 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
+import { idbSet } from '../utils/idbStorage';
 
 interface UserData {
   settings: AppSettings;
@@ -116,18 +117,30 @@ export async function saveUserData(
   snapshotReason?: string
 ): Promise<void> {
   const cleanedSettings = JSON.parse(JSON.stringify(settings));
-  const cleanedSessions = JSON.parse(JSON.stringify(sessions));
+  // 1. Auto-prune soft-deleted sessions older than 30 days (TTL cleanup to ensure zero data bloat)
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const cleanedSessions = (JSON.parse(JSON.stringify(sessions)) as Session[]).filter(s => {
+    if (!s) return false;
+    if (s.isDeleted && s.deletedAt && s.deletedAt < thirtyDaysAgo) {
+      return false; // Permanently purge past 30 days
+    }
+    return true;
+  });
+
   const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
 
-  // ALWAYS write to local safety emergency backup immediately so data is never lost even if quota is exhausted
+  // ALWAYS write to local safety emergency backup immediately and async to IndexedDB
   try {
     localStorage.setItem(`psycalcu_safety_backup_${userId}`, JSON.stringify(cleanedSessions));
     localStorage.setItem(`psycalcu_safety_settings_${userId}`, JSON.stringify(cleanedSettings));
+    idbSet(`psycalcu_sessions_${userId}`, cleanedSessions).catch(() => {});
+    idbSet(`psycalcu_settings_${userId}`, cleanedSettings).catch(() => {});
   } catch (e) {}
 
   // Auto-create snapshot if requested OR periodically for safety if there are paid sessions
+  // STRICT ROLLING LIMIT: Max 5 snapshots (FIFO) to completely prevent document bloat and respect 1MB limit
   const snapReason = snapshotReason || (sessions && sessions.some(s => s.paymentStatus === 'paid') ? 'Otomatik Muhasebe Güvenlik Yedeği' : '');
-  if (sessions && sessions.length > 0 && snapReason) {
+  if (cleanedSessions && cleanedSessions.length > 0 && snapReason) {
     try {
       const snap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
       const localKey = `psycalcu_snapshots_${userId}`;
@@ -139,9 +152,10 @@ export async function saveUserData(
       // Deduplicate snapshots
       localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== snap.label));
       localSnaps.unshift(snap);
-      if (localSnaps.length > 30) localSnaps = localSnaps.slice(0, 30);
+      if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
       localStorage.setItem(localKey, JSON.stringify(localSnaps));
       localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(localSnaps));
+      idbSet(localKey, localSnaps).catch(() => {});
     } catch (localErr) {}
   }
 
@@ -151,6 +165,21 @@ export async function saveUserData(
   try {
     const docRef = doc(db, 'users', userId);
     
+    // Retrieve existing snapshots and enforce rolling max 5 in cloud document
+    let updatedSnapshots: DataBackupSnapshot[] | undefined = undefined;
+    if (snapReason) {
+      try {
+        const localKey = `psycalcu_snapshots_${userId}`;
+        const existingLocalStr = localStorage.getItem(localKey);
+        if (existingLocalStr) {
+          const parsed = JSON.parse(existingLocalStr);
+          if (Array.isArray(parsed)) {
+            updatedSnapshots = parsed.slice(0, 5);
+          }
+        }
+      } catch (e) {}
+    }
+
     const payload: any = { 
       settings: cleanedSettings, 
       sessions: cleanedSessions, 
@@ -158,10 +187,8 @@ export async function saveUserData(
       lastUpdatedAt: new Date().toISOString()
     };
 
-    // Auto-create snapshot if sessions exist and it's a significant event or requested
-    if (sessions && sessions.length > 0 && snapshotReason) {
-      const snap = createSnapshotObject(snapshotReason, cleanedSettings, cleanedSessions, cleanedExpenses);
-      payload.backupSnapshots = arrayUnion(snap);
+    if (updatedSnapshots && updatedSnapshots.length > 0) {
+      payload.backupSnapshots = updatedSnapshots;
     }
 
     // Keep a persistent calendarBackup inside the user document whenever URLs exist

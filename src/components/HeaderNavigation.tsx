@@ -28,7 +28,10 @@ import {
   FileSpreadsheet,
   Clock,
   History,
-  Lock
+  Lock,
+  Trash2,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
@@ -72,6 +75,11 @@ interface HeaderNavigationProps {
   onOpenClientPricingModal?: (initialTab?: 'clients' | 'reconcile' | 'snapshots') => void;
   onOpenMonthClosingModal?: (monthKey?: string) => void;
   unclosedMonthsCount?: number;
+  isOnline?: boolean;
+  pendingMutationsCount?: number;
+  deletedSessionsCount?: number;
+  onOpenTrashBin?: () => void;
+  onSyncNow?: () => void;
 }
 
 export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
@@ -110,7 +118,12 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   handleLogout,
   onOpenClientPricingModal,
   onOpenMonthClosingModal,
-  unclosedMonthsCount
+  unclosedMonthsCount,
+  isOnline = true,
+  pendingMutationsCount = 0,
+  deletedSessionsCount = 0,
+  onOpenTrashBin,
+  onSyncNow
 }) => {
   const { isPrivacyMode, togglePrivacyMode, isHideClientNames, toggleHideClientNames, formatMoney, formatClientName } = usePrivacy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -172,24 +185,53 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
               {/* Cloud Sync Status Indicator Badge */}
               {user && (
-                <div className="ml-1 flex items-center gap-1.5" title={
-                  isQuotaExceeded ? 'Kota Doldu (Yerel Depolama Aktif)' :
-                  isAuthSyncing ? 'Bulut Senkronizasyonu Sürüyor...' :
-                  isCloudSaving ? 'Buluta Kaydediliyor...' : 'Bulut Verisi Eşleşti'
-                }>
-                  <span className="relative flex h-2.5 w-2.5">
-                    {isQuotaExceeded ? (
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                <button
+                  type="button"
+                  onClick={onSyncNow}
+                  className={`ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer border shadow-3xs ${
+                    !isOnline 
+                      ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                      : isQuotaExceeded
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : (isAuthSyncing || isCloudSaving)
+                      ? 'bg-sky-50 text-sky-800 border-sky-200'
+                      : 'bg-emerald-50/70 text-emerald-800 border-emerald-200/80 hover:bg-emerald-100/70'
+                  }`}
+                  title={
+                    !isOnline 
+                      ? `Çevrimdışı (${pendingMutationsCount || 0} bekleyen işlem). Bağlantı gelince eşitlenir, tıklayarak deneyin.`
+                      : isQuotaExceeded
+                      ? 'Kota Doldu (Yerel Depolama Devrede)'
+                      : (isAuthSyncing || isCloudSaving)
+                      ? 'Buluta kaydediliyor...'
+                      : 'Tüm verileriniz bulutta güvende. Tıklayarak şimdi eşitleyin.'
+                  }
+                >
+                  <span className="relative flex h-2 w-2">
+                    {!isOnline ? (
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    ) : isQuotaExceeded ? (
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                     ) : (isAuthSyncing || isCloudSaving) ? (
                       <>
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
                       </>
                     ) : (
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     )}
                   </span>
-                </div>
+                  <span className="text-[10px] hidden xl:inline font-medium">
+                    {!isOnline 
+                      ? `Çevrimdışı (${pendingMutationsCount || 0})`
+                      : (isAuthSyncing || isCloudSaving)
+                      ? 'Eşitleniyor...'
+                      : 'Bulutta Güvende'}
+                  </span>
+                  {(isAuthSyncing || isCloudSaving) && (
+                    <RefreshCw className="w-2.5 h-2.5 animate-spin text-sky-600 hidden sm:inline" />
+                  )}
+                </button>
               )}
             </div>
 
@@ -833,6 +875,34 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                           </div>
                           <ChevronRight className="w-4 h-4 text-indigo-600" />
                         </motion.button>
+                        {onOpenTrashBin && (
+                          <motion.button
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                              onOpenTrashBin();
+                              setIsMenuOpen(false);
+                            }}
+                            className="w-full p-3.5 flex items-center justify-between text-left transition-colors cursor-pointer touch-manipulation bg-rose-50/50 hover:bg-rose-50 text-rose-950 border-t border-slate-100"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center text-white">
+                                <Trash2 className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-bold text-slate-800">Geri Dönüşüm Kutusu</p>
+                                  {deletedSessionsCount > 0 && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-rose-200 text-rose-800">
+                                      {deletedSessionsCount}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-500">Silinen seansları 30 gün içinde geri yükle</p>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-rose-600" />
+                          </motion.button>
+                        )}
                       </>
                     )}
                   </div>
