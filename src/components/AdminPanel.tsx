@@ -13,6 +13,7 @@ import {
   arrayUnion
 } from 'firebase/firestore';
 import { db, auth, sendPasswordResetEmail } from '../lib/firebase';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   Users, 
   Check, 
@@ -352,6 +353,8 @@ export default function AdminPanel({ showToast }: AdminPanelProps) {
     }
     return () => clearTimeout(timer);
   }, [confirmModal?.isOpen, confirmCountdown]);
+
+  useBodyScrollLock(Boolean(confirmModal?.isOpen || calendarHistoryModalUser));
 
   const openConfirmModal = (
     type: 'approve' | 'restrict' | 'delete', 

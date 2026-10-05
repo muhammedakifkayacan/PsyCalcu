@@ -119,3 +119,17 @@ button:not(:disabled):active,
   font-weight: 600;
   color: #585c4b;
 }
+
+/* Bulletproof modal background scroll lock across iOS, Android, and Desktop */
+html.modal-open,
+body.modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  -webkit-overflow-scrolling: auto !important;
+}
+
+/* Ensure modal overlays isolate scrolling completely */
+[role="dialog"] {
+  overscroll-behavior: contain !important;
+}

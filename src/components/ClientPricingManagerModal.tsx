@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { Session, AppSettings, Expense, DataBackupSnapshot, ClientPricingRule, getNormalizedClientName, bulkApplyClientRule, findClientCustomRule } from '../types';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface ClientPricingManagerModalProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export const ClientPricingManagerModal: React.FC<ClientPricingManagerModalProps>
   targetUserName,
   initialTab = 'clients'
 }) => {
+  useBodyScrollLock(isOpen);
   const [activeTab, setActiveTab] = useState<'clients' | 'reconcile' | 'snapshots'>(initialTab);
 
   useEffect(() => {

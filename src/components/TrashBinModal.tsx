@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Session } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface TrashBinModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({
   onPermanentDelete,
   onEmptyTrash
 }) => {
+  useBodyScrollLock(isOpen);
   const { formatMoney, formatClientName } = usePrivacy();
   const [confirmEmpty, setConfirmEmpty] = useState(false);
 

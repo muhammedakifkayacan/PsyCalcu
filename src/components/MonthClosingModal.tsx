@@ -31,6 +31,7 @@ import {
   isMonthClosed 
 } from '../utils/monthCloseUtils';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface MonthClosingModalProps {
   isOpen: boolean;
@@ -63,6 +64,7 @@ export const MonthClosingModal: React.FC<MonthClosingModalProps> = ({
   showToast,
   initialMonthKey
 }) => {
+  useBodyScrollLock(isOpen);
   const { formatMoney, formatClientName } = usePrivacy();
 
   // Distinct months in sessions

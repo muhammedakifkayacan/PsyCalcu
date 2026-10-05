@@ -737,7 +737,6 @@ export default function App() {
     onConfirm: () => void;
     hasCountdown?: boolean;
   } | null>(null);
-  useBodyScrollLock(Boolean(confirmState?.isOpen));
   const [confirmCountdown, setConfirmCountdown] = useState(5);
 
   const triggerConfirm = (title: string, message: string, onConfirm: () => void, hasCountdown = false) => {
@@ -2343,6 +2342,23 @@ export default function App() {
     clientName: '',
     totalAmount: 0,
   });
+
+  // Lock background scrolling whenever ANY modal, popup, or drawer is active in the panel
+  const isAnyModalActive = Boolean(
+    isSettingsOpen ||
+    isClientPricingModalOpen ||
+    isTrashBinOpen ||
+    isSessionModalOpen ||
+    isMonthClosingModalOpen ||
+    isFaqOpen ||
+    isTourOpen ||
+    isSyncDetailsModalOpen ||
+    debtConfirmState.isOpen ||
+    isDebtCutoffModalOpen ||
+    Boolean(historyModalClientName) ||
+    Boolean(confirmState?.isOpen)
+  );
+  useBodyScrollLock(isAnyModalActive);
 
   // Gelişmiş Arama Filtreleme ve Hesaplama Memos
   const searchedAndFilteredSessions = useMemo(() => {
