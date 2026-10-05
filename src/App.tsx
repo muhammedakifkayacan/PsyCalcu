@@ -2323,6 +2323,27 @@ export default function App() {
     });
   };
 
+  const [showAgendaFinancialSummary, setShowAgendaFinancialSummary] = useState<boolean>(() => {
+    try {
+      const key = user ? `psycalcu_show_agenda_financial_${user.uid}` : 'psycalcu_show_agenda_financial';
+      const saved = safeStorage.getItem(key);
+      return saved === 'true'; // Default is FALSE: clean, distraction-free agenda
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const toggleShowAgendaFinancialSummary = () => {
+    setShowAgendaFinancialSummary(prev => {
+      const next = !prev;
+      try {
+        const key = user ? `psycalcu_show_agenda_financial_${user.uid}` : 'psycalcu_show_agenda_financial';
+        safeStorage.setItem(key, String(next), user?.uid);
+      } catch (e) {}
+      return next;
+    });
+  };
+
   const handleHideExplanations = useCallback(() => {
     setShowExplanations(false);
     try {
@@ -5224,110 +5245,118 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.2 }}
-              className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+              className={showAgendaFinancialSummary ? "grid grid-cols-1 lg:grid-cols-12 gap-6" : "w-full flex flex-col gap-6"}
             >
               
-              {/* LEFT Column: Financial Overview */}
-              <div className="lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1">
-                
-                {/* Balance Card */}
-                <div className="bg-[#6b705c] p-6 rounded-[2rem] text-white shadow-lg relative overflow-hidden" id="balance-card">
-                  <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-28 h-28 bg-white/5 rounded-full pointer-events-none" />
+              {/* LEFT Column: Financial Overview (Hidden by default as requested; accessible in Muhasebe tab or via filters) */}
+              {showAgendaFinancialSummary && (
+                <div className="lg:col-span-4 flex flex-col gap-6 order-2 lg:order-1 animate-fade-in">
                   
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="text-xs tracking-wider opacity-80 font-semibold">{toTurkishUpper(monthlyMetrics.monthName)} TAHMİNİ NET KÂR</p>
-                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Aylık Rapor</span>
-                  </div>
-                  
-                  <h2 className="text-4xl font-serif">{formatMoney(monthlyMetrics.netIncome, { decimals: 2 })}</h2>
-                  
-                  <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/20 pt-4 text-xs">
-                    <div>
-                      <p className="text-[10px] tracking-widest opacity-70">AYLIK BRÜT GELİR</p>
-                      <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.grossIncome)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] tracking-widest opacity-70">AYLIK TOPLAM GİDER</p>
-                      <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.totalExpenses)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bulut Senkronizasyon Paneli (Firebase Auth & Firestore) */}
-                <AuthCard
-                  user={user}
-                  onLogout={handleLogout}
-                  onAuthSuccess={handleAuthSuccess}
-                  existingSessionsCount={sessions.length}
-                  showToast={showToast}
-                  showExplanations={showExplanations}
-                  onHideExplanations={handleHideExplanations}
-                />
-
-                {/* Expense Breakdown Card */}
-                <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] flex-1 flex flex-col justify-between" id="expense-breakdown-card">
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] mb-4">AYLIK GİDER DETAYLARI</h3>
+                  {/* Balance Card */}
+                  <div className="bg-[#6b705c] p-6 rounded-[2rem] text-white shadow-lg relative overflow-hidden" id="balance-card">
+                    <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-28 h-28 bg-white/5 rounded-full pointer-events-none" />
                     
-                    {/* Office Rent Item */}
-                    <div className="flex justify-between items-center bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8]/50">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600 text-sm">🏠</div>
-                        <div>
-                          <span className="text-xs font-semibold block">Ofis Kira Gideri</span>
-                          <span className="text-[9px] text-slate-600 font-medium">Seans başı biriken</span>
-                        </div>
-                      </div>
-                      <span className="font-bold text-sm text-slate-700">{formatMoney(monthlyMetrics.officeRentExpenses)}</span>
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-xs tracking-wider opacity-80 font-semibold">{toTurkishUpper(monthlyMetrics.monthName)} TAHMİNİ NET KÂR</p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('stats')}
+                        className="text-[10px] bg-white/20 hover:bg-white/30 text-white font-semibold px-2.5 py-0.5 rounded-full cursor-pointer transition-colors"
+                        title="Muhasebe detaylarına git"
+                      >
+                        Aylık Rapor →
+                      </button>
                     </div>
-
-                    {/* Babysitter Fee Item */}
-                    <div className="flex justify-between items-center bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8]/50">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 text-sm">👶</div>
-                        <div>
-                          <span className="text-xs font-semibold block">Bakıcı Ücretleri</span>
-                          <span className="text-[9px] text-slate-600 font-medium">Seans başı ödenen</span>
-                        </div>
+                    
+                    <h2 className="text-4xl font-serif">{formatMoney(monthlyMetrics.netIncome, { decimals: 2 })}</h2>
+                    
+                    <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/20 pt-4 text-xs">
+                      <div>
+                        <p className="text-[10px] tracking-widest opacity-70">AYLIK BRÜT GELİR</p>
+                        <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.grossIncome)}</p>
                       </div>
-                      <span className="font-bold text-sm text-blue-600">{formatMoney(monthlyMetrics.babysitterFees)}</span>
-                    </div>
-
-                    {/* Rent percentage hint */}
-                    <div className="pt-2">
-                      <div className="bg-[#f5f5f0] p-4 rounded-2xl">
-                        <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                          <span>Gider Oranı (Brüte Göre)</span>
-                          <span className="font-bold">
-                            {monthlyMetrics.grossIncome > 0 
-                              ? `%${Math.round((monthlyMetrics.totalExpenses / monthlyMetrics.grossIncome) * 100)}` 
-                              : '%0'}
-                          </span>
-                        </div>
-                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-[#cb997e] rounded-full transition-all duration-500" 
-                            style={{ 
-                              width: `${monthlyMetrics.grossIncome > 0 
-                                ? Math.min(100, (monthlyMetrics.totalExpenses / monthlyMetrics.grossIncome) * 100) 
-                                : 0}%` 
-                            }}
-                          ></div>
-                        </div>
-                        {showExplanations && (
-                          <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium animate-fade-in">
-                            * Bakıcı seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultBabysitterFee)}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultOfficeRentFee)}</span> üzerinden hesaplanır.
-                          </p>
-                        )}
+                      <div>
+                        <p className="text-[10px] tracking-widest opacity-70">AYLIK TOPLAM GİDER</p>
+                        <p className="text-lg font-semibold mt-0.5">{formatMoney(monthlyMetrics.totalExpenses)}</p>
                       </div>
                     </div>
                   </div>
 
+                  {/* Bulut Senkronizasyon Paneli (Firebase Auth & Firestore) */}
+                  <AuthCard
+                    user={user}
+                    onLogout={handleLogout}
+                    onAuthSuccess={handleAuthSuccess}
+                    existingSessionsCount={sessions.length}
+                    showToast={showToast}
+                    showExplanations={showExplanations}
+                    onHideExplanations={handleHideExplanations}
+                  />
+
+                  {/* Expense Breakdown Card */}
+                  <div className="bg-white p-6 rounded-[2rem] border border-[#e5e1d8] flex-1 flex flex-col justify-between" id="expense-breakdown-card">
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold tracking-widest text-[#a5a58d] mb-4">AYLIK GİDER DETAYLARI</h3>
+                      
+                      {/* Office Rent Item */}
+                      <div className="flex justify-between items-center bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8]/50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600 text-sm">🏠</div>
+                          <div>
+                            <span className="text-xs font-semibold block">Ofis Kira Gideri</span>
+                            <span className="text-[9px] text-slate-600 font-medium">Seans başı biriken</span>
+                          </div>
+                        </div>
+                        <span className="font-bold text-sm text-slate-700">{formatMoney(monthlyMetrics.officeRentExpenses)}</span>
+                      </div>
+
+                      {/* Babysitter Fee Item */}
+                      <div className="flex justify-between items-center bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8]/50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 text-sm">👶</div>
+                          <div>
+                            <span className="text-xs font-semibold block">Bakıcı Ücretleri</span>
+                            <span className="text-[9px] text-slate-600 font-medium">Seans başı ödenen</span>
+                          </div>
+                        </div>
+                        <span className="font-bold text-sm text-blue-600">{formatMoney(monthlyMetrics.babysitterFees)}</span>
+                      </div>
+
+                      {/* Rent percentage hint */}
+                      <div className="pt-2">
+                        <div className="bg-[#f5f5f0] p-4 rounded-2xl">
+                          <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                            <span>Gider Oranı (Brüte Göre)</span>
+                            <span className="font-bold">
+                              {monthlyMetrics.grossIncome > 0 
+                                ? `%${Math.round((monthlyMetrics.totalExpenses / monthlyMetrics.grossIncome) * 100)}` 
+                                : '%0'}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-[#cb997e] rounded-full transition-all duration-500" 
+                              style={{ 
+                                width: `${monthlyMetrics.grossIncome > 0 
+                                  ? Math.min(100, (monthlyMetrics.totalExpenses / monthlyMetrics.grossIncome) * 100) 
+                                  : 0}%` 
+                              }}
+                            ></div>
+                          </div>
+                          {showExplanations && (
+                            <p className="text-[9px] text-slate-600 leading-tight mt-2 italic font-medium animate-fade-in">
+                              * Bakıcı seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultBabysitterFee)}</span>, ofis seans başı <span className="font-bold text-[#6b705c]">{formatMoney(settings.defaultOfficeRentFee)}</span> üzerinden hesaplanır.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              )}
 
-              {/* RIGHT Column: Agenda & Calendar Sync */}
-              <div className="lg:col-span-8 flex flex-col gap-6 order-1 lg:order-2" id="daily-agenda-section">
+              {/* RIGHT Column: Agenda & Calendar Sync (Expands to full-width when financial overview is hidden) */}
+              <div className={`${showAgendaFinancialSummary ? 'lg:col-span-8' : 'w-full'} flex flex-col gap-6 order-1 lg:order-2`} id="daily-agenda-section">
                 
                 {/* Universal Action Control Bar (Visible in Daily, Weekly, Monthly views) */}
                 <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 md:p-5 shadow-sm flex flex-wrap sm:flex-nowrap justify-between items-center gap-3">
@@ -5643,6 +5672,28 @@ export default function App() {
                               >
                                 <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
                                   <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showExplanations ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                                </div>
+                              </button>
+                            </div>
+
+                            {/* Toggle Monthly Financial Summary Cards in Agenda */}
+                            <div className="pt-2 border-t border-[#f5f5f0] flex items-center justify-between">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
+                                  <span className="text-xs font-semibold text-slate-700">Aylık Finans Özeti Kartları</span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 block">Kâr ve gider özetini ajanda yanında göster</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={toggleShowAgendaFinancialSummary}
+                                className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none shrink-0 ml-2"
+                                title={showAgendaFinancialSummary ? 'Finans özet kartlarını gizle' : 'Finans özet kartlarını göster'}
+                                aria-label="Aylık Finans Özetini Göster veya Gizle"
+                              >
+                                <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showAgendaFinancialSummary ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                                  <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showAgendaFinancialSummary ? 'translate-x-3.5' : 'translate-x-0'}`} />
                                 </div>
                               </button>
                             </div>

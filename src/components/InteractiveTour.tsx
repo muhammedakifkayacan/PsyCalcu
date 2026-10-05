@@ -77,10 +77,10 @@ export default function InteractiveTour({ isOpen, onClose, setActiveTab, showToa
       tab: "agenda"
     },
     {
-      targetId: "balance-card",
-      title: "Finansal Durum & Hesaplamalar",
-      content: "Seanslarınız tamamlandıkça, o ayki tahmini net kârınız, brüt geliriniz ve seans başı biriken otomatik giderleriniz burada anlık hesaplanır.",
-      placement: "right",
+      targetId: "tab-stats-main",
+      title: "Finansal Muhasebe & Raporlar",
+      content: "Seanslarınız tamamlandıkça, o ayki tahmini net kârınız, brüt geliriniz ve seans başı biriken otomatik giderleriniz Muhasebe sekmesinde anlık ve detaylıca hesaplanır.",
+      placement: "bottom",
       tab: "agenda"
     },
     {
