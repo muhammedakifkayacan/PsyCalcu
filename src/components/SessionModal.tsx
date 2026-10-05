@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt, CreditCard, Banknote, Landmark, History, Info, ChevronDown, ChevronUp, SlidersHorizontal, Lock } from 'lucide-react';
+import { X, Calendar, CalendarPlus, Clock, Wallet, FileText, User, Laptop, MapPin, Ban, Building, Sparkles, AlertTriangle, Percent, Receipt, CreditCard, Banknote, Landmark, History, Info, ChevronDown, ChevronUp, SlidersHorizontal, Lock, CheckCircle } from 'lucide-react';
 import { Session, SessionType, PaymentMethod, Room, getSmartClientPrice, getNormalizedClientName, getSmartClientCosts, ClosedMonthRecord } from '../types';
 import { downloadSessionAsICS } from '../utils/icsGenerator';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -98,10 +98,12 @@ export default function SessionModal({
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [showDateNoticeTooltip, setShowDateNoticeTooltip] = useState(false);
 
-  // Check if session or target date is in a closed month (locked from any edits)
+  // Check if session or target date is in a closed month
   const isOriginalDateInClosedMonth = sessionToEdit ? Boolean(isDateInClosedMonth(sessionToEdit.date, closedMonths)) : false;
   const isCurrentDateInClosedMonth = Boolean(isDateInClosedMonth(date, closedMonths));
-  const isSessionInClosedMonth = isOriginalDateInClosedMonth || isCurrentDateInClosedMonth;
+  const isEditingClosedMonthSession = Boolean(sessionToEdit && isOriginalDateInClosedMonth);
+  const isCreatingInClosedMonth = Boolean(!sessionToEdit && isCurrentDateInClosedMonth);
+  const isSessionInClosedMonth = isEditingClosedMonthSession || isCreatingInClosedMonth;
   const targetDateStr = sessionToEdit ? sessionToEdit.date : date;
   const closedMonthKey = (isOriginalDateInClosedMonth && sessionToEdit ? sessionToEdit.date : date).slice(0, 7);
 
@@ -126,10 +128,16 @@ export default function SessionModal({
 
   // Date notice tooltip content
   const dateNotice = (() => {
-    if (isSessionInClosedMonth) {
+    if (isEditingClosedMonthSession) {
+      return {
+        title: 'Kapatılmış Ay (Dönem Koruması)',
+        text: `Bu seans kapatılmış (${formatMonthKey(closedMonthKey)}) dönemine aittir. Takvim eşitlemesinde kaybolmaması için tarih, saat ve ücret kilitlidir. Ancak geçmiş borç tahsilatı için ödeme durumu ve tahsilat alanları açıktır.`
+      };
+    }
+    if (isCreatingInClosedMonth) {
       return {
         title: 'Kapatılmış & Kilitli Ay',
-        text: `Bu seans kapatılmış (${formatMonthKey(closedMonthKey)}) dönemine aittir. Kapatılan aylar finansal güvenlik için kilitlidir; seansı düzenlemek için önce Ay Kapatma ekranından bu ayın kilidini açmalısınız.`
+        text: `Bu tarih kapatılmış (${formatMonthKey(closedMonthKey)}) dönemine aittir. Kapatılan aylara yeni seans eklenemez.`
       };
     }
     if (sessionToEdit?.isSyncedFromCalendar) {
@@ -315,8 +323,33 @@ export default function SessionModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSessionInClosedMonth) return;
+    if (isCreatingInClosedMonth) return;
     if (!clientName.trim()) return;
+
+    // If editing a session in a closed month, keep date, time, price, and type strictly frozen,
+    // while allowing payment settlement (debt clearance) and notes to update.
+    if (isEditingClosedMonthSession && sessionToEdit) {
+      const isCancelledOrNonSession = sessionToEdit.type === 'cancelled' || sessionToEdit.type === 'non-session';
+      const calcPaidAmount = isCancelledOrNonSession
+        ? 0
+        : (paymentStatus === 'paid' 
+            ? sessionToEdit.price 
+            : (paymentStatus === 'partial' ? Math.min(sessionToEdit.price, Math.max(0, Number(paidAmount) || 0)) : 0));
+
+      const updatedSessionData: Session = {
+        ...sessionToEdit,
+        paymentStatus: isCancelledOrNonSession ? 'unpaid' : paymentStatus,
+        paidAmount: calcPaidAmount,
+        paymentMethod: isCancelledOrNonSession ? undefined : (paymentMethod ? (paymentMethod as PaymentMethod) : undefined),
+        notes: notes.trim(),
+        updatedAt: Date.now(),
+        isManuallyEdited: true
+      };
+
+      onSave(updatedSessionData);
+      onClose();
+      return;
+    }
 
     const isNonSession = type === 'non-session';
     const isRentIncome = type === 'rent-income';
@@ -413,14 +446,26 @@ export default function SessionModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-3.5 flex-1 overflow-y-auto">
           {/* Closed / Locked Month Warning Banner */}
-          {isSessionInClosedMonth && (
+          {isEditingClosedMonthSession && (
+            <div className="bg-emerald-50/95 border-2 border-emerald-300 text-emerald-950 rounded-2xl p-3.5 space-y-1.5 shadow-2xs animate-fade-in" id="closed-month-edit-banner">
+              <div className="flex items-center gap-2 font-bold text-emerald-900 text-xs">
+                <Lock className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>Kapatılmış Muhasebe Dönemi ({formatMonthKey(closedMonthKey)})</span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
+                Bu seansın tarihi, saati ve seans ücreti takvim kaymalarını önlemek için kilitlidir. <strong>Danışanın geçmiş dönem borcunu kapatabilmeniz için</strong> aşağıdan Ödeme Durumu, Tahsil Edilen Tutar, Ödeme Yöntemi ve Seans Notlarını serbestçe güncelleyebilirsiniz.
+              </p>
+            </div>
+          )}
+
+          {isCreatingInClosedMonth && (
             <div className="bg-amber-50/95 border-2 border-amber-300 text-amber-950 rounded-2xl p-3.5 space-y-1.5 shadow-2xs animate-fade-in" id="closed-month-lock-banner">
               <div className="flex items-center gap-2 font-bold text-amber-900 text-xs">
                 <Lock className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>Kapatılmış & Kilitli Ay ({formatMonthKey(closedMonthKey)})</span>
               </div>
               <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                Bu seans kapatılmış bir muhasebe dönemine aittir. Kapatılan aylar finansal ve yasal denetim güvenliği için kilitlenmiştir; üzerinde değişiklik yapılamaz. Düzenleme yapabilmek için lütfen önce <strong>Ay Kapatma</strong> ekranından bu ayın kilidini açın.
+                Seçilen tarih kapatılmış bir muhasebe dönemine aittir. Kapatılan aylara yeni seans eklenemez. Yeni seans eklemek için lütfen önce <strong>Ay Kapatma</strong> ekranından bu ayın kilidini açın.
               </p>
             </div>
           )}
@@ -715,14 +760,14 @@ export default function SessionModal({
                 <div className="flex gap-1.5 bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8]/60">
                   <button
                     type="button"
-                    disabled={isSessionInClosedMonth}
+                    disabled={isCreatingInClosedMonth}
                     onClick={() => {
                       setPaymentStatus('unpaid');
                       setPaidAmount('');
                       setPaymentMethod('');
                     }}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
-                      isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'unpaid'
                         ? 'bg-rose-100 text-rose-800 border border-rose-200 shadow-2xs font-bold'
@@ -733,7 +778,7 @@ export default function SessionModal({
                   </button>
                   <button
                     type="button"
-                    disabled={isSessionInClosedMonth}
+                    disabled={isCreatingInClosedMonth}
                     onClick={() => {
                       setPaymentStatus('partial');
                       if (!paidAmount && price) {
@@ -741,7 +786,7 @@ export default function SessionModal({
                       }
                     }}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
-                      isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'partial'
                         ? 'bg-amber-100 text-amber-900 border border-amber-200 shadow-2xs font-bold'
@@ -752,13 +797,13 @@ export default function SessionModal({
                   </button>
                   <button
                     type="button"
-                    disabled={isSessionInClosedMonth}
+                    disabled={isCreatingInClosedMonth}
                     onClick={() => {
                       setPaymentStatus('paid');
                       setPaidAmount(price);
                     }}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
-                      isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'paid'
                         ? 'bg-emerald-100 text-emerald-900 border border-emerald-200 shadow-2xs font-bold'
@@ -784,12 +829,12 @@ export default function SessionModal({
                         min="0"
                         max={Number(price) || 0}
                         step="50"
-                        disabled={isSessionInClosedMonth}
+                        disabled={isCreatingInClosedMonth}
                         value={paidAmount}
                         onChange={(e) => setPaidAmount(e.target.value)}
                         placeholder="Örn: 1500"
                         className={`w-full px-3 py-1.5 border rounded-lg text-xs font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs ${
-                          isSessionInClosedMonth
+                          isCreatingInClosedMonth
                             ? 'bg-slate-100 border-slate-300 cursor-not-allowed text-slate-400'
                             : 'bg-white border-amber-300'
                         }`}
@@ -817,7 +862,7 @@ export default function SessionModal({
                       <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
                       Ödeme Yöntemi
                     </span>
-                    {paymentMethod && !isSessionInClosedMonth && (
+                    {paymentMethod && !isCreatingInClosedMonth && (
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('')}
@@ -830,10 +875,10 @@ export default function SessionModal({
                   <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
-                      disabled={isSessionInClosedMonth}
+                      disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'card' ? '' : 'card')}
                       className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                        isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'card'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
@@ -845,10 +890,10 @@ export default function SessionModal({
                     </button>
                     <button
                       type="button"
-                      disabled={isSessionInClosedMonth}
+                      disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'cash' ? '' : 'cash')}
                       className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                        isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'cash'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
@@ -860,10 +905,10 @@ export default function SessionModal({
                     </button>
                     <button
                       type="button"
-                      disabled={isSessionInClosedMonth}
+                      disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'transfer' ? '' : 'transfer')}
                       className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                        isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'transfer'
                           ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
@@ -1218,15 +1263,15 @@ export default function SessionModal({
               <FileText className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
               <textarea
                 value={notes}
-                disabled={isSessionInClosedMonth}
+                disabled={isCreatingInClosedMonth}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={1}
                 className={`w-full pl-10 pr-4 py-2 text-base sm:text-xs border rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none ${
-                  isSessionInClosedMonth
+                  isCreatingInClosedMonth
                     ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
                     : 'bg-[#fdfbf7] border-[#e5e1d8]'
                 }`}
-                placeholder={isSessionInClosedMonth ? "Kapatılmış ay seansı - notlar kilitlidir" : "Geçmiş terapi notları, ödeme planı veya oda bilgisi..."}
+                placeholder={isCreatingInClosedMonth ? "Kapatılmış ay - yeni kayıt yapılamaz" : "Geçmiş terapi notları, ödeme planı veya oda bilgisi..."}
               />
             </div>
           </div>
@@ -1277,18 +1322,23 @@ export default function SessionModal({
               </motion.button>
               <motion.button
                 type="submit"
-                disabled={isSessionInClosedMonth}
-                whileTap={isSessionInClosedMonth ? {} : { scale: 0.95 }}
+                disabled={isCreatingInClosedMonth}
+                whileTap={isCreatingInClosedMonth ? {} : { scale: 0.95 }}
                 className={`px-5 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 select-none touch-manipulation ${
-                  isSessionInClosedMonth
+                  isCreatingInClosedMonth
                     ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                    : 'bg-[#6b705c] hover:bg-[#585c4c] text-white cursor-pointer'
+                    : 'bg-[#6b705c] hover:bg-[#585c4c] text-white cursor-pointer shadow-xs'
                 }`}
               >
-                {isSessionInClosedMonth ? (
+                {isCreatingInClosedMonth ? (
                   <>
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Kilitli (Kapatılmış Ay)</span>
+                    <span>Kilitli Ay (Kayıt Yapılamaz)</span>
+                  </>
+                ) : isEditingClosedMonthSession ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Tahsilatı Kaydet</span>
                   </>
                 ) : (
                   <span>Kaydet</span>

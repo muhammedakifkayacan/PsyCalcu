@@ -2822,13 +2822,21 @@ export default function App() {
     const existing = sessions.find(s => s.id === savedSession.id);
     
     // Check closed months lock
-    if (isDateInClosedMonth(savedSession.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylar kilitlidir; seansı düzenlemek için önce Ay Kapatma ekranından ilgili ayın kilidini açmalısınız.', 'error');
+    if (!existing && isDateInClosedMonth(savedSession.date, settings.closedMonths)) {
+      showToast('Kapatılmış bir aya yeni seans eklenemez. Yeni seans eklemek için önce Ay Kapatma ekranından bu ayın kilidini açmalısınız.', 'error');
       return;
     }
+
     if (existing && isDateInClosedMonth(existing.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylar kilitlidir; seansı düzenlemek için önce Ay Kapatma ekranından ilgili ayın kilidini açmalısınız.', 'error');
-      return;
+      // Historical appointments in closed months: protect date, time and type from shifting
+      if (savedSession.date !== existing.date || savedSession.time !== existing.time) {
+        showToast('Kapatılmış aylardaki seansların tarihi ve saati değiştirilemez! Bu koruma seansların takvimde kaymasını ve silinmesini önler.', 'error');
+        return;
+      }
+      if (savedSession.type !== existing.type) {
+        showToast('Kapatılmış aylardaki seansların türü değiştirilemez!', 'error');
+        return;
+      }
     }
 
     // Check validation limits
@@ -3109,11 +3117,8 @@ export default function App() {
   const handleTogglePaymentStatus = (id: string) => {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
-    if (isDateInClosedMonth(found.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
-      return;
-    }
 
+    const isClosedMonth = isDateInClosedMonth(found.date, settings.closedMonths);
     const prevStatus = found.paymentStatus;
     const prevPaidAmount = found.paidAmount;
     const nextStatus = prevStatus === 'paid' ? 'unpaid' : 'paid';
@@ -3150,10 +3155,12 @@ export default function App() {
 
     if (nextStatus === 'paid') {
       showToast(
-        `${found.clientName} adlı danışandan ${formatMoney(priceVal)} tahsil edildi!`, 
+        isClosedMonth
+          ? `${found.clientName} adlı danışandan ${formatMoney(priceVal)} tahsil edildi! (Geçmiş Ay Borcu Kapatıldı)`
+          : `${found.clientName} adlı danışandan ${formatMoney(priceVal)} tahsil edildi!`, 
         'success',
         {
-          title: 'Ödeme Alındı',
+          title: isClosedMonth ? 'Geçmiş Ay Borcu Tahsil Edildi' : 'Ödeme Alındı',
           message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
         },
         undoFn
@@ -3175,11 +3182,8 @@ export default function App() {
   const handleMarkSessionAsPaid = (id: string) => {
     const found = sessions.find(s => s.id === id);
     if (!found) return;
-    if (isDateInClosedMonth(found.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
-      return;
-    }
 
+    const isClosedMonth = isDateInClosedMonth(found.date, settings.closedMonths);
     const prevStatus = found.paymentStatus;
     const prevPaidAmount = found.paidAmount;
     const priceVal = Number(found.price) || 0;
@@ -3214,10 +3218,12 @@ export default function App() {
     };
 
     showToast(
-      `${found.clientName} ödemesi başarıyla tahsil edildi!`, 
+      isClosedMonth
+        ? `${found.clientName} ödemesi başarıyla tahsil edildi! (Geçmiş Ay Borcu Kapatıldı)`
+        : `${found.clientName} ödemesi başarıyla tahsil edildi!`, 
       'success',
       {
-        title: 'Ödeme Alındı',
+        title: isClosedMonth ? 'Geçmiş Ay Borcu Tahsil Edildi' : 'Ödeme Alındı',
         message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
       },
       undoFn
@@ -3232,7 +3238,7 @@ export default function App() {
 
     sessions.forEach(s => {
       const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid' && !isDateInClosedMonth(s.date, settings.closedMonths)) {
+      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
         const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
         totalAmount += remainingDebt;
         sessionCount++;
@@ -3247,7 +3253,7 @@ export default function App() {
     setSessions(prev => {
       return prev.map(s => {
         const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid' && !isDateInClosedMonth(s.date, settings.closedMonths)) {
+        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
           return {
             ...s,
             paymentStatus: 'paid',
@@ -3469,10 +3475,8 @@ export default function App() {
 
   const handleUpdateSingleSessionPaymentStatus = (sessionId: string, newStatus: 'paid' | 'unpaid' | 'partial') => {
     const session = sessions.find(s => s.id === sessionId);
-    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ödeme durumu değiştirilemez!', 'error');
-      return;
-    }
+    if (!session) return;
+    const isClosed = isDateInClosedMonth(session.date, settings.closedMonths);
     setSessions(prev => prev.map(s => s.id === sessionId ? { 
       ...s, 
       paymentStatus: newStatus, 
@@ -3480,6 +3484,9 @@ export default function App() {
       isManuallyEdited: true, 
       updatedAt: Date.now() 
     } : s));
+    if (isClosed && newStatus === 'paid') {
+      showToast(`${session.clientName} ödemesi kaydedildi (Geçmiş Ay Borcu Kapatıldı).`, 'success');
+    }
   };
 
   const handleGenerateSummary = async () => {
