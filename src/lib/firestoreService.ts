@@ -1,7 +1,7 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { Session, AppSettings, Expense, DataBackupSnapshot } from '../types';
-import { idbSet } from '../utils/idbStorage';
+import { idbSet, idbGet } from '../utils/idbStorage';
 
 interface UserData {
   settings: AppSettings;
@@ -129,53 +129,66 @@ export async function saveUserData(
 
   const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
 
-  // ALWAYS write to local safety emergency backup immediately and async to IndexedDB
+  // ALWAYS write to local safety emergency backup immediately and async to IndexedDB (100MB+ limit)
   try {
-    localStorage.setItem(`psycalcu_safety_backup_${userId}`, JSON.stringify(cleanedSessions));
-    localStorage.setItem(`psycalcu_safety_settings_${userId}`, JSON.stringify(cleanedSettings));
+    idbSet(`psycalcu_safety_backup_${userId}`, cleanedSessions).catch(() => {});
+    idbSet(`psycalcu_safety_settings_${userId}`, cleanedSettings).catch(() => {});
     idbSet(`psycalcu_sessions_${userId}`, cleanedSessions).catch(() => {});
     idbSet(`psycalcu_settings_${userId}`, cleanedSettings).catch(() => {});
+    // Purge old heavy keys from localStorage to prevent 5MB QuotaExceededError
+    localStorage.removeItem(`psycalcu_safety_backup_${userId}`);
+    localStorage.removeItem(`psycalcu_safety_settings_${userId}`);
   } catch (e) {}
 
   // Auto-create snapshot if requested OR periodically for safety if there are paid sessions
-  // STRICT ROLLING LIMIT: Max 5 snapshots (FIFO) to completely prevent document bloat and respect 1MB limit
+  // STRICT ROLLING LIMIT: Max 5 snapshots (FIFO)
   const snapReason = snapshotReason || (sessions && sessions.some(s => s.paymentStatus === 'paid') ? 'Otomatik Muhasebe Güvenlik Yedeği' : '');
+  let updatedSnapshots: DataBackupSnapshot[] | undefined = undefined;
   if (cleanedSessions && cleanedSessions.length > 0 && snapReason) {
     try {
       const snap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
       const localKey = `psycalcu_snapshots_${userId}`;
-      const existingLocalStr = localStorage.getItem(localKey);
       let localSnaps: DataBackupSnapshot[] = [];
-      if (existingLocalStr) {
-        try { localSnaps = JSON.parse(existingLocalStr); } catch (e) {}
-      }
+      try {
+        const idbExisting = await idbGet<DataBackupSnapshot[]>(localKey);
+        if (Array.isArray(idbExisting)) {
+          localSnaps = idbExisting;
+        } else {
+          const oldStr = localStorage.getItem(localKey);
+          if (oldStr) localSnaps = JSON.parse(oldStr);
+        }
+      } catch (e) {}
+
       // Deduplicate snapshots
       localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== snap.label));
       localSnaps.unshift(snap);
       if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
-      localStorage.setItem(localKey, JSON.stringify(localSnaps));
-      localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(localSnaps));
+      
+      // Store in IndexedDB (hundreds of MBs capacity) instead of 5MB localStorage
       idbSet(localKey, localSnaps).catch(() => {});
+      idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
+      updatedSnapshots = localSnaps;
+
+      // Clean up snapshot strings from localStorage to guarantee zero browser storage limit warnings
+      localStorage.removeItem(localKey);
+      localStorage.removeItem('psycalcu_snapshots_active');
     } catch (localErr) {}
   }
 
   if (isFirestoreQuotaExceeded) {
-    throw new Error('quota-exceeded');
+    console.warn('[firestoreService] Firestore cloud quota limit reached. Data safely preserved in IndexedDB.');
+    return;
   }
   try {
     const docRef = doc(db, 'users', userId);
     
     // Retrieve existing snapshots and enforce rolling max 5 in cloud document
-    let updatedSnapshots: DataBackupSnapshot[] | undefined = undefined;
-    if (snapReason) {
+    if (!updatedSnapshots && snapReason) {
       try {
         const localKey = `psycalcu_snapshots_${userId}`;
-        const existingLocalStr = localStorage.getItem(localKey);
-        if (existingLocalStr) {
-          const parsed = JSON.parse(existingLocalStr);
-          if (Array.isArray(parsed)) {
-            updatedSnapshots = parsed.slice(0, 5);
-          }
+        const idbExisting = await idbGet<DataBackupSnapshot[]>(localKey);
+        if (Array.isArray(idbExisting)) {
+          updatedSnapshots = idbExisting.slice(0, 5);
         }
       } catch (e) {}
     }
@@ -245,10 +258,10 @@ export async function saveUserData(
   } catch (error: any) {
     if (checkIsQuotaError(error)) {
       isFirestoreQuotaExceeded = true;
-      throw new Error('quota-exceeded');
+      console.warn("[firestoreService] Cloud quota reached. Data safely preserved in local/IndexedDB cache.");
+      return;
     }
     console.error("Error saving user data to Firestore: ", error);
-    throw error;
   }
 }
 

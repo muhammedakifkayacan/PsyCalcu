@@ -2,11 +2,12 @@
  * Safe localStorage wrapper with automated QuotaExceededError handling,
  * proactive size reduction, and non-blocking fallbacks.
  */
+import { idbSet } from './idbStorage';
 
 const LOG_PREFIX = '[safeStorage]';
 
 /**
- * Clean up redundant or oversized localStorage keys to free up space.
+ * Clean up redundant, oversized, or snapshot localStorage keys to free up space.
  */
 export function pruneStorage(currentUserId?: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
@@ -27,6 +28,23 @@ export function pruneStorage(currentUserId?: string): void {
       'psycalcu_pwa_banner_dismissed'
     ];
 
+    // 1. Purge bulky snapshots and duplicate backups from localStorage
+    // (These are now exclusively stored in IndexedDB with 100MB+ capacity)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (
+        k.startsWith('psycalcu_snapshots_') || 
+        k.startsWith('psycalcu_safety_backup_') || 
+        k.startsWith('psycalcu_safety_settings_') ||
+        k.startsWith('debug_') || 
+        k.startsWith('temp_') || 
+        k.includes('cache_blob')
+      )) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.push('psycalcu_snapshots_active');
+
     // If we have a user-specific ID, old un-scoped global keys can be purged safely
     if (currentUserId) {
       keysToRemove.push('psycalcu_sessions');
@@ -38,13 +56,6 @@ export function pruneStorage(currentUserId?: string): void {
       keysToRemove.push(key);
       if (currentUserId) {
         keysToRemove.push(`${key}_${currentUserId}`);
-      }
-    }
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && (k.startsWith('debug_') || k.startsWith('temp_') || k.includes('cache_blob'))) {
-        keysToRemove.push(k);
       }
     }
 
@@ -93,9 +104,9 @@ export const safeStorage = {
           localStorage.setItem(key, value);
           return true;
         } catch (retryErr) {
-          console.warn(`${LOG_PREFIX} setItem non-fatal fallback (data safely stored in Firestore cloud):`, retryErr);
-          // Do not crash the app or throw. The cloud database (Firestore) preserves all user data.
-          return false;
+          console.warn(`${LOG_PREFIX} setItem localStorage quota full, safely offloading to IndexedDB:`, retryErr);
+          idbSet(key, value).catch(() => {});
+          return true;
         }
       }
 

@@ -1276,7 +1276,11 @@ export default function App() {
             const sortedSnaps = Array.from(snapMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             setBackupSnapshots(sortedSnaps);
             try {
-              localStorage.setItem('psycalcu_snapshots_active', JSON.stringify(sortedSnaps));
+              idbSet('psycalcu_snapshots_active', sortedSnaps).catch(() => {});
+              localStorage.removeItem('psycalcu_snapshots_active');
+              if (user?.uid) {
+                localStorage.removeItem(`psycalcu_snapshots_${user.uid}`);
+              }
             } catch (e) {}
             
             // Update the user-specific localStorage cache immediately
@@ -2113,39 +2117,38 @@ export default function App() {
   const [isClientPricingModalOpen, setIsClientPricingModalOpen] = useState(false);
   const [clientPricingInitialTab, setClientPricingInitialTab] = useState<'clients' | 'reconcile' | 'snapshots'>('clients');
   const [historyModalClientName, setHistoryModalClientName] = useState<string | null>(null);
-  const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>(() => {
-    try {
-      const allSnaps: DataBackupSnapshot[] = [];
-      const cached = localStorage.getItem('psycalcu_snapshots_active');
-      if (cached) {
+  const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>([]);
+
+  // Load snapshots safely from IndexedDB without choking 5MB localStorage
+  useEffect(() => {
+    idbGet<DataBackupSnapshot[]>('psycalcu_snapshots_active').then(snaps => {
+      if (Array.isArray(snaps) && snaps.length > 0) {
+        setBackupSnapshots(snaps);
+      } else {
+        // Fallback or migrate from legacy localStorage if present
         try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) allSnaps.push(...parsed);
+          const cached = localStorage.getItem('psycalcu_snapshots_active');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setBackupSnapshots(parsed);
+              idbSet('psycalcu_snapshots_active', parsed).catch(() => {});
+            }
+          }
         } catch (e) {}
       }
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('psycalcu_snapshots_') && k !== 'psycalcu_snapshots_active') {
-          try {
-            const raw = localStorage.getItem(k);
-            if (raw) {
-              const list = JSON.parse(raw);
-              if (Array.isArray(list)) allSnaps.push(...list);
-            }
-          } catch (e) {}
+      // Always purge snapshots and safety backups from localStorage to free up browser storage
+      try {
+        localStorage.removeItem('psycalcu_snapshots_active');
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('psycalcu_snapshots_') || k.startsWith('psycalcu_safety_backup_'))) {
+            localStorage.removeItem(k);
+          }
         }
-      }
-      const map = new Map<string, DataBackupSnapshot>();
-      allSnaps.forEach(s => {
-        if (s && s.id && !map.has(s.id)) {
-          map.set(s.id, s);
-        }
-      });
-      return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    } catch (e) {
-      return [];
-    }
-  });
+      } catch (e) {}
+    }).catch(() => {});
+  }, []);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [isMonthClosingModalOpen, setIsMonthClosingModalOpen] = useState(false);
@@ -2267,6 +2270,11 @@ export default function App() {
 
     if (!silent) {
       setIsFetchingNotes(false);
+      setShowNotes(true);
+      try {
+        const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+        safeStorage.setItem(key, 'true', user?.uid);
+      } catch (e) {}
       if (fetchedAny) {
         showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
       } else {
@@ -2641,7 +2649,12 @@ export default function App() {
     setOwnerSessionFilter('all');
     setAgendaStatusFilter('all');
     setAgendaRoomFilter('all');
-  }, []);
+    setShowNotes(true);
+    try {
+      const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+      safeStorage.setItem(key, 'true', user?.uid);
+    } catch (e) {}
+  }, [user]);
 
   // Search results for header search box
   const searchedSessions = useMemo(() => {
@@ -5085,6 +5098,8 @@ export default function App() {
         setIsSyncDetailsModalOpen={setIsSyncDetailsModalOpen}
         toggleShowExplanations={toggleShowExplanations}
         showExplanations={showExplanations}
+        toggleShowNotes={toggleShowNotes}
+        showNotes={showNotes}
         setIsFaqOpen={setIsFaqOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         handleLogout={handleLogout}
@@ -5110,7 +5125,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6" id="psycalcu-main">
-        {isQuotaExceeded && (
+        {isQuotaExceeded && user?.email === 'muhammedakifkayacan@gmail.com' && (
           <div className="mb-6 p-5 bg-rose-50 border border-rose-200 rounded-[2rem] text-slate-800 flex flex-col md:flex-row items-start justify-between gap-5 shadow-sm" id="quota-warning-banner">
             <div className="flex gap-3">
               <span className="text-2xl mt-0.5">⚠️</span>
@@ -5332,12 +5347,21 @@ export default function App() {
 
                   <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0 flex-wrap">
                     {/* Fetch Dynamic Calendar Notes (KVKK Uyumlu) */}
-                    {showNotes && settings.calendarSyncEnabled && (
+                    {settings.calendarSyncEnabled && (
                       <button
                         type="button"
-                        onClick={() => fetchInstantCalendarNotes()}
+                        onClick={() => {
+                          if (!showNotes) {
+                            setShowNotes(true);
+                            try {
+                              const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+                              safeStorage.setItem(key, 'true', user?.uid);
+                            } catch (e) {}
+                          }
+                          fetchInstantCalendarNotes();
+                        }}
                         disabled={isFetchingNotes}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border shadow-3xs ${
                           isFetchingNotes
                             ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                             : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
@@ -5587,9 +5611,31 @@ export default function App() {
                               </div>
                             )}
 
+                            {/* Toggle Calendar Notes Option */}
+                            <div className="pt-2.5 border-t border-[#f5f5f0] flex items-center justify-between">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <FileText className="w-3.5 h-3.5 text-[#6b705c]" />
+                                  <span className="text-xs font-semibold text-slate-700">Takvim & Seans Notları</span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 block">Kartlarda takvim açıklamalarını ve notları göster</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={toggleShowNotes}
+                                className="flex items-center gap-2 group cursor-pointer focus:outline-none select-none shrink-0 ml-2"
+                                title={showNotes ? 'Takvim ve seans notlarını gizle' : 'Takvim ve seans notlarını göster'}
+                                aria-label="Takvim Notlarını Göster veya Gizle"
+                              >
+                                <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                                  <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                                </div>
+                              </button>
+                            </div>
+
                             {/* Toggle Explanations Option */}
                             <div className="pt-2 border-t border-[#f5f5f0] flex items-center justify-between">
-                              <span className="text-xs font-medium text-slate-600">Açıklamaları Göster</span>
+                              <span className="text-xs font-medium text-slate-600">Rehber İpuçlarını Göster</span>
                               <button
                                 type="button"
                                 onClick={toggleShowExplanations}
@@ -5607,11 +5653,17 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Active Filter Bar (when any filter is active) */}
-                {hasActiveAgendaFilters && (
+                {/* Active Filter Bar (when any filter is active or notes are hidden) */}
+                {(hasActiveAgendaFilters || !showNotes) && (
                   <div className="px-5 py-2.5 bg-amber-50/80 rounded-2xl border border-amber-200/60 flex items-center justify-between text-xs gap-2 flex-wrap animate-fade-in shadow-2xs">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Aktif Filtre:</span>
+                      {!showNotes && (
+                        <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
+                          <span>📝 Notlar: Gizli</span>
+                          <button onClick={toggleShowNotes} className="hover:text-emerald-700 font-bold cursor-pointer text-[10px] bg-amber-100/70 px-1.5 py-0.2 rounded transition-colors" title="Takvim ve seans notlarını göster">Göster</button>
+                        </span>
+                      )}
                       {ownerSessionFilter === 'mine' && (
                         <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 shadow-3xs">
                           Benim Seanslarım
@@ -6053,6 +6105,51 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
+
+                              {/* Session Notes display in daily agenda */}
+                              {showNotes && (
+                                (() => {
+                                  const noteContent = session.isSyncedFromCalendar
+                                    ? (tempNotesCache[session.id] || '')
+                                    : (session.notes || '');
+
+                                  if (noteContent) {
+                                    return (
+                                      <div className="mt-2 text-xs text-slate-600 bg-[#fdfbf7] p-2.5 rounded-xl border border-[#e5e1d8]/70 flex items-start gap-2 animate-fade-in shadow-3xs">
+                                        <FileText className="w-3.5 h-3.5 text-[#6b705c] shrink-0 mt-0.5" />
+                                        <div className="min-w-0 flex-1">
+                                          <span className="font-semibold text-slate-700 text-[11px] block">Not / Açıklama:</span>
+                                          <p className="text-slate-600 italic break-words text-[11px] leading-relaxed whitespace-pre-wrap">
+                                            {noteContent}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  if (session.isSyncedFromCalendar && !hasFetchedInstantNotes && settings.calendarSyncEnabled) {
+                                    return (
+                                      <div className="mt-1.5 text-[11px] text-slate-400 flex items-center gap-1.5 italic animate-fade-in">
+                                        <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                                        <span>Takvim açıklamaları gizli.</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            fetchInstantCalendarNotes();
+                                          }}
+                                          disabled={isFetchingNotes}
+                                          className="text-[#6b705c] hover:underline font-bold not-italic cursor-pointer"
+                                        >
+                                          {isFetchingNotes ? 'Çekiliyor...' : 'Takvimden Çek (KVKK)'}
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return null;
+                                })()
+                              )}
                             </div>
 
                             {/* Financial item state */}
@@ -6457,6 +6554,22 @@ export default function App() {
                                     <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
                                     <span className="font-semibold text-slate-700">{formatMoney(session.price)}</span>
                                   </div>
+
+                                  {/* Weekly Note snippet */}
+                                  {showNotes && (
+                                    (() => {
+                                      const noteText = session.isSyncedFromCalendar
+                                        ? (tempNotesCache[session.id] || '')
+                                        : (session.notes || '');
+                                      if (!noteText) return null;
+                                      return (
+                                        <div className="mt-1.5 pt-1 border-t border-slate-100 text-[10px] text-slate-500 italic flex items-center gap-1 truncate" title={noteText}>
+                                          <FileText className="w-2.5 h-2.5 text-[#6b705c] shrink-0" />
+                                          <span className="truncate">{noteText}</span>
+                                        </div>
+                                      );
+                                    })()
+                                  )}
                                 </motion.div>
                               );
                             })
@@ -6734,6 +6847,22 @@ export default function App() {
                             <span>{session.type === 'online' ? 'Online' : session.type === 'face-to-face' ? 'Yüz Yüze' : session.type === 'rent-income' ? 'Kira' : 'İptal'}</span>
                             <span className="font-bold text-slate-800">{formatMoney(session.price)}</span>
                           </div>
+
+                          {/* Monthly Note snippet */}
+                          {showNotes && (
+                            (() => {
+                              const noteText = session.isSyncedFromCalendar
+                                ? (tempNotesCache[session.id] || '')
+                                : (session.notes || '');
+                              if (!noteText) return null;
+                              return (
+                                <div className="mt-1.5 pt-1 border-t border-slate-100 text-[10px] text-slate-500 italic flex items-center gap-1 truncate" title={noteText}>
+                                  <FileText className="w-2.5 h-2.5 text-[#6b705c] shrink-0" />
+                                  <span className="truncate">{noteText}</span>
+                                </div>
+                              );
+                            })()
+                          )}
                         </div>
                       );
                     })}
@@ -7487,6 +7616,37 @@ export default function App() {
                       Filtreleri Sıfırla
                     </button>
                   </div>
+                </div>
+
+                {/* Query Notes Display Option */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={toggleShowNotes}
+                    className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer select-none group"
+                  >
+                    <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-[#6b705c]' : 'bg-slate-200'}`}>
+                      <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                    </div>
+                    <span className="flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-[#6b705c]" />
+                      Sonuçlarda Takvim ve Seans Notlarını Göster
+                    </span>
+                  </button>
+                  {settings.calendarSyncEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!showNotes) setShowNotes(true);
+                        fetchInstantCalendarNotes();
+                      }}
+                      disabled={isFetchingNotes}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-3xs"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>{isFetchingNotes ? 'Çekiliyor...' : 'Takvim Notlarını Yenile (KVKK)'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

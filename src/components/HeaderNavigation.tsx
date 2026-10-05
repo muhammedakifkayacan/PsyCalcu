@@ -31,7 +31,8 @@ import {
   Lock,
   Trash2,
   Cloud,
-  CloudOff
+  CloudOff,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from './NotificationCenter';
@@ -69,6 +70,8 @@ interface HeaderNavigationProps {
   setIsSyncDetailsModalOpen: (val: boolean) => void;
   toggleShowExplanations: () => void;
   showExplanations: boolean;
+  toggleShowNotes?: () => void;
+  showNotes?: boolean;
   setIsFaqOpen: (val: boolean) => void;
   setIsSettingsOpen: (val: boolean) => void;
   handleLogout: () => void;
@@ -113,6 +116,8 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   setIsSyncDetailsModalOpen,
   toggleShowExplanations,
   showExplanations,
+  toggleShowNotes,
+  showNotes = true,
   setIsFaqOpen,
   setIsSettingsOpen,
   handleLogout,
@@ -1004,6 +1009,35 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                         {showExplanations ? '💡 Açıklamalar Açık' : '💡 Açıklamalar Kapalı'}
                       </p>
                     </motion.button>
+
+                    {/* Toggle Calendar Notes */}
+                    {toggleShowNotes && (
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          toggleShowNotes();
+                          setIsMenuOpen(false);
+                        }}
+                        className={`p-3.5 rounded-2xl border transition-all text-left space-y-1.5 cursor-pointer shadow-3xs touch-manipulation col-span-2 ${
+                          showNotes ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-white border-[#e5e1d8]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                            showNotes ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className={`w-7 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${showNotes ? 'bg-amber-600' : 'bg-slate-200'}`}>
+                            <div className={`w-3 h-3 rounded-full bg-white shadow-xs transform transition-transform duration-200 ease-in-out ${showNotes ? 'translate-x-3' : 'translate-x-0'}`} />
+                          </div>
+                        </div>
+                        <p className="font-bold text-xs text-slate-800">Takvim & Seans Notları</p>
+                        <p className="text-[9px] text-slate-500 font-medium">
+                          {showNotes ? '📝 Kartlarda Notlar Gösteriliyor' : '📝 Notlar Gizlendi (Filtrelerden açılabilir)'}
+                        </p>
+                      </motion.button>
+                    )}
 
                   </div>
                 </div>
