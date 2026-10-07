@@ -359,9 +359,11 @@ export default function CalendarSyncGuide({
       if (text) {
         try {
           const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
+          const onlineDef = settings.defaultOnlinePrice ?? defaultPrice;
+          const faceToFaceDef = settings.defaultFaceToFacePrice ?? defaultPrice;
           const parsed = parseICS(
             text, 
-            defaultPrice, 
+            type === 'online' ? onlineDef : faceToFaceDef, 
             defaultBabysitterFee, 
             defaultOfficeRentFee, 
             type, 
@@ -369,7 +371,9 @@ export default function CalendarSyncGuide({
             settings.autoMarkShortEventsAsNonSession ?? true,
             settings.accountingStartDate,
             settings.closedMonths,
-            isInitialDone
+            isInitialDone,
+            onlineDef,
+            faceToFaceDef
           );
           if (parsed.length > 0) {
             const stats = onImportSessions(parsed, type);
@@ -420,6 +424,7 @@ export default function CalendarSyncGuide({
       }
       const icsText = await response.text();
       const onlineDefaultPrice = settings.defaultOnlinePrice ?? defaultPrice;
+      const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? defaultPrice;
       const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
       const parsed = parseICS(
         icsText, 
@@ -431,7 +436,9 @@ export default function CalendarSyncGuide({
         settings.autoMarkShortEventsAsNonSession ?? true,
         settings.accountingStartDate,
         settings.closedMonths,
-        isInitialDone
+        isInitialDone,
+        onlineDefaultPrice,
+        faceToFaceDefaultPrice
       );
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
@@ -472,6 +479,7 @@ export default function CalendarSyncGuide({
         throw new Error(errorData.error || `HTTP Hata: ${response.status}`);
       }
       const icsText = await response.text();
+      const onlineDefaultPrice = settings.defaultOnlinePrice ?? defaultPrice;
       const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? defaultPrice;
       const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
       const parsed = parseICS(
@@ -484,7 +492,9 @@ export default function CalendarSyncGuide({
         settings.autoMarkShortEventsAsNonSession ?? true,
         settings.accountingStartDate,
         settings.closedMonths,
-        isInitialDone
+        isInitialDone,
+        onlineDefaultPrice,
+        faceToFaceDefaultPrice
       );
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       

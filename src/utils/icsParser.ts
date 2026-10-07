@@ -402,7 +402,9 @@ export function parseICS(
   autoMarkShortEvents: boolean = true,
   accountingStartDate?: string | null,
   closedMonths?: Record<string, ClosedMonthRecord>,
-  isInitialCalendarSyncDone: boolean = false
+  isInitialCalendarSyncDone: boolean = false,
+  defaultOnlinePrice?: number,
+  defaultFaceToFacePrice?: number
 ): Session[] {
   const sessions: Session[] = [];
 
@@ -504,14 +506,66 @@ export function parseICS(
         } else if (key === 'RECURRENCE-ID') {
           currentRaw.recurrenceIdRaw = line;
         } else if (key === 'EXDATE') {
-          const exParsed = parseIcsDateTimeToLocal(line, calTimezone);
-          if (exParsed) {
-            currentRaw.exdates.add(exParsed.dateStr);
+          // EXDATE can contain multiple comma-separated dates (RFC 5545)
+          const dateItems = valPart.split(',');
+          for (const item of dateItems) {
+            const trimmedItem = item.trim();
+            if (!trimmedItem) continue;
+            const syntheticProp = keyPart + ':' + trimmedItem;
+            const exParsed = parseIcsDateTimeToLocal(syntheticProp, calTimezone);
+            if (exParsed) {
+              currentRaw.exdates.add(exParsed.dateStr);
+            } else {
+              const cleanDigits = trimmedItem.replace(/[-:]/g, '');
+              if (cleanDigits.length >= 8) {
+                const y = cleanDigits.substring(0, 4);
+                const m = cleanDigits.substring(4, 6);
+                const d = cleanDigits.substring(6, 8);
+                currentRaw.exdates.add(`${y}-${m}-${d}`);
+              }
+            }
           }
         } else if (key === 'STATUS') {
           currentRaw.statusRaw = cleanVal.toUpperCase();
         }
       }
+    }
+  }
+
+  // Cross-event EXDATE and RECURRENCE-ID resolution:
+  // In Apple and Google Calendar, an occurrence rescheduling, postponement or deletion creates an exception VEVENT with RECURRENCE-ID.
+  // The master event (with RRULE) must exclude all dates referenced by RECURRENCE-ID or EXDATE for the same UID,
+  // so the old phantom date never persists!
+  const uidToExdates = new Map<string, Set<string>>();
+  for (const raw of rawEvents) {
+    if (!uidToExdates.has(raw.uid)) {
+      uidToExdates.set(raw.uid, new Set<string>());
+    }
+    const set = uidToExdates.get(raw.uid)!;
+    // Add all parsed exdates
+    raw.exdates.forEach(d => set.add(d));
+
+    // If this event has a RECURRENCE-ID, the original recurring slot must be excluded from the master event
+    if (raw.recurrenceIdRaw) {
+      const recParsed = parseIcsDateTimeToLocal(raw.recurrenceIdRaw, calTimezone);
+      if (recParsed) {
+        set.add(recParsed.dateStr);
+      } else {
+        const colonIdx = raw.recurrenceIdRaw.indexOf(':');
+        const val = colonIdx !== -1 ? raw.recurrenceIdRaw.substring(colonIdx + 1).trim() : raw.recurrenceIdRaw.trim();
+        const clean = val.replace(/[-:]/g, '');
+        if (clean.length >= 8) {
+          set.add(`${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`);
+        }
+      }
+    }
+  }
+
+  // Merge the collected excluded dates back into all master recurring events for each UID
+  for (const raw of rawEvents) {
+    const allEx = uidToExdates.get(raw.uid);
+    if (allEx && raw.rruleRaw) {
+      allEx.forEach(d => raw.exdates.add(d));
     }
   }
 
@@ -551,10 +605,30 @@ export function parseICS(
       searchSource.includes('#iptal');
     const isNonSession = isNonSessionSummary(raw.summary, `${raw.descriptionRaw || ''} ${raw.noteRaw || ''}`);
 
+    // Explicit online keywords in session title/notes take highest precedence:
+    // "online", "zoom", "skype", "meet", "görüntülü", "uzaktan" -> ALWAYS ONLINE
+    const isExplicitOnline = summaryLower.includes('online') || 
+      summaryLower.includes('zoom') || 
+      summaryLower.includes('skype') || 
+      summaryLower.includes('meet') || 
+      summaryLower.includes('görüntülü') || 
+      summaryLower.includes('uzaktan') ||
+      (searchSource.includes('#online') || searchSource.includes('[online]'));
+
+    const isExplicitFaceToFace = summaryLower.includes('yüzyüze') || 
+      summaryLower.includes('yüz yüze') || 
+      summaryLower.includes('yuz yuze') || 
+      summaryLower.includes('klinik') ||
+      summaryLower.includes('ofiste');
+
     if (isCancelled) {
       finalType = 'cancelled';
     } else if (isNonSession) {
       finalType = 'non-session';
+    } else if (isExplicitOnline) {
+      finalType = 'online';
+    } else if (isExplicitFaceToFace) {
+      finalType = 'face-to-face';
     } else if (forcedType) {
       finalType = forcedType;
     } else {
@@ -614,6 +688,11 @@ export function parseICS(
 
       // Determine financial parameters based on session type
       let price = defaultPrice;
+      if (finalType === 'online' && typeof defaultOnlinePrice === 'number' && defaultOnlinePrice > 0) {
+        price = defaultOnlinePrice;
+      } else if (finalType === 'face-to-face' && typeof defaultFaceToFacePrice === 'number' && defaultFaceToFacePrice > 0) {
+        price = defaultFaceToFacePrice;
+      }
       let hasBabysitterFee = true;
       let babysitterFeeAmount = defaultBabysitterFee;
       let hasOfficeRentFee = finalType === 'face-to-face';

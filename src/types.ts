@@ -30,6 +30,7 @@ export interface Session {
   roomId?: string; // Room association for property owners
   isDeleted?: boolean; // Soft delete flag (retained in Trash Bin for 30 days)
   deletedAt?: number; // timestamp in ms when session was moved to trash bin
+  originalDate?: string; // If session was rescheduled from a previous date via RECURRENCE-ID
 }
 
 export interface Room {
@@ -426,6 +427,9 @@ export function getSmartClientPrice(
       });
       return sameTypeSessions[0].price;
     }
+    // Strict isolation: if client has no prior sessions of this exact type, use the default rate for this type!
+    // Do NOT cross-apply face-to-face rate (which includes office fees) to an online session or vice versa.
+    return defaultPrice;
   }
 
   // 2. Fallback: Sessions before or on the given sessionDate across all types
@@ -612,20 +616,22 @@ export function autoHealSmartClientPrices(
           (typeof customRule.price === 'number' && customRule.price > 0 ? customRule.price : undefined)
         ) : undefined;
 
+        // For online sessions, NEVER cross-apply the face-to-face rate (which includes clinic overhead)!
         const establishedPrice = customRulePrice
           || clientTypeEstablishedPrices.get(typeKey) 
-          || clientGeneralEstablishedPrices.get(asciiKey) 
-          || typeDefault;
+          || (s.type === 'online' ? typeDefault : (clientGeneralEstablishedPrices.get(asciiKey) || typeDefault));
 
         if (establishedPrice && establishedPrice > 0) {
+          const isOnline = s.type === 'online';
           const matchedBabysitter = customRule?.babysitterFeeAmount ?? clientBabysitterFees.get(asciiKey) ?? defaultBabysitterFee;
-          const matchedOfficeRent = customRule?.officeRentFeeAmount ?? clientOfficeRentFees.get(asciiKey) ?? (s.type === 'face-to-face' ? defaultOfficeRentFee : 0);
+          const matchedOfficeRent = isOnline ? 0 : (customRule?.officeRentFeeAmount ?? clientOfficeRentFees.get(asciiKey) ?? (s.type === 'face-to-face' ? defaultOfficeRentFee : 0));
           return {
             ...s,
             price: establishedPrice,
+            hasOfficeRentFee: isOnline ? false : Boolean(s.hasOfficeRentFee),
             babysitterFeeAmount: s.hasBabysitterFee ? (s.babysitterFeeAmount || matchedBabysitter) : 0,
-            officeRentFeeAmount: s.hasOfficeRentFee ? (s.officeRentFeeAmount || matchedOfficeRent) : 0,
-            isManuallyEdited: true,
+            officeRentFeeAmount: isOnline ? 0 : (s.hasOfficeRentFee ? (s.officeRentFeeAmount || matchedOfficeRent) : 0),
+            isManuallyEdited: Boolean(s.isManuallyEdited),
             updatedAt: Date.now()
           };
         }

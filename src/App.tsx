@@ -228,14 +228,14 @@ const autoCorrectPastSessions = (
         }
       }
 
-      // Repair office rent fee
-      if (customRule && customRule.hasOfficeRentFee === false && updated.type !== 'face-to-face') {
+      // Repair office rent fee (strictly never applied to online sessions)
+      if (updated.type === 'online' || (customRule && customRule.hasOfficeRentFee === false && updated.type !== 'face-to-face')) {
         if (updated.hasOfficeRentFee || updated.officeRentFeeAmount > 0) {
           updated.hasOfficeRentFee = false;
           updated.officeRentFeeAmount = 0;
           changed = true;
         }
-      } else if (defaultOfficeRentFee > 0 && (updated.type === 'face-to-face' || updated.hasOfficeRentFee) && !updated.isManuallyEdited) {
+      } else if (defaultOfficeRentFee > 0 && updated.type === 'face-to-face' && !updated.isManuallyEdited) {
         if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
           updated.hasOfficeRentFee = true;
           updated.officeRentFeeAmount = customRule?.officeRentFeeAmount ?? defaultOfficeRentFee;
@@ -3828,7 +3828,26 @@ export default function App() {
       // 2. Base UID + Date (handles ics_uid vs ics_uid_YYYYMMDD)
       if (!existing && ns.id.startsWith('ics_')) {
         const nsBaseUid = extractBaseUid(ns.id);
-        existing = existingByUidAndDate.get(`${nsBaseUid}_${ns.date}`) || existingByUidAndDate.get(nsBaseUid);
+        existing = existingByUidAndDate.get(`${nsBaseUid}_${ns.date}`);
+        if (!existing) {
+          // Rescheduled/postponed session with same base UID (e.g. moved in Apple/Google Calendar)
+          const candidatesWithBaseUid = effectiveSessions.filter(s => 
+            s.id.startsWith('ics_') && 
+            extractBaseUid(s.id) === nsBaseUid && 
+            !matchedExistingIds.has(s.id) &&
+            !isDateInClosedMonth(s.date, settings.closedMonths)
+          );
+          if (candidatesWithBaseUid.length === 1) {
+            existing = candidatesWithBaseUid[0];
+          } else if (candidatesWithBaseUid.length > 1) {
+            const sortedByProximity = [...candidatesWithBaseUid].sort((a, b) => {
+              const diffA = Math.abs(new Date(a.date).getTime() - new Date(ns.date).getTime());
+              const diffB = Math.abs(new Date(b.date).getTime() - new Date(ns.date).getTime());
+              return diffA - diffB;
+            });
+            existing = sortedByProximity[0];
+          }
+        }
       }
 
       // 3. Normalized clientName + Date + Time
@@ -3880,22 +3899,24 @@ export default function App() {
                                    (Number(existing.paidAmount) || 0) > 0;
         const isAccountingProtected = hasPaymentRecorded || Boolean(existing.isManuallyEdited);
 
-        // Smart price lookup: If existing has a custom price/user edit, preserve it, else smart lookup
+        // Resolve session type: calendar event type takes precedence unless manually locked by user
+        const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
+          ? (isAccountingProtected && existing.type !== 'non-session' && existing.type !== 'cancelled' ? existing.type : ns.type)
+          : (existing.isManuallyEdited ? existing.type : ns.type);
+
+        // Smart price lookup: if session type changed (e.g. from face-to-face to online), recalculate appropriate rate
+        const isTypeChanged = existing.type !== resolvedType;
         let effectivePrice = existing.price;
-        if (effectivePrice === 0 || !effectivePrice) {
+        if ((isTypeChanged && !existing.isManuallyEdited) || effectivePrice === 0 || !effectivePrice) {
           if (!isCancelledOrNonSessionOrBefore) {
-            const fallbackTypePrice = ns.type === 'face-to-face'
+            const fallbackTypePrice = resolvedType === 'face-to-face'
               ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
               : (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200);
-            effectivePrice = getCachedClientCosts(ns.clientName, ns.date, ns.type, fallbackTypePrice).price || fallbackTypePrice;
+            effectivePrice = getCachedClientCosts(ns.clientName, ns.date, resolvedType, fallbackTypePrice).price || fallbackTypePrice;
           } else {
             effectivePrice = 0;
           }
         }
-
-        const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
-          ? (isAccountingProtected && existing.type !== 'non-session' && existing.type !== 'cancelled' ? existing.type : ns.type)
-          : (existing.isManuallyEdited ? existing.type : ns.type);
 
         // Preserve payment status if user marked it paid or recorded accounting
         const effectivePaymentStatus = isAccountingProtected
@@ -3918,11 +3939,11 @@ export default function App() {
           ? (existing.babysitterFeeAmount || ns.babysitterFeeAmount || settings.defaultBabysitterFee || 250)
           : 0;
 
-        // Preserve office rent fee
-        const effectiveHasOfficeRentFee = (ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
+        // Office rent fee: NEVER applied to online sessions!
+        const effectiveHasOfficeRentFee = (resolvedType === 'online' || ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration)
           ? false
           : (existing.hasOfficeRentFee ?? ns.hasOfficeRentFee ?? (resolvedType === 'face-to-face'));
-        const effectiveOfficeRentFeeAmount = (effectiveHasOfficeRentFee)
+        const effectiveOfficeRentFeeAmount = (effectiveHasOfficeRentFee && resolvedType !== 'online')
           ? (existing.officeRentFeeAmount || ns.officeRentFeeAmount || settings.defaultOfficeRentFee || 200)
           : 0;
 
@@ -4099,12 +4120,11 @@ export default function App() {
             return;
           }
 
-          // Financial Ledger Safeguard: A paid or manually edited session must NEVER be deleted by calendar sync!
-          const hasRecordedAccounting = s.paymentStatus === 'paid' || 
+          // Financial Ledger Safeguard: A paid or partially paid session must NEVER be deleted by calendar sync!
+          const hasRecordedPayment = s.paymentStatus === 'paid' || 
                                      s.paymentStatus === 'partial' || 
-                                     (Number(s.paidAmount) || 0) > 0 || 
-                                     s.isManuallyEdited;
-          if (hasRecordedAccounting) {
+                                     (Number(s.paidAmount) || 0) > 0;
+          if (hasRecordedPayment) {
             sessionsToKeep.push({
               ...s,
               isSyncedFromCalendar: false // Decouple from calendar to keep permanently in accounting ledger
@@ -4135,15 +4155,21 @@ export default function App() {
 
     if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
       setSessions(prev => {
-        const baseList = prev.length > 0 ? prev : effectiveSessions;
-        // Filter out deleted sessions and replaced old IDs from state
-        const keepIds = new Set(sessionsToKeep.map(s => s.id));
-        const filteredPrev = baseList.filter(s => keepIds.has(s.id) && !replacedOldIds.has(s.id));
+        // Construct sessions map based on sessionsToKeep (which contains all soft-deleted sessions with isDeleted: true)
+        const sessionsMap = new Map<string, Session>();
+        sessionsToKeep.forEach(s => {
+          if (!replacedOldIds.has(s.id)) {
+            sessionsMap.set(s.id, s);
+          }
+        });
 
-        const prevMap = new Map(filteredPrev.map(s => [s.id, s]));
-        toUpdate.forEach(u => prevMap.set(u.id, u));
+        // Overlay with incoming new and updated sessions
+        toUpdate.forEach(u => {
+          sessionsMap.set(u.id, u);
+        });
+
         return autoCorrectPastSessions(
-          Array.from(prevMap.values()),
+          Array.from(sessionsMap.values()),
           settings.defaultSessionPrice,
           settings.defaultBabysitterFee,
           settings.defaultOfficeRentFee,
@@ -4223,6 +4249,7 @@ export default function App() {
         if (response.ok) {
           const icsText = await response.text();
           const onlineDefaultPrice = settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200;
+          const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200;
           const parsed = parseICS(
             icsText, 
             onlineDefaultPrice, 
@@ -4233,7 +4260,9 @@ export default function App() {
             settings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
             settings.closedMonths,
-            isInitialCalendarSyncDone
+            isInitialCalendarSyncDone,
+            onlineDefaultPrice,
+            faceToFaceDefaultPrice
           );
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
@@ -4263,6 +4292,7 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
           const icsText = await response.text();
+          const onlineDefaultPrice = settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200;
           const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200;
           const parsed = parseICS(
             icsText, 
@@ -4274,7 +4304,9 @@ export default function App() {
             settings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
             settings.closedMonths,
-            isInitialCalendarSyncDone
+            isInitialCalendarSyncDone,
+            onlineDefaultPrice,
+            faceToFaceDefaultPrice
           );
           const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
           if (isValidIcs) {
@@ -5839,13 +5871,16 @@ export default function App() {
                                 // Check if there are sessions on this day
                                 const daySessions = activeSessions.filter(s => s.date === cell.dateStr);
                                 const hasSessions = daySessions.length > 0;
-                                const hasPriceIncrease = daySessions.some(s => 
-                                  s.type !== 'cancelled' && (
-                                    s.price > settings.defaultSessionPrice || 
+                                const hasPriceIncrease = daySessions.some(s => {
+                                  const typeDef = s.type === 'online'
+                                    ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200)
+                                    : (s.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200));
+                                  return s.type !== 'cancelled' && (
+                                    s.price > typeDef || 
                                     (s.hasBabysitterFee && s.babysitterFeeAmount > settings.defaultBabysitterFee) || 
                                     (s.hasOfficeRentFee && s.officeRentFeeAmount > settings.defaultOfficeRentFee)
-                                  )
-                                );
+                                  );
+                                });
                                 
                                 return (
                                   <button
@@ -5921,13 +5956,16 @@ export default function App() {
                       const isToday = day.dateStr === getTodayLocalDate();
                       const daySessions = activeSessions.filter(s => s.date === day.dateStr);
                       const hasSessions = daySessions.length > 0;
-                      const hasPriceIncrease = daySessions.some(s => 
-                        s.type !== 'cancelled' && (
-                          s.price > settings.defaultSessionPrice || 
+                      const hasPriceIncrease = daySessions.some(s => {
+                        const typeDef = s.type === 'online'
+                          ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200)
+                          : (s.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200));
+                        return s.type !== 'cancelled' && (
+                          s.price > typeDef || 
                           (s.hasBabysitterFee && s.babysitterFeeAmount > settings.defaultBabysitterFee) || 
                           (s.hasOfficeRentFee && s.officeRentFeeAmount > settings.defaultOfficeRentFee)
-                        )
-                      );
+                        );
+                      });
                       return (
                         <motion.button
                           key={day.dateStr}
@@ -6006,8 +6044,11 @@ export default function App() {
                       displayedSessions.map((session) => {
                         const isCancelled = session.type === 'cancelled';
                         const isFaceToFace = session.type === 'face-to-face';
+                        const sessionTypeDefPrice = session.type === 'online'
+                          ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200)
+                          : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200));
                         const hasPriceIncrease = session.type !== 'cancelled' && session.type !== 'non-session' && session.type !== 'rent-income' && (
-                          session.price > settings.defaultSessionPrice || 
+                          session.price > sessionTypeDefPrice || 
                           (session.hasBabysitterFee && session.babysitterFeeAmount > settings.defaultBabysitterFee) || 
                           (session.hasOfficeRentFee && session.officeRentFeeAmount > settings.defaultOfficeRentFee)
                         );
@@ -6140,8 +6181,8 @@ export default function App() {
                                 )}
 
                                 {/* Price Hike Badge */}
-                                {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && session.price > settings.defaultSessionPrice && (
-                                  <span className="text-[9px] bg-amber-500 text-white border border-amber-600 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-xs animate-pulse" title={`Varsayılan seans fiyatından (₺${settings.defaultSessionPrice}) daha yüksek bir fiyata sahiptir.`}>
+                                {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && session.price > (session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200))) && (
+                                  <span className="text-[9px] bg-amber-500 text-white border border-amber-600 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-xs animate-pulse" title={`Varsayılan seans fiyatından (₺${session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)}) daha yüksek bir fiyata sahiptir.`}>
                                     <Sparkles className="w-2.5 h-2.5 text-white animate-spin" style={{ animationDuration: '3s' }} /> ZAMLI SEANS
                                   </span>
                                 )}
@@ -6209,8 +6250,8 @@ export default function App() {
                                 <div>
                                   <p className={`text-sm font-bold flex items-center gap-1 sm:justify-end ${isCancelled ? 'text-slate-400 line-through' : 'text-[#6b705c]'}`}>
                                     {formatMoney(session.price, { prefix: '+' })}
-                                    {!isCancelled && session.price > settings.defaultSessionPrice && (
-                                      <span title={`Zamlı Fiyat (Varsayılan: ${formatMoney(settings.defaultSessionPrice)})`}>
+                                    {!isCancelled && session.price > (session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200))) && (
+                                      <span title={`Zamlı Fiyat (Varsayılan: ${formatMoney(session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200)))})`}>
                                         <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
                                       </span>
                                     )}
