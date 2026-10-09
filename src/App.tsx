@@ -65,6 +65,7 @@ import SessionModal from './components/SessionModal';
 import { ClientPricingManagerModal } from './components/ClientPricingManagerModal';
 import { ClientHistoryModal } from './components/ClientHistoryModal';
 import { ClientDetailPage } from './components/ClientDetailPage';
+import { ClientDirectoryPage } from './components/ClientDirectoryPage';
 import StatsDashboard from './components/StatsDashboard';
 import AuthCard from './components/AuthCard';
 import FAQModal from './components/FAQModal';
@@ -2054,7 +2055,7 @@ export default function App() {
     return cells;
   }, [calendarViewDate]);
 
-  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client'>(() => {
+  const [activeTabInternal, setActiveTabInternal] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client' | 'clients'>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_settings');
       if (saved) {
@@ -2076,7 +2077,7 @@ export default function App() {
   });
   const hasManuallyChangedTabRef = useRef(false);
 
-  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client' | ((prev: any) => any)) => {
+  const setActiveTab = useCallback((tab: 'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'client' | 'clients' | ((prev: any) => any)) => {
     hasManuallyChangedTabRef.current = true;
     setActiveTabInternal(tab);
   }, []);
@@ -2085,7 +2086,7 @@ export default function App() {
 
   // Selected client for dedicated ClientDetailPage view
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
-  const [previousTab, setPreviousTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit'>('agenda');
+  const [previousTab, setPreviousTab] = useState<'agenda' | 'stats' | 'sync' | 'backup' | 'debts' | 'settings' | 'admin' | 'search' | 'rooms' | 'audit' | 'clients'>('agenda');
 
   const handleOpenClientPage = useCallback((name: string) => {
     if (!name) return;
@@ -7993,6 +7994,26 @@ export default function App() {
             </motion.div>
           )}
 
+          {activeTab === 'clients' && (
+            <motion.div
+              key="clients-directory-tab"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ClientDirectoryPage
+                sessions={activeSessions}
+                onSelectClient={(clientName) => {
+                  handleOpenClientPage(clientName);
+                }}
+                onBack={() => {
+                  setActiveTab(previousTab || 'agenda');
+                }}
+              />
+            </motion.div>
+          )}
+
           {activeTab === 'client' && selectedClientName && (
             <motion.div
               key="client-tab"
@@ -8006,6 +8027,7 @@ export default function App() {
                 sessions={activeSessions}
                 settings={settings}
                 previousTabName={
+                  previousTab === 'clients' ? 'Danışan Listesi' :
                   previousTab === 'agenda' ? 'Ajanda' :
                   previousTab === 'debts' ? 'Borç Takibi' :
                   previousTab === 'search' ? 'Arama' :
