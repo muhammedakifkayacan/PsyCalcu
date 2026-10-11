@@ -208,35 +208,31 @@ export function getNormalizedClientName(name: string): string {
   clean = clean.replace(/[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i, '');
 
   // 6. Remove session type / modality markers at start or end
-  // e.g. "(Online)", "(Yüz Yüze)", " - Online", "[Yüzyüze]", "(Ofis)", "(Zoom)", "(Skype)", "(Meet)", "(Face to face)"
-  const modalityPattern = '(?:online|yüzyüze|yüz yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet|google meet|facetime|face to face|whatsapp)';
-  clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${modalityPattern}[\\)\\}\\]]*$`, 'i'), '');
-  clean = clean.replace(new RegExp(`^${modalityPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
-
-  // 7. Remove clinical session descriptors / status in parentheses or at end
-  // e.g. "(İlk Görüşme)", "(İlk Seans)", "(Değerlendirme)", "(Takip)", "(Bireysel)", "(Çift)", "(Aile)", "(Ergen)", "(Çocuk)", "(Süpervizyon)"
+  // e.g. "Wp", "Wp.", "WA", "Google meet", "Gmeet", "(Online)", "(Yüz Yüze)", "[Ofis]", "(Zoom)", "(Skype)", "(Meet)", "(Face to face)"
+  const modalityPattern = '(?:online|online seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet|google meet|gmeet|g meet|facetime|face to face|whatsapp|watsap|wp|wp\\.|wa|teams|ms teams|telegram|tg|duo|botim|telefon|tel|sesli|arama|çağrı|cagri|link)';
   const clinicalPattern = '(?:ilk görüşme|ilk gorusme|ilk seans|değerlendirme|degerlendirme|takip|bireysel|çift|cift|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|on görüşme|on gorusme|ön görüşme|yetkinlik)';
-  clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${clinicalPattern}[\\)\\}\\]]*$`, 'i'), '');
-  clean = clean.replace(new RegExp(`^${clinicalPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
 
-  // 8. Remove trailing session words with numbers e.g. " 1. seans", " (1. seans)", " - 1. oturum", " seans 1", " seansı 2", " no: 3"
-  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
-  
-  // 9. Remove trailing sequence numbers like " 1 2 3", " 1,2,3", " 1-2-3", " 123", " 1", " - 2", " (1)"
-  clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
+  // Repeatedly clean trailing/leading suffixes until stable
+  let prev = '';
+  let maxPasses = 5;
+  while (clean !== prev && maxPasses > 0) {
+    prev = clean;
+    maxPasses--;
 
-  // 10. Remove attached trailing numbers e.g. "Ahmet1", "Ahmet123" (when preceded by letters)
-  clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
+    clean = clean.replace(/[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i, '');
+    clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${modalityPattern}[\\)\\}\\]]*$`, 'i'), '');
+    clean = clean.replace(new RegExp(`^${modalityPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
 
-  // 11. Normalize Turkish honorifics if at the very end
-  // e.g. "Zeynep Hanım" -> "Zeynep", "Zeynep Öküm Hanım" -> "Zeynep Öküm"
-  clean = clean.replace(/\b(?:hanım|bey|hn\.?|by\.?)\b/gi, '');
+    clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${clinicalPattern}[\\)\\}\\]]*$`, 'i'), '');
+    clean = clean.replace(new RegExp(`^${clinicalPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
 
-  // 12. Clean up any remaining trailing or leading punctuation/whitespace
-  clean = clean.replace(/^[\s\-_:.,;()/[\]{}#~|•·]+|[\s\-_:.,;()/[\]{}#~|•·]+$/g, '');
-
-  // 13. Ensure any leftover multiple spaces in between words are collapsed into a single space
-  clean = clean.replace(/[\s\u00A0]+/g, ' ').trim();
+    clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
+    clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
+    clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
+    clean = clean.replace(/\b(?:hanım|bey|hn\.?|by\.?)\b/gi, '');
+    clean = clean.replace(/^[\s\-_:.,;()/[\]{}#~|•·]+|[\s\-_:.,;()/[\]{}#~|•·]+$/g, '');
+    clean = clean.replace(/[\s\u00A0]+/g, ' ').trim();
+  }
 
   return clean || name.replace(/[\s\u00A0]+/g, ' ').trim();
 }

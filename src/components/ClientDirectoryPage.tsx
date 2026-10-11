@@ -13,7 +13,13 @@ import {
   MapPin,
   Clock
 } from 'lucide-react';
-import { Session, SessionType, getNormalizedClientName } from '../types';
+import { 
+  Session, 
+  SessionType, 
+  getNormalizedClientName, 
+  areClientNamesEquivalent, 
+  toTurkishAscii 
+} from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 
 interface ClientDirectoryPageProps {
@@ -94,20 +100,25 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('latest-desc');
 
-  // Extract unique clients and their latest session info
+  // Extract unique clients and their latest session info using equivalence rules
   const clientList = useMemo(() => {
-    const map = new Map<string, ClientItem>();
+    const clients: ClientItem[] = [];
 
     sessions.forEach(s => {
       if (s.isDeleted || s.type === 'non-session') return;
       const rawName = (s.clientName || '').trim();
       if (!rawName) return;
 
-      const normName = getNormalizedClientName(rawName) || rawName.toLowerCase();
-      const existing = map.get(normName);
+      const normName = getNormalizedClientName(rawName) || rawName;
+
+      // Find existing client in list that matches using equivalence rules (case-insensitivity, additions, suffixes, accent tolerance)
+      let existing = clients.find(c => 
+        areClientNamesEquivalent(c.originalName, rawName) ||
+        areClientNamesEquivalent(c.normalizedName, normName)
+      );
 
       if (!existing) {
-        map.set(normName, {
+        clients.push({
           originalName: rawName,
           normalizedName: normName,
           latestSessionDate: s.date || '',
@@ -119,16 +130,30 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
         existing.totalSessions += 1;
         const isLater = (s.date > existing.latestSessionDate) || 
           (s.date === existing.latestSessionDate && (s.time || '') > (existing.latestSessionTime || ''));
+        
         if (isLater) {
           existing.latestSessionDate = s.date || '';
           existing.latestSessionTime = s.time || '';
           existing.latestSessionType = s.type;
+        }
+
+        // Keep the best formatted name for display (e.g. prefer "Ayşe Yılmaz" over "ayşe yılmaz" or "Ayşe Yılmaz (Online)")
+        const hasUpperNew = /[A-ZÇĞİÖŞÜ]/.test(rawName);
+        const hasUpperExisting = /[A-ZÇĞİÖŞÜ]/.test(existing.originalName);
+        
+        const cleanNormNew = getNormalizedClientName(rawName);
+        
+        if (
+          (hasUpperNew && !hasUpperExisting) || 
+          (cleanNormNew && cleanNormNew.length < existing.originalName.length && !rawName.includes('(') && !rawName.includes('-'))
+        ) {
           existing.originalName = rawName;
+          existing.normalizedName = normName;
         }
       }
     });
 
-    return Array.from(map.values());
+    return clients;
   }, [sessions]);
 
   // Filtered and sorted clients
@@ -136,11 +161,25 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
     let result = clientList;
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(c => 
-        c.originalName.toLowerCase().includes(q) ||
-        c.normalizedName.toLowerCase().includes(q)
-      );
+      const q = searchQuery.trim();
+      const qLower = q.toLocaleLowerCase('tr-TR');
+      const qAscii = toTurkishAscii(q);
+
+      result = result.filter(c => {
+        const origLower = c.originalName.toLocaleLowerCase('tr-TR');
+        const origAscii = toTurkishAscii(c.originalName);
+        const normLower = c.normalizedName.toLocaleLowerCase('tr-TR');
+        const normAscii = toTurkishAscii(c.normalizedName);
+
+        // 1. Direct or partial substring match on original name or normalized name
+        if (origLower.includes(qLower) || normLower.includes(qLower)) return true;
+        if (qAscii && (origAscii.includes(qAscii) || normAscii.includes(qAscii))) return true;
+
+        // 2. Full equivalence check using areClientNamesEquivalent
+        if (areClientNamesEquivalent(c.originalName, q) || areClientNamesEquivalent(c.normalizedName, q)) return true;
+
+        return false;
+      });
     }
 
     return [...result].sort((a, b) => {
