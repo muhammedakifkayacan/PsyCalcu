@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Session, AppSettings, Expense, ExpenseCategory } from '../types';
+import { Session, AppSettings, Expense, ExpenseCategory, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent, toTurkishAscii } from '../types';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -163,10 +163,10 @@ export default function StatsDashboard({
     setSelectedMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  // Sessions belonging to selected month (excluding non-sessions)
+  // Sessions belonging to selected month (excluding non-sessions and soft-deleted sessions)
   const monthSessions = useMemo(() => {
     return sessions
-      .filter(s => s.type !== 'non-session' && s.date && s.date.startsWith(selectedMonthKey))
+      .filter(s => !s.isDeleted && s.type !== 'non-session' && s.date && s.date.startsWith(selectedMonthKey))
       .sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         return (a.time || '').localeCompare(b.time || '');
@@ -184,6 +184,7 @@ export default function StatsDashboard({
     let paidAmount = 0;
     let pendingAmount = 0;
     let activeSessionCount = 0;
+    let sessionExpensesTotal = 0;
 
     monthSessions.forEach(s => {
       if (s.type === 'cancelled') return;
@@ -191,6 +192,13 @@ export default function StatsDashboard({
 
       const price = Number(s.price) || 0;
       totalGross += price;
+
+      if (s.hasBabysitterFee) {
+        sessionExpensesTotal += Number(s.babysitterFeeAmount) || 0;
+      }
+      if (s.hasOfficeRentFee) {
+        sessionExpensesTotal += Number(s.officeRentFeeAmount) || 0;
+      }
 
       if (s.paymentStatus === 'paid') {
         paidAmount += price;
@@ -208,15 +216,20 @@ export default function StatsDashboard({
       0
     );
 
-    const netIncome = Math.max(0, paidAmount - customExpensesTotal);
+    const totalExpenses = sessionExpensesTotal + customExpensesTotal;
+    const netIncome = Math.max(0, paidAmount - totalExpenses);
+    const plannedNetIncome = Math.max(0, totalGross - totalExpenses);
 
     return {
       totalGross,
       paidAmount,
       pendingAmount,
       sessionCount: activeSessionCount,
+      sessionExpensesTotal,
       customExpensesTotal,
-      netIncome
+      totalExpenses,
+      netIncome,
+      plannedNetIncome
     };
   }, [monthSessions, monthCustomExpenses]);
 
@@ -231,26 +244,43 @@ export default function StatsDashboard({
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(s => 
-        (s.clientName || '').toLowerCase().includes(q) ||
-        (s.notes || '').toLowerCase().includes(q)
-      );
+      const q = searchQuery.trim();
+      const qLower = q.toLocaleLowerCase('tr-TR');
+      const qAscii = toTurkishAscii(q);
+      list = list.filter(s => {
+        const nameLower = (s.clientName || '').toLocaleLowerCase('tr-TR');
+        const nameAscii = toTurkishAscii(s.clientName || '');
+        const notesLower = (s.notes || '').toLocaleLowerCase('tr-TR');
+        return (
+          nameLower.includes(qLower) ||
+          (qAscii && nameAscii.includes(qAscii)) ||
+          notesLower.includes(qLower) ||
+          areClientNamesEquivalent(s.clientName, q)
+        );
+      });
     }
 
     return list;
   }, [monthSessions, filter, searchQuery]);
 
-  // Grouped clients for the hierarchical accordion view
+  // Grouped clients for the hierarchical accordion view using equivalence rules
   const groupedClients = useMemo<StatsClientGroup[]>(() => {
-    const groupsMap = new Map<string, StatsClientGroup>();
+    const groups: StatsClientGroup[] = [];
 
     filteredSessions.forEach(s => {
-      const key = (s.clientName || 'İsimsiz / Kişisel').trim();
-      if (!groupsMap.has(key)) {
-        groupsMap.set(key, {
-          clientKey: key,
-          clientName: key,
+      const rawName = (s.clientName || 'İsimsiz / Kişisel').trim();
+      const normName = getNormalizedClientName(rawName) || rawName;
+      const canonicalDisplay = rawName === 'İsimsiz / Kişisel' ? rawName : (getCanonicalClientDisplayName(rawName) || normName);
+
+      let group = groups.find(g => 
+        areClientNamesEquivalent(g.clientName, rawName) ||
+        areClientNamesEquivalent(g.clientKey, normName)
+      );
+
+      if (!group) {
+        group = {
+          clientKey: canonicalDisplay,
+          clientName: canonicalDisplay,
           sessions: [],
           totalSessions: 0,
           totalRevenue: 0,
@@ -259,10 +289,16 @@ export default function StatsDashboard({
           isAllPaid: false,
           hasPending: false,
           hasZeroPrice: false,
-        });
+        };
+        groups.push(group);
+      } else {
+        const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);
+        const hasTurkishCharsExisting = /[çğıöşüÇĞİÖŞÜ]/.test(group.clientName);
+        if (hasTurkishCharsNew && !hasTurkishCharsExisting) {
+          group.clientName = canonicalDisplay;
+        }
       }
 
-      const group = groupsMap.get(key)!;
       group.sessions.push(s);
       group.totalSessions++;
 
@@ -283,7 +319,7 @@ export default function StatsDashboard({
       }
     });
 
-    const list = Array.from(groupsMap.values()).map(g => ({
+    const list = groups.map(g => ({
       ...g,
       isAllPaid: g.totalPending === 0 && g.totalRevenue > 0,
       hasPending: g.totalPending > 0,
@@ -1150,9 +1186,9 @@ export default function StatsDashboard({
         >
           <div className="flex items-center gap-2">
             <span>Klinik Giderleri & Net Kâr</span>
-            {summary.customExpensesTotal > 0 && (
+            {summary.totalExpenses > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-800">
-                {formatMoney(summary.customExpensesTotal)}
+                -{formatMoney(summary.totalExpenses)} Gider
               </span>
             )}
           </div>
@@ -1164,12 +1200,32 @@ export default function StatsDashboard({
 
         {isExpensesSectionOpen && (
           <div className="mt-3 p-4 bg-white rounded-2xl border border-[#e5e1d8] shadow-3xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#f5f5f0]">
-              <div>
-                <p className="text-xs font-bold text-slate-800">Ay Sonu Net Kâr</p>
-                <p className="text-xl font-bold text-[#6b705c] mt-0.5">
-                  {formatMoney(summary.netIncome)}
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[#f5f5f0]">
+              <div className="flex items-center gap-6 flex-wrap">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Tahsil Edilen Net Kâr</p>
+                  <p className="text-xl font-bold text-[#6b705c] mt-0.5">
+                    {formatMoney(summary.netIncome)}
+                  </p>
+                </div>
+                <div className="h-8 w-[1px] bg-slate-100 hidden sm:block" />
+                <div>
+                  <p className="text-xs font-medium text-slate-500">Beklenen Toplam Net Kâr</p>
+                  <p className="text-base font-bold text-slate-700 mt-0.5">
+                    {formatMoney(summary.plannedNetIncome)}
+                  </p>
+                </div>
+                {summary.sessionExpensesTotal > 0 && (
+                  <>
+                    <div className="h-8 w-[1px] bg-slate-100 hidden sm:block" />
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">Seans Masrafları (Ofis/Bakıcı)</p>
+                      <p className="text-base font-bold text-rose-600 mt-0.5">
+                        -{formatMoney(summary.sessionExpensesTotal)}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {onAddExpense && (
@@ -1179,14 +1235,14 @@ export default function StatsDashboard({
                   className="px-3 py-1.5 bg-[#6b705c] hover:bg-[#585c4c] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Gider Ekle</span>
+                  <span>Ek Gider Ekle</span>
                 </button>
               )}
             </div>
 
             {/* Expenses List */}
             {monthCustomExpenses.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-3">Bu ay için kaydedilmiş genel klinik gideri yok.</p>
+              <p className="text-xs text-slate-400 text-center py-3">Bu ay için kaydedilmiş ek genel klinik gideri yok.</p>
             ) : (
               <div className="divide-y divide-[#f5f5f0]">
                 {monthCustomExpenses.map(item => (
@@ -1210,12 +1266,11 @@ export default function StatsDashboard({
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm('Bu gideri silmek istediğinize emin misiniz?')) {
-                              onDeleteExpense(item.id);
-                              showToast?.('Gider silindi.', 'info');
-                            }
+                            onDeleteExpense(item.id);
+                            showToast?.('Gider silindi.', 'info');
                           }}
                           className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          title="Gideri Sil"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

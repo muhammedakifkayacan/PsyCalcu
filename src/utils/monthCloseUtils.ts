@@ -66,7 +66,7 @@ export function getLatestClosedMonthKey(
 export function getAllSessionMonths(sessions: Session[]): string[] {
   const set = new Set<string>();
   sessions.forEach(s => {
-    if (s.date && /^\d{4}-\d{2}-\d{2}/.test(s.date)) {
+    if (!s.isDeleted && s.date && /^\d{4}-\d{2}-\d{2}/.test(s.date)) {
       set.add(s.date.slice(0, 7));
     }
   });
@@ -101,7 +101,7 @@ export function calculateMonthAuditSummary(
   settings?: AppSettings
 ) {
   const monthSessions = sessions.filter(
-    s => s.date && s.date.startsWith(monthKey) && s.type !== 'non-session'
+    s => !s.isDeleted && s.date && s.date.startsWith(monthKey) && s.type !== 'non-session'
   );
 
   let onlineCount = 0;

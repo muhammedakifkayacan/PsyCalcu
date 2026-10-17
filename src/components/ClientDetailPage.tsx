@@ -37,7 +37,7 @@ import {
   LayoutGrid,
   List
 } from 'lucide-react';
-import { Session, AppSettings, SessionType, getNormalizedClientName, areClientNamesEquivalent } from '../types';
+import { Session, AppSettings, SessionType, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
 
 interface ClientDetailPageProps {
@@ -117,8 +117,8 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   // Normalize target client name
   const targetNormalized = useMemo(() => getNormalizedClientName(clientName).toLocaleLowerCase('tr-TR'), [clientName]);
   const displayTitle = useMemo(() => {
-    const cleanNorm = getNormalizedClientName(clientName);
-    if (cleanNorm) return cleanNorm;
+    const cleanCanon = getCanonicalClientDisplayName(clientName);
+    if (cleanCanon) return cleanCanon;
     return clientName.replace(/[\s\u00A0]+/g, ' ').trim();
   }, [clientName]);
 
@@ -921,11 +921,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm('Bu seansı silmek istediğinize emin misiniz?')) {
-                          onDeleteSession(session.id);
-                        }
-                      }}
+                      onClick={() => onDeleteSession(session.id)}
                       className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Sil"
                     >
@@ -1149,11 +1145,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm('Bu seansı silmek istediğinize emin misiniz?')) {
-                          onDeleteSession(session.id);
-                        }
-                      }}
+                      onClick={() => onDeleteSession(session.id)}
                       className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
                       title="Seansı Sil"
                     >

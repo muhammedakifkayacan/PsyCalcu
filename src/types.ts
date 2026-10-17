@@ -183,6 +183,27 @@ export function toTurkishUpper(str: string): string {
   return str.toLocaleUpperCase('tr-TR');
 }
 
+export function toTurkishTitleCase(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[\s\u00A0]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map(word => {
+      if (!word) return '';
+      const first = word.charAt(0).toLocaleUpperCase('tr-TR');
+      const rest = word.slice(1).toLocaleLowerCase('tr-TR');
+      return first + rest;
+    })
+    .join(' ');
+}
+
+export function getCanonicalClientDisplayName(name: string): string {
+  if (!name) return '';
+  const norm = getNormalizedClientName(name) || name.replace(/[\s\u00A0]+/g, ' ').trim();
+  return toTurkishTitleCase(norm);
+}
+
 export function getNormalizedClientName(name: string): string {
   if (!name) return "";
   // Normalize all whitespace characters (including non-breaking spaces, tabs, multiple spaces)
@@ -209,12 +230,12 @@ export function getNormalizedClientName(name: string): string {
 
   // 6. Remove session type / modality markers at start or end
   // e.g. "Wp", "Wp.", "WA", "Google meet", "Gmeet", "(Online)", "(Yüz Yüze)", "[Ofis]", "(Zoom)", "(Skype)", "(Meet)", "(Face to face)"
-  const modalityPattern = '(?:online|online seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|zoom|skype|meet|google meet|gmeet|g meet|facetime|face to face|whatsapp|watsap|wp|wp\\.|wa|teams|ms teams|telegram|tg|duo|botim|telefon|tel|sesli|arama|çağrı|cagri|link)';
-  const clinicalPattern = '(?:ilk görüşme|ilk gorusme|ilk seans|değerlendirme|degerlendirme|takip|bireysel|çift|cift|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|on görüşme|on gorusme|ön görüşme|yetkinlik)';
+  const modalityPattern = '(?:online seans|online görüşme|online gorusme|online terapi|online|yüz yüze seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|google meet|gmeet|g meet|meet|zoom|skype|facetime|face to face|whatsapp|watsap|wp\\.|wp|wa|ms teams|teams|telegram|tg|duo|botim|telefon|tel|görüntülü görüşme|goruntulu gorusme|görüntülü|goruntulu|video|sesli|arama|çağrı|cagri|linki|link)';
+  const clinicalPattern = '(?:ilk görüşme|ilk gorusme|ilk seans|ön görüşme|on görüşme|on gorusme|değerlendirme|degerlendirme|takip|bireysel|çift terapisi|cift terapisi|çift|cift|aile terapisi|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|yetkinlik|seansı|seansi|seans|görüşmesi|gorusmesi|görüşme|gorusme|terapisi|terapi|randevusu|randevu|oturumu|oturum)';
 
   // Repeatedly clean trailing/leading suffixes until stable
   let prev = '';
-  let maxPasses = 5;
+  let maxPasses = 6;
   while (clean !== prev && maxPasses > 0) {
     prev = clean;
     maxPasses--;
@@ -597,7 +618,7 @@ export function autoHealSmartClientPrices(
     if (!s) return s;
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
     if (isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
-      if (s.price === 0 || !s.price) {
+      if ((s.price === 0 || !s.price) && !s.isManuallyEdited) {
         const normName = getNormalizedClientName(s.clientName);
         const asciiKey = normName ? toTurkishAscii(normName).toLowerCase() : '';
         const typeKey = `${asciiKey}_${s.type}`;

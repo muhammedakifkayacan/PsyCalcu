@@ -83,7 +83,7 @@ export function createSnapshotObject(
   sessions: Session[],
   expenses: Expense[] = []
 ): DataBackupSnapshot {
-  const activeSessions = (sessions || []).filter(s => s.type !== 'cancelled' && s.type !== 'non-session');
+  const activeSessions = (sessions || []).filter(s => !s.isDeleted && s.type !== 'cancelled' && s.type !== 'non-session');
   const paidSessions = activeSessions.filter(s => s.paymentStatus === 'paid');
   const unpaidSessions = activeSessions.filter(s => s.paymentStatus !== 'paid');
   const totalGross = activeSessions.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
@@ -225,7 +225,7 @@ export async function saveUserData(
     if (hasRoomOrPublicConfig) {
       try {
         const publicDocRef = doc(db, 'public_availability', userId);
-        const publicSessions = (sessions || []).map((s: Session) => {
+        const publicSessions = (sessions || []).filter((s: Session) => !s.isDeleted && s.type !== 'non-session').map((s: Session) => {
           const item: any = {
             id: s.id || "",
             date: s.date || "",

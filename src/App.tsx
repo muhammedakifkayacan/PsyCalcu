@@ -52,7 +52,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, AppNotification, getNormalizedClientName, areClientNamesEquivalent, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule, findClientCustomRule } from './types';
+import { Session, SessionType, Room, AppSettings, Expense, PaymentMethod, toTurkishUpper, toTurkishAscii, AppNotification, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent, getSmartClientPrice, getSmartClientCosts, autoHealSmartClientPrices, normalizeOwnerCalendars, ClientPricingRule, findClientCustomRule } from './types';
 import { getInitialMockSessions, parseICS } from './utils/icsParser';
 import { downloadSessionAsICS } from './utils/icsGenerator';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
@@ -170,9 +170,9 @@ const autoCorrectPastSessions = (
     }
 
     // 1. Sessions before accounting start cutoff date:
-    // Any session strictly before cutoffDate must be 0 TL, paymentStatus: 'paid', paidAmount: 0, and no expenses!
+    // Any session strictly before cutoffDate must be 0 TL, paymentStatus: 'paid', paidAmount: 0, and no expenses (unless manually edited)!
     // This ensures historical/pre-accounting calendar sessions are never tracked as unpaid debt.
-    if (s.date && s.date < cutoffDate) {
+    if (s.date && s.date < cutoffDate && !s.isManuallyEdited) {
       if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee || (s.paidAmount && s.paidAmount > 0)) {
         return {
           ...s,
@@ -190,7 +190,7 @@ const autoCorrectPastSessions = (
     }
 
     // 2. FOR ACTIVE SESSIONS (on or after cutoffDate):
-    // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped!
+    // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped (unless manually edited to 0 TL)!
     let updated = { ...s };
     let changed = false;
 
@@ -202,8 +202,8 @@ const autoCorrectPastSessions = (
       // Check client custom rule
       const customRule = findClientCustomRule(clientCustomPrices, s.clientName);
 
-      // Repair price if zero or missing
-      if (typeof updated.price !== 'number' || updated.price === 0) {
+      // Repair price if zero or missing (respect manual 0 TL edits such as free initial consultations)
+      if ((typeof updated.price !== 'number' || updated.price === 0) && !updated.isManuallyEdited) {
         const normKey = `${getNormalizedClientName(s.clientName)}_${s.type}`;
         let smartCosts = repairCostCache.get(normKey);
         if (!smartCosts) {
@@ -215,7 +215,7 @@ const autoCorrectPastSessions = (
       }
 
       // Repair babysitter fee
-      if (customRule && customRule.hasBabysitterFee === false) {
+      if (customRule && customRule.hasBabysitterFee === false && !updated.isManuallyEdited) {
         if (updated.hasBabysitterFee || updated.babysitterFeeAmount > 0) {
           updated.hasBabysitterFee = false;
           updated.babysitterFeeAmount = 0;
@@ -230,7 +230,7 @@ const autoCorrectPastSessions = (
       }
 
       // Repair office rent fee (strictly never applied to online sessions)
-      if (updated.type === 'online' || (customRule && customRule.hasOfficeRentFee === false && updated.type !== 'face-to-face')) {
+      if (updated.type === 'online' || (customRule && customRule.hasOfficeRentFee === false && !updated.isManuallyEdited)) {
         if (updated.hasOfficeRentFee || updated.officeRentFeeAmount > 0) {
           updated.hasOfficeRentFee = false;
           updated.officeRentFeeAmount = 0;
@@ -1922,7 +1922,7 @@ export default function App() {
     let paidCount = 0;
 
     sessions.forEach(s => {
-      if (s.date.startsWith(monthPrefix)) {
+      if (!s.isDeleted && s.date.startsWith(monthPrefix)) {
         const daySessions = getFilteredSessionsForDate(s.date);
         if (daySessions.some(ds => ds.id === s.id)) {
           if (s.type !== 'cancelled' && s.type !== 'non-session') {
@@ -2740,22 +2740,37 @@ export default function App() {
     // Total unpaid amount
     const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
     
-    // Group by client using normalized name (case-insensitive)
-    const clientGroups: Record<string, { displayName: string; sessions: Session[] }> = {};
+    // Group by client using equivalence rules (case-insensitive, suffixes like Wp/Google meet, accent tolerance)
+    const clientBuckets: { displayName: string; normName: string; sessions: Session[] }[] = [];
     unpaidSessions.forEach(s => {
-      const normName = getNormalizedClientName(s.clientName);
-      const groupKey = toTurkishUpper(normName);
-      if (!clientGroups[groupKey]) {
-        clientGroups[groupKey] = {
-          displayName: normName,
-          sessions: []
-        };
+      const rawName = (s.clientName || '').trim();
+      const normName = getNormalizedClientName(rawName) || rawName;
+      const canonicalDisplay = getCanonicalClientDisplayName(rawName) || normName;
+
+      let existing = clientBuckets.find(b => 
+        areClientNamesEquivalent(b.displayName, rawName) ||
+        areClientNamesEquivalent(b.normName, normName)
+      );
+
+      if (!existing) {
+        clientBuckets.push({
+          displayName: canonicalDisplay,
+          normName,
+          sessions: [s]
+        });
+      } else {
+        existing.sessions.push(s);
+        const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);
+        const hasTurkishCharsExisting = /[çğıöşüÇĞİÖŞÜ]/.test(existing.displayName);
+        if (hasTurkishCharsNew && !hasTurkishCharsExisting) {
+          existing.displayName = canonicalDisplay;
+          existing.normName = normName;
+        }
       }
-      clientGroups[groupKey].sessions.push(s);
     });
     
     // Map to array of client debt info
-    const clientsWithDebts = Object.values(clientGroups).map(({ displayName, sessions: clientSessions }) => {
+    const clientsWithDebts = clientBuckets.map(({ displayName, sessions: clientSessions }) => {
       // Sort sessions by date and time (oldest first so they can pay oldest first)
       const sortedSessions = [...clientSessions].sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -2779,15 +2794,17 @@ export default function App() {
       debtorCount: clientsWithDebts.length,
       effectiveAccountingStart
     };
-  }, [sessions, settings.accountingStartDate, registrationCreatedAt]);
+  }, [activeSessions, settings.accountingStartDate, registrationCreatedAt]);
 
   const filteredDebtors = useMemo(() => {
     if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
-    const q = debtSearchQuery.toLowerCase().trim();
-    const cleanQ = debtSearchQuery.replace(/[\s\u00A0]+/g, ' ').toLowerCase().trim();
+    const q = debtSearchQuery.trim();
+    const qLower = q.toLocaleLowerCase('tr-TR');
+    const qAscii = toTurkishAscii(q);
     return debtsData.clientsWithDebts.filter(c => {
-      const cleanName = c.clientName.replace(/[\s\u00A0]+/g, ' ').toLowerCase().trim();
-      return c.clientName.toLowerCase().includes(q) || cleanName.includes(cleanQ);
+      const nameLower = c.clientName.toLocaleLowerCase('tr-TR');
+      const nameAscii = toTurkishAscii(c.clientName);
+      return nameLower.includes(qLower) || (qAscii && nameAscii.includes(qAscii)) || areClientNamesEquivalent(c.clientName, q);
     });
   }, [debtsData.clientsWithDebts, debtSearchQuery]);
 
@@ -2803,7 +2820,7 @@ export default function App() {
     let rentIncomeCount = 0;
     let cancelledCount = 0;
 
-    sessions.forEach(s => {
+    activeSessions.forEach(s => {
       if (s.date.startsWith(currentYearMonth)) {
         if (s.type === 'cancelled') {
           cancelledCount++;
@@ -2824,13 +2841,18 @@ export default function App() {
       }
     });
 
-    const totalExpenses = babysitterFees + officeRentExpenses;
+    const customExpensesForMonth = (expenses || [])
+      .filter(e => e.date && e.date.startsWith(currentYearMonth))
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const totalExpenses = babysitterFees + officeRentExpenses + customExpensesForMonth;
     const netIncome = Math.max(0, grossIncome - totalExpenses);
 
     return {
       grossIncome,
       babysitterFees,
       officeRentExpenses,
+      customExpensesForMonth,
       totalExpenses,
       netIncome,
       onlineCount,
@@ -2839,7 +2861,7 @@ export default function App() {
       cancelledCount,
       monthName: new Date(selectedDate).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
     };
-  }, [sessions, selectedDate, settings]);
+  }, [activeSessions, expenses, selectedDate, settings]);
 
   // Selected Day summary
   const dailySummary = useMemo(() => {
@@ -3287,24 +3309,40 @@ export default function App() {
     const modifiedPreviousStates: Record<string, { status: 'paid' | 'unpaid' | 'partial'; paidAmount?: number; paymentMethod?: PaymentMethod }> = {};
     const targetKey = toTurkishUpper(getNormalizedClientName(clientName));
 
-    sessions.forEach(s => {
+    const now = new Date();
+    const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const padTime = (t: string) => {
+      if (!t) return '00:00';
+      const p = t.split(':');
+      return `${p[0].padStart(2, '0')}:${(p[1] || '00').padStart(2, '0')}`;
+    };
+    const effectiveAccountingStart = debtsData.effectiveAccountingStart;
+
+    const allClientUnpaid = activeSessions.filter(s => {
+      if (s.isDeleted || s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
+      if (effectiveAccountingStart && s.date && s.date < effectiveAccountingStart) return false;
       const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-      if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
-        const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
-        totalAmount += remainingDebt;
-        sessionCount++;
-        modifiedPreviousStates[s.id] = { 
-          status: s.paymentStatus || 'unpaid', 
-          paidAmount: s.paidAmount,
-          paymentMethod: s.paymentMethod
-        };
-      }
+      return sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName);
+    });
+
+    const realizedClientUnpaid = allClientUnpaid.filter(s => `${s.date}T${padTime(s.time)}` <= nowStr);
+    const targetSessionsToMark = realizedClientUnpaid.length > 0 ? realizedClientUnpaid : allClientUnpaid;
+    const targetIds = new Set(targetSessionsToMark.map(s => s.id));
+
+    targetSessionsToMark.forEach(s => {
+      const remainingDebt = s.paymentStatus === 'partial' ? Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)) : (Number(s.price) || 0);
+      totalAmount += remainingDebt;
+      sessionCount++;
+      modifiedPreviousStates[s.id] = { 
+        status: s.paymentStatus || 'unpaid', 
+        paidAmount: s.paidAmount,
+        paymentMethod: s.paymentMethod
+      };
     });
 
     setSessions(prev => {
       return prev.map(s => {
-        const sKey = toTurkishUpper(getNormalizedClientName(s.clientName));
-        if ((sKey === targetKey || areClientNamesEquivalent(s.clientName, clientName)) && s.type !== 'cancelled' && s.type !== 'non-session' && s.paymentStatus !== 'paid') {
+        if (targetIds.has(s.id)) {
           return {
             ...s,
             paymentStatus: 'paid',
@@ -4544,7 +4582,7 @@ export default function App() {
     let csvContent = "\uFEFF"; // BOM for Excel/Sheets compatibility
     csvContent += "Tarih,Saat,Danışan Adı,Seans Tipi,Süre (Dakika),Seans Ücreti (₺),Ödeme Durumu,Tahsil Edilen (₺),Ödeme Yöntemi,Bakıcı Gideri (₺),Ofis Kira Gideri (₺),Net Kazanç (₺),Notlar,Entegrasyon Durumu\n";
     
-    sessions.forEach(s => {
+    activeSessions.forEach(s => {
       const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
       const baby = s.type === 'non-session' ? 0 : (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0);
       const office = s.type === 'non-session' ? 0 : (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0);
@@ -4602,7 +4640,7 @@ export default function App() {
     }
     let tsvContent = "Tarih\tSaat\tDanışan Adı\tSeans Tipi\tSüre (Dakika)\tSeans Ücreti (₺)\tÖdeme Durumu\tTahsil Edilen (₺)\tÖdeme Yöntemi\tBakıcı Gideri (₺)\tOfis Kira Gideri (₺)\tNet Kazanç (₺)\tNotlar\tEntegrasyon Durumu\n";
     
-    sessions.forEach(s => {
+    activeSessions.forEach(s => {
       const gross = (s.type === 'cancelled' || s.type === 'non-session') ? 0 : Number(s.price);
       const baby = s.type === 'non-session' ? 0 : (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) : 0);
       const office = s.type === 'non-session' ? 0 : (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) : 0);
@@ -5231,7 +5269,7 @@ export default function App() {
         )}
 
         {/* Proactive Data Recovery Assistance Banner */}
-        {backupSnapshots && backupSnapshots.length > 0 && sessions.filter(s => s.paymentStatus === 'paid' || s.paymentStatus === 'partial').length === 0 && (
+        {backupSnapshots && backupSnapshots.some(snap => (snap.paidSessionsCount || 0) > 0) && activeSessions.filter(s => s.paymentStatus === 'paid' || s.paymentStatus === 'partial').length === 0 && (
           <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-indigo-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fade-in" id="recovery-assistance-banner">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
@@ -5408,6 +5446,46 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0 flex-wrap">
+                    {/* Quick Agenda View Switcher (Gün / Hafta / Ay) */}
+                    <div className="inline-flex items-center bg-[#f5f5f0] p-0.5 rounded-xl border border-[#e5e1d8] text-xs shadow-3xs">
+                      <button
+                        type="button"
+                        onClick={() => setAgendaViewMode('day')}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          agendaViewMode === 'day'
+                            ? 'bg-white text-[#6b705c] shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="Günlük Görünüm"
+                      >
+                        Gün
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgendaViewMode('week')}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          agendaViewMode === 'week'
+                            ? 'bg-white text-[#6b705c] shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="Haftalık Görünüm"
+                      >
+                        Hafta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgendaViewMode('month')}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          agendaViewMode === 'month'
+                            ? 'bg-white text-[#6b705c] shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="Aylık Görünüm"
+                      >
+                        Ay
+                      </button>
+                    </div>
+
                     {/* Fetch Dynamic Calendar Notes (KVKK Uyumlu) */}
                     {settings.calendarSyncEnabled && (
                       <button
@@ -8066,11 +8144,28 @@ export default function App() {
                   setActiveTab('agenda');
                 }}
                 onMarkAllPaid={(name) => {
-                  const unpaidAmount = sessions
-                    .filter(s => {
-                      return areClientNamesEquivalent(s.clientName, name) && s.paymentStatus !== 'paid' && s.type !== 'cancelled';
-                    })
-                    .reduce((acc, s) => acc + (s.price - (s.paidAmount || 0)), 0);
+                  const now = new Date();
+                  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                  const padTime = (t: string) => {
+                    if (!t) return '00:00';
+                    const p = t.split(':');
+                    return `${p[0].padStart(2, '0')}:${(p[1] || '00').padStart(2, '0')}`;
+                  };
+                  const effectiveAccountingStart = debtsData.effectiveAccountingStart;
+
+                  const allClientUnpaid = activeSessions.filter(s => {
+                    if (s.isDeleted || s.type === 'cancelled' || s.type === 'non-session' || s.paymentStatus === 'paid') return false;
+                    if (effectiveAccountingStart && s.date && s.date < effectiveAccountingStart) return false;
+                    return areClientNamesEquivalent(s.clientName, name);
+                  });
+
+                  const realizedClientUnpaid = allClientUnpaid.filter(s => `${s.date}T${padTime(s.time)}` <= nowStr);
+                  const targetSessions = realizedClientUnpaid.length > 0 ? realizedClientUnpaid : allClientUnpaid;
+
+                  const unpaidAmount = targetSessions.reduce(
+                    (acc, s) => acc + Math.max(0, (Number(s.price) || 0) - (Number(s.paidAmount) || 0)),
+                    0
+                  );
 
                   setDebtConfirmState({
                     isOpen: true,
@@ -8134,15 +8229,16 @@ export default function App() {
         expenses={expenses}
         snapshots={backupSnapshots}
         onApplyRules={async (updatedSessions, updatedSettings) => {
-          setSessions(updatedSessions);
+          const mergedAllSessions = [...updatedSessions, ...deletedSessions];
+          setSessions(mergedAllSessions);
           setSettings(updatedSettings);
           if (user) {
             safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
-            safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(updatedSessions), user.uid);
+            safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(mergedAllSessions), user.uid);
             await saveUserData(
               user.uid, 
               updatedSettings, 
-              updatedSessions, 
+              mergedAllSessions, 
               expensesRef.current || [], 
               'Danışan Fiyatları ve Seans Kayıtları Toplu Güncellemesi'
             );

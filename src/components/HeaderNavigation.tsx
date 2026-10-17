@@ -465,36 +465,16 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
             )}
           </AnimatePresence>
 
-          {/* SECOND ROW: THREE-WAY PRIMARY SWITCH (MUHASEBE | GÜNLÜK AJANDA | BORÇ TAKİP) */}
+          {/* SECOND ROW: FOUR-WAY PRIMARY SWITCH (AJANDA | DANIŞANLAR | MUHASEBE | BORÇ TAKİP) */}
           <div className="flex items-center justify-center pt-1 border-t border-[#f5f5f0]">
-            <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-sm md:max-w-md justify-center">
+            <div className="inline-flex items-center bg-[#f5f5f0] p-1 rounded-full border border-[#e5e1d8] text-xs shadow-2xs w-full max-w-lg justify-center">
               
-              {/* Muhasebe Tab Switch Button */}
-              <motion.button
-                id="tab-stats-main"
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleTabClick('stats')}
-                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
-                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
-                }`}
-              >
-                {activeTab === 'stats' && (
-                  <motion.div
-                    layoutId="mainHeaderSwitchIndicator"
-                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
-                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
-                  />
-                )}
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Muhasebe</span>
-              </motion.button>
-
               {/* Agenda Tab Switch Button */}
               <motion.button
                 id="tab-agenda-main"
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('agenda')}
-                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+                className={`relative flex-1 py-1.5 md:py-2 px-2.5 sm:px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
                   activeTab === 'agenda' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
@@ -505,8 +485,48 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                   />
                 )}
-                <CalendarIcon className="w-3.5 h-3.5" />
-                <span>Ajanda</span>
+                <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Ajanda</span>
+              </motion.button>
+
+              {/* Clients Directory Tab Switch Button */}
+              <motion.button
+                id="tab-clients-main"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleTabClick('clients')}
+                className={`relative flex-1 py-1.5 md:py-2 px-2.5 sm:px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+                  (activeTab === 'clients' || activeTab === 'client') ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                }`}
+              >
+                {(activeTab === 'clients' || activeTab === 'client') && (
+                  <motion.div
+                    layoutId="mainHeaderSwitchIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <Users className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Danışanlar</span>
+              </motion.button>
+
+              {/* Muhasebe Tab Switch Button */}
+              <motion.button
+                id="tab-stats-main"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleTabClick('stats')}
+                className={`relative flex-1 py-1.5 md:py-2 px-2.5 sm:px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+                  activeTab === 'stats' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
+                }`}
+              >
+                {activeTab === 'stats' && (
+                  <motion.div
+                    layoutId="mainHeaderSwitchIndicator"
+                    className="absolute inset-0 bg-[#6b705c] rounded-full -z-10 shadow-sm"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Muhasebe</span>
               </motion.button>
 
               {/* Debt Tracker Tab Switch Button */}
@@ -514,7 +534,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 id="tab-debts"
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleTabClick('debts')}
-                className={`relative flex-1 py-1.5 md:py-2 px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+                className={`relative flex-1 py-1.5 md:py-2 px-2.5 sm:px-3 rounded-full font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none touch-manipulation ${
                   activeTab === 'debts' ? 'text-white z-10' : 'text-[#6b705c] hover:text-[#585c4c]'
                 }`}
               >
@@ -525,8 +545,8 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                     transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                   />
                 )}
-                <CreditCard className={`w-3.5 h-3.5 ${activeTab === 'debts' ? 'text-amber-300' : 'text-amber-600'}`} />
-                <span>Borç Takip</span>
+                <CreditCard className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'debts' ? 'text-amber-300' : 'text-amber-600'}`} />
+                <span className="truncate">Borç Takip</span>
                 {featuresDebtTrackerAllowed === false && <span className="text-[10px]" title="Sınırlandırıldı">🔒</span>}
               </motion.button>
 
@@ -546,7 +566,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              onClick={() => setIsMenuOpen(false)}
+              onClick={handleCloseMenu}
               className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
             />
 
@@ -560,7 +580,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               dragElastic={{ left: 0, right: 0.8 }}
               onDragEnd={(_, info) => {
                 if (info.offset.x > 80 || info.velocity.x > 250) {
-                  setIsMenuOpen(false);
+                  handleCloseMenu();
                 }
               }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}

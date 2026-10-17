@@ -39,7 +39,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Session, AppSettings, SessionType } from '../types';
+import { Session, AppSettings, SessionType, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent } from '../types';
 import { getAccountingDateRange, getTodayLocalDate, formatLocalDate } from '../utils/dateUtils';
 import { isDateInClosedMonth } from '../utils/monthCloseUtils';
 
@@ -436,18 +436,38 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
 
   // Grouped Clients Computation (Danışan bazlı gruplanmış seanslar & toplamlar)
   const groupedClients = useMemo<ClientAuditGroup[]>(() => {
-    const map = new Map<string, Session[]>();
+    const groupedBuckets: { displayName: string; normName: string; sessions: Session[] }[] = [];
     
     for (const s of filteredSessions) {
       const rawName = s.clientName?.trim() || 'İsimsiz / Kişisel';
-      const list = map.get(rawName) || [];
-      list.push(s);
-      map.set(rawName, list);
+      const normName = getNormalizedClientName(rawName) || rawName;
+      const canonicalDisplay = rawName === 'İsimsiz / Kişisel' ? rawName : (getCanonicalClientDisplayName(rawName) || normName);
+
+      let existing = groupedBuckets.find(b => 
+        areClientNamesEquivalent(b.displayName, rawName) ||
+        areClientNamesEquivalent(b.normName, normName)
+      );
+
+      if (!existing) {
+        groupedBuckets.push({
+          displayName: canonicalDisplay,
+          normName,
+          sessions: [s]
+        });
+      } else {
+        existing.sessions.push(s);
+        const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);
+        const hasTurkishCharsExisting = /[çğıöşüÇĞİÖŞÜ]/.test(existing.displayName);
+        if (hasTurkishCharsNew && !hasTurkishCharsExisting) {
+          existing.displayName = canonicalDisplay;
+          existing.normName = normName;
+        }
+      }
     }
 
     const groups: ClientAuditGroup[] = [];
 
-    for (const [name, clientSessions] of map.entries()) {
+    for (const { displayName: name, sessions: clientSessions } of groupedBuckets) {
       let validSessions = 0;
       let onlineCount = 0;
       let faceToFaceCount = 0;
@@ -1812,11 +1832,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                             {/* Delete Button */}
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm(`"${session.clientName}" seansını silmek istediğinize emin misiniz?`)) {
-                                  onDeleteSession(session.id);
-                                }
-                              }}
+                              onClick={() => onDeleteSession(session.id)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                               title="Seansı Sil"
                             >
@@ -2136,11 +2152,7 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => {
-                                          if (window.confirm(`"${session.clientName}" seansını silmek istediğinize emin misiniz?`)) {
-                                            onDeleteSession(session.id);
-                                          }
-                                        }}
+                                        onClick={() => onDeleteSession(session.id)}
                                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                         title="Seansı Sil"
                                       >

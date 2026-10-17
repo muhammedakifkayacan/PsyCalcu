@@ -17,6 +17,7 @@ import {
   Session, 
   SessionType, 
   getNormalizedClientName, 
+  getCanonicalClientDisplayName,
   areClientNamesEquivalent, 
   toTurkishAscii 
 } from '../types';
@@ -110,6 +111,7 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
       if (!rawName) return;
 
       const normName = getNormalizedClientName(rawName) || rawName;
+      const canonicalDisplay = getCanonicalClientDisplayName(rawName) || normName;
 
       // Find existing client in list that matches using equivalence rules (case-insensitivity, additions, suffixes, accent tolerance)
       let existing = clients.find(c => 
@@ -119,7 +121,7 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
 
       if (!existing) {
         clients.push({
-          originalName: rawName,
+          originalName: canonicalDisplay,
           normalizedName: normName,
           latestSessionDate: s.date || '',
           latestSessionTime: s.time || '',
@@ -137,17 +139,12 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
           existing.latestSessionType = s.type;
         }
 
-        // Keep the best formatted name for display (e.g. prefer "Ayşe Yılmaz" over "ayşe yılmaz" or "Ayşe Yılmaz (Online)")
-        const hasUpperNew = /[A-ZÇĞİÖŞÜ]/.test(rawName);
-        const hasUpperExisting = /[A-ZÇĞİÖŞÜ]/.test(existing.originalName);
-        
-        const cleanNormNew = getNormalizedClientName(rawName);
-        
-        if (
-          (hasUpperNew && !hasUpperExisting) || 
-          (cleanNormNew && cleanNormNew.length < existing.originalName.length && !rawName.includes('(') && !rawName.includes('-'))
-        ) {
-          existing.originalName = rawName;
+        // Prefer the version with Turkish diacritics if one was typed with ASCII (e.g. "Zeynep Öküm" over "Zeynep Okum")
+        const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);
+        const hasTurkishCharsExisting = /[çğıöşüÇĞİÖŞÜ]/.test(existing.originalName);
+
+        if (hasTurkishCharsNew && !hasTurkishCharsExisting) {
+          existing.originalName = canonicalDisplay;
           existing.normalizedName = normName;
         }
       }
