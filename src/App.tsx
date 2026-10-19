@@ -4380,9 +4380,9 @@ export default function App() {
     };
   };
 
-  const handleManualCalendarSync = async (showNotificationOnNoChanges = true) => {
+  const handleManualCalendarSync = async (showNotificationOnNoChanges = true, isBackgroundAuto = false) => {
     if (featuresCalendarAllowed === false) {
-      if (showNotificationOnNoChanges) {
+      if (showNotificationOnNoChanges && !isBackgroundAuto) {
         showToast('Takvim entegrasyonu yönetici tarafından devre dışı bırakılmış!', 'error');
       }
       return;
@@ -4390,20 +4390,22 @@ export default function App() {
     const activeSettings = settingsRef.current || settings;
     const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = activeSettings;
     if (!calendarSyncEnabled) {
-      if (showNotificationOnNoChanges) {
+      if (showNotificationOnNoChanges && !isBackgroundAuto) {
         showToast('Takvim senkronizasyonu ayarlardan devre dışı bırakılmış!', 'error');
       }
       return;
     }
     const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
     if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
-      if (showNotificationOnNoChanges) {
+      if (showNotificationOnNoChanges && !isBackgroundAuto) {
         showToast('Henüz bir takvim linki bağlamamışsınız. Lütfen "Takvim Entegrasyonu" sayfasından link ekleyin.', 'info');
       }
       return;
     }
 
-    setIsManualSyncing(true);
+    if (!isBackgroundAuto) {
+      setIsManualSyncing(true);
+    }
     let totalNewSessions: Session[] = [];
     let hasFetchedOnline = false;
     let hasFetchedFaceToFace = false;
@@ -4448,13 +4450,13 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          if (showNotificationOnNoChanges) {
+          if (showNotificationOnNoChanges && !isBackgroundAuto) {
             showToast(`Online Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
           }
         }
       } catch (err: any) {
         console.error("Online calendar sync failed:", err);
-        if (showNotificationOnNoChanges) {
+        if (showNotificationOnNoChanges && !isBackgroundAuto) {
           const errMsg = (err?.message === 'Failed to fetch' || err?.name === 'TypeError')
             ? 'Takvim sunucusuna erişilemedi veya bağlantı kesildi.'
             : (err?.message || err);
@@ -4492,13 +4494,13 @@ export default function App() {
           }
         } else {
           const errJson = await response.json().catch(() => ({}));
-          if (showNotificationOnNoChanges) {
+          if (showNotificationOnNoChanges && !isBackgroundAuto) {
             showToast(`Yüzyüze Takvim Eşitleme Hatası (${response.status}): ${errJson.error || 'Takvim sunucusuna erişilemedi.'}`, 'error');
           }
         }
       } catch (err: any) {
         console.error("Face-to-face calendar sync failed:", err);
-        if (showNotificationOnNoChanges) {
+        if (showNotificationOnNoChanges && !isBackgroundAuto) {
           const errMsg = (err?.message === 'Failed to fetch' || err?.name === 'TypeError')
             ? 'Takvim sunucusuna erişilemedi veya bağlantı kesildi.'
             : (err?.message || err);
@@ -4550,7 +4552,9 @@ export default function App() {
       }
     }
 
-    setIsManualSyncing(false);
+    if (!isBackgroundAuto) {
+      setIsManualSyncing(false);
+    }
     setLastCalendarSyncTime(new Date());
 
     const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
@@ -4559,7 +4563,7 @@ export default function App() {
 
     if (syncedTypesFetched.length > 0 || hasFetchedOwnerCalendars) {
       const stats = handleImportSessions(totalNewSessions, syncedTypesFetched);
-      if (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0) {
+      if (!isBackgroundAuto && (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0)) {
         let msg = 'Takvim senkronizasyonu tamamlandı: ';
         const parts: string[] = [];
         if (stats.addedCount > 0) parts.push(`${stats.addedCount} yeni seans eklendi`);
@@ -4580,24 +4584,23 @@ export default function App() {
             }
           }
         );
-      } else if (showNotificationOnNoChanges) {
+      } else if (showNotificationOnNoChanges && !isBackgroundAuto) {
         showToast('Takvimleriniz zaten güncel, yeni bir değişiklik bulunamadı.', 'info');
       }
-    } else if (showNotificationOnNoChanges) {
+    } else if (showNotificationOnNoChanges && !isBackgroundAuto) {
       showToast('Takvimlerden seans bilgisi alınamadı veya takvim linkleri boş.', 'error');
     }
   };
 
   // Automated background calendar sync orchestrator (non-intrusive, throttled)
-  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 120000) => {
+  const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 15000) => {
     // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized!
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
-    // NEVER run auto-sync if existing sessions have not been populated in state or ref yet!
-    if (!sessionsRef.current || sessionsRef.current.length === 0) return;
     if (featuresCalendarAllowed === false) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     
     const curSettings = settingsRef.current;
-    if (!curSettings.calendarSyncEnabled) return;
+    if (!curSettings || !curSettings.calendarSyncEnabled) return;
     const hasOwnerCalendars = curSettings.userRole === 'owner' && curSettings.ownerCalendars && curSettings.ownerCalendars.length > 0;
     if (!curSettings.onlineCalendarWebcalUrl && !curSettings.faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) return;
 
@@ -4606,14 +4609,14 @@ export default function App() {
       return;
     }
 
-    if (isManualSyncingRef.current || isAutoSyncingRef.current || isCloudSavingRef.current) {
+    if (isManualSyncingRef.current || isAutoSyncingRef.current) {
       return;
     }
 
     lastSyncTimestampRef.current = now;
     setIsAutoSyncing(true);
     try {
-      await handleManualCalendarSync(false);
+      await handleManualCalendarSync(false, true);
       setLastCalendarSyncTime(new Date());
     } catch (e) {
       console.warn("Background auto-sync error:", e);
@@ -4622,20 +4625,42 @@ export default function App() {
     }
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, featuresCalendarAllowed]);
 
-  // Periodic automatic sync heartbeat (checks every 10 minutes)
+  // 1. Immediate automatic sync as soon as initial cloud/local data loads or calendar links change
+  useEffect(() => {
+    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
+    triggerAutoCalendarSync(0);
+  }, [
+    isInitialSyncDone,
+    isAuthLoading,
+    isAuthSyncing,
+    settings.calendarSyncEnabled,
+    settings.onlineCalendarWebcalUrl,
+    settings.faceToFaceCalendarWebcalUrl,
+    triggerAutoCalendarSync
+  ]);
+
+  // 2. Automatic sync when navigating between pages/tabs or changing agenda date/view mode
+  useEffect(() => {
+    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
+    triggerAutoCalendarSync(15000); // 15-second throttle so page transitions always keep calendar events fresh
+  }, [activeTab, selectedDate, agendaViewMode, isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
+
+  // 3. Periodic automatic sync heartbeat (checks every 60 seconds in background)
   useEffect(() => {
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
     const interval = setInterval(() => {
-      triggerAutoCalendarSync(300000); // at least 5 minutes between runs
-    }, 600000);
+      if (document.visibilityState === 'visible') {
+        triggerAutoCalendarSync(45000);
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
 
-  // Auto-sync when user switches back to browser tab or focuses window
+  // 4. Auto-sync when user switches back to browser tab or focuses window
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible' && isInitialSyncDone && !isAuthLoading && !isAuthSyncing) {
-        triggerAutoCalendarSync(180000); // 3 minutes throttle
+        triggerAutoCalendarSync(15000);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
@@ -5674,32 +5699,7 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* Auto Sync Status Indicator & Manual Sync Button */}
-                    <div className="flex items-center gap-1.5">
-                      <div 
-                        className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-medium bg-emerald-50/70 border border-emerald-200/60 text-emerald-800 select-none"
-                        title={lastCalendarSyncTime ? `Son otomatik senkronizasyon: ${lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Google/iCloud Takvimleri periyodik ve arka planda otomatik eşitlenir'}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isManualSyncing || isAutoSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
-                        <span className="font-semibold">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Otomatik Eşitleme'}</span>
-                        {lastCalendarSyncTime && !isManualSyncing && !isAutoSyncing && (
-                          <span className="text-[10px] text-emerald-600/80">
-                            • {lastCalendarSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
 
-                      {/* Sync Button */}
-                      <button
-                        onClick={() => handleManualCalendarSync(true)}
-                        disabled={isManualSyncing || isAutoSyncing}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer border bg-white hover:bg-slate-50 text-[#6b705c] border-[#e5e1d8]`}
-                        title="Tüm iCloud/Google takvim seanslarını şimdi manuel eşitle"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing || isAutoSyncing ? 'animate-spin text-emerald-600' : ''}`} />
-                        <span className="hidden sm:inline">{isManualSyncing || isAutoSyncing ? 'Eşitleniyor...' : 'Şimdi Eşitle'}</span>
-                      </button>
-                    </div>
 
                     {/* Agenda Filter Dropdown Button */}
                     <div className="relative" ref={agendaFilterRef}>

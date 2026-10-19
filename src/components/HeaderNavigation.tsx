@@ -195,57 +195,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 <h1 className="text-lg md:text-xl font-serif italic text-[#6b705c] tracking-tight leading-none">PsyCalcu</h1>
                 <p className="text-[9px] md:text-[10px] text-slate-400 font-semibold tracking-wider mt-0.5 hidden sm:block">PSİKOLOG SEANS & BÜTÇE AJANDASI</p>
               </div>
-
-              {/* Cloud Sync Status Indicator Badge */}
-              {user && (
-                <button
-                  type="button"
-                  onClick={onSyncNow}
-                  className={`ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer border shadow-3xs ${
-                    !isOnline 
-                      ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                      : isQuotaExceeded
-                      ? 'bg-amber-50 text-amber-800 border-amber-200'
-                      : (isAuthSyncing || isCloudSaving)
-                      ? 'bg-sky-50 text-sky-800 border-sky-200'
-                      : 'bg-emerald-50/70 text-emerald-800 border-emerald-200/80 hover:bg-emerald-100/70'
-                  }`}
-                  title={
-                    !isOnline 
-                      ? `Çevrimdışı (${pendingMutationsCount || 0} bekleyen işlem). Bağlantı gelince eşitlenir, tıklayarak deneyin.`
-                      : isQuotaExceeded
-                      ? 'Kota Doldu (Yerel Depolama Devrede)'
-                      : (isAuthSyncing || isCloudSaving)
-                      ? 'Buluta kaydediliyor...'
-                      : 'Tüm verileriniz bulutta güvende. Tıklayarak şimdi eşitleyin.'
-                  }
-                >
-                  <span className="relative flex h-2 w-2">
-                    {!isOnline ? (
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                    ) : isQuotaExceeded ? (
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                    ) : (isAuthSyncing || isCloudSaving) ? (
-                      <>
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                      </>
-                    ) : (
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    )}
-                  </span>
-                  <span className="text-[10px] hidden xl:inline font-medium">
-                    {!isOnline 
-                      ? `Çevrimdışı (${pendingMutationsCount || 0})`
-                      : (isAuthSyncing || isCloudSaving)
-                      ? 'Eşitleniyor...'
-                      : 'Bulutta Güvende'}
-                  </span>
-                  {(isAuthSyncing || isCloudSaving) && (
-                    <RefreshCw className="w-2.5 h-2.5 animate-spin text-sky-600 hidden sm:inline" />
-                  )}
-                </button>
-              )}
             </div>
 
             {/* Desktop Inline Search Bar */}
