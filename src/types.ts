@@ -649,7 +649,7 @@ export function autoHealSmartClientPrices(
             babysitterFeeAmount: s.hasBabysitterFee ? (s.babysitterFeeAmount || matchedBabysitter) : 0,
             officeRentFeeAmount: isOnline ? 0 : (s.hasOfficeRentFee ? (s.officeRentFeeAmount || matchedOfficeRent) : 0),
             isManuallyEdited: Boolean(s.isManuallyEdited),
-            updatedAt: Date.now()
+            updatedAt: s.updatedAt
           };
         }
       }
@@ -674,12 +674,16 @@ export function bulkApplyClientRule(
     officeRentFeeAmount?: number;
     paymentStatus?: 'paid' | 'unpaid' | 'partial';
   },
-  onlyUnpaidOrAll: 'all' | 'unpaid-only' = 'all'
+  onlyUnpaidOrAll: 'all' | 'unpaid-only' = 'all',
+  accountingStartDate?: string | null
 ): Session[] {
   if (!Array.isArray(sessions) || !clientName) return sessions;
 
+  const cutoff = accountingStartDate ? accountingStartDate.split('T')[0] : '';
+
   return sessions.map(s => {
-    if (!s || s.type === 'cancelled' || s.type === 'non-session') return s;
+    if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return s;
+    if (cutoff && s.date && s.date < cutoff) return s;
     if (!areClientNamesEquivalent(s.clientName, clientName)) return s;
 
     if (onlyUnpaidOrAll === 'unpaid-only' && s.paymentStatus === 'paid') {
@@ -709,9 +713,10 @@ export function bulkApplyClientRule(
       changed = true;
     }
     if (typeof rule.hasOfficeRentFee === 'boolean') {
-      updated.hasOfficeRentFee = rule.hasOfficeRentFee;
+      const isOnline = s.type === 'online';
+      updated.hasOfficeRentFee = isOnline ? false : rule.hasOfficeRentFee;
       if (typeof rule.officeRentFeeAmount === 'number') {
-        updated.officeRentFeeAmount = rule.hasOfficeRentFee ? rule.officeRentFeeAmount : 0;
+        updated.officeRentFeeAmount = (!isOnline && rule.hasOfficeRentFee) ? rule.officeRentFeeAmount : 0;
       }
       changed = true;
     }
@@ -731,4 +736,5 @@ export function bulkApplyClientRule(
     return s;
   });
 }
+
 

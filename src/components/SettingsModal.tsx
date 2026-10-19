@@ -124,16 +124,17 @@ export default function SettingsModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative w-full max-w-md bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10 overscroll-contain touch-pan-y"
+            className="relative w-full max-w-md bg-white rounded-[1.75rem] sm:rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[88dvh] sm:max-h-[86vh] z-10 overscroll-contain touch-pan-y"
             id="settings-modal-content"
           >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]">
+        <div className="px-5 py-3 sm:px-6 sm:py-3.5 border-b border-[#f0ede6] flex justify-between items-center bg-[#fdfbf7] shrink-0">
           <div>
-            <h3 className="text-lg font-serif text-[#6b705c] italic">Finansal Parametreler</h3>
-            <p className="text-xs text-slate-600 font-sans font-medium">Varsayılan muhasebe ayarlarını düzenleyin</p>
+            <h3 className="text-base sm:text-lg font-serif text-[#6b705c] italic leading-tight">Finansal Parametreler</h3>
+            <p className="text-[10px] sm:text-xs text-slate-500 font-sans font-medium">Varsayılan muhasebe ayarlarını düzenleyin</p>
           </div>
           <button 
+            type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] flex items-center justify-center transition-colors cursor-pointer"
           >
@@ -141,19 +142,20 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto font-sans">
+        {/* Form with scrollable body and sticky footer */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden font-sans">
+          <div className="p-4 sm:p-5 space-y-3 flex-1 overflow-y-auto overscroll-contain">
           
           {/* Danışan Özel Fiyat Yönetimi Banner */}
           {onOpenClientPricingModal && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-3xs">
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-3xs">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                   <h4 className="text-xs font-bold text-slate-800">Danışan Özel Fiyat Yönetimi</h4>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  Her danışanınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek sayfadan düzenleyin; tüm seanslara uygulansın.
+                <p className="text-[10px] text-slate-600 leading-snug">
+                  Her danışanınıza özel seans ücretlerini, bakıcı ve ofis kiralarını tek sayfadan düzenleyin.
                 </p>
               </div>
               <button
@@ -162,133 +164,125 @@ export default function SettingsModal({
                   onClose();
                   onOpenClientPricingModal();
                 }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Fiyatları Yönet</span>
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3 h-3" />
               </button>
             </div>
           )}
 
-          {/* Therapist Name */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Psikolog / Klinik Adı</label>
-            <div className="relative">
-              <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
-              <input
-                type="text"
-                required
-                value={therapistName}
-                onChange={(e) => setTherapistName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-                placeholder="Örn. Dr. Melis Kaya"
-              />
-            </div>
+          {/* Therapist Name (Inset Label) */}
+          <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+            <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
+              <User className="w-2.5 h-2.5 text-[#a5a58d]" />
+              <span>PSİKOLOG / KLİNİK ADI</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={therapistName}
+              onChange={(e) => setTherapistName(e.target.value)}
+              className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none"
+              placeholder="Örn. Uzm. Psk. Ayşe Yılmaz"
+            />
           </div>
 
-          {/* Therapist Phone / WhatsApp */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">İletişim / WhatsApp Telefon Numarası</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+          {/* Therapist Phone / WhatsApp (Inset Label) */}
+          <div>
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                <Phone className="w-2.5 h-2.5 text-[#a5a58d]" />
+                <span>İLETİŞİM / WHATSAPP NUMARASI</span>
+              </label>
               <input
                 type="tel"
                 inputMode="tel"
                 value={therapistPhone}
                 onChange={(e) => setTherapistPhone(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-                placeholder="Örn. 0532 123 45 67 veya +905321234567"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none"
+                placeholder="Örn. 0532 123 45 67"
               />
             </div>
             {showExplanations && (
               <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 mt-1">
-                Oda paylaşım sayfasını ziyaret eden kişilerin direkt WhatsApp üzerinden seans/oda kiralama talebi gönderebilmesi için kullanılır.
+                Oda paylaşım sayfasını ziyaret eden kişilerin WhatsApp üzerinden talep gönderebilmesi için kullanılır.
               </p>
             )}
           </div>
 
-          {/* User Role Display (Read-Only) */}
-          <div className="space-y-1.5 pb-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Uygulama Rolünüz</label>
-            <div className="flex items-center gap-3 px-4 py-3 bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl relative overflow-hidden group">
+          {/* User Role Display (Read-Only with Inset Label) */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 px-3.5 py-2.5 bg-[#fdfbf7] border border-[#e5e1d8] rounded-xl relative overflow-hidden">
               {userRole === 'owner' ? (
                 <>
                   <div className="w-8 h-8 rounded-xl bg-[#6b705c]/10 text-[#6b705c] flex items-center justify-center shrink-0">
-                    <Building className="w-4.5 h-4.5" />
+                    <Building className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-[#6b705c] leading-tight flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block">UYGULAMA ROLÜNÜZ</span>
+                    <h4 className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-1">
                       Ofis Sahibi (Mülk Sahibi)
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     </h4>
-                    <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Rolünüz yönetici tarafından tanımlanmıştır ve değiştirilemez.</p>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="w-8 h-8 rounded-xl bg-[#cb997e]/10 text-[#cb997e] flex items-center justify-center shrink-0">
-                    <User className="w-4.5 h-4.5" />
+                    <User className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-[#cb997e] leading-tight flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block">UYGULAMA ROLÜNÜZ</span>
+                    <h4 className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-1">
                       Ofis Kiralayan (Terapist)
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     </h4>
-                    <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Rolünüz yönetici tarafından tanımlanmıştır ve değiştirilemez.</p>
                   </div>
                 </>
               )}
             </div>
             
-            {/* Role Change Requests UI */}
             {requestedRole ? (
-              <div className="mt-2.5 bg-amber-50/55 border border-amber-200/65 rounded-2xl p-3 space-y-2 animate-fade-in">
+              <div className="bg-amber-50/55 border border-amber-200/65 rounded-xl p-2.5 space-y-1.5 animate-fade-in">
                 <div className="flex items-start gap-2 text-[11px] font-semibold text-amber-800">
-                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
                     <p>Rol Değişikliği Talebi Gönderildi</p>
                     <p className="text-[10px] text-amber-700 font-medium leading-normal">
-                      <strong>{requestedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan (Terapist)'}</strong> rolüne geçiş isteğiniz kurucu yönetici onayında beklemektedir.
+                      <strong>{requestedRole === 'owner' ? 'Ofis Sahibi' : 'Ofis Kiralayan (Terapist)'}</strong> rolüne geçiş isteğiniz onay bekliyor.
                     </p>
                   </div>
                 </div>
-                <div className="flex justify-end pt-0.5">
+                <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => onRequestRoleChange?.(null)}
-                    className="px-2.5 py-1 bg-white hover:bg-amber-100/50 border border-amber-200 hover:border-amber-300 text-amber-800 text-[9px] font-extrabold rounded-xl transition-all cursor-pointer shadow-xs"
+                    className="px-2.5 py-1 bg-white hover:bg-amber-100/50 border border-amber-200 text-amber-800 text-[9px] font-extrabold rounded-lg transition-all cursor-pointer"
                   >
-                    Talebi Geri Çek / İptal Et
+                    Talebi İptal Et
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="mt-1.5 text-right">
+              <div className="text-right">
                 <button
                   type="button"
                   onClick={() => onRequestRoleChange?.(userRole === 'owner' ? 'tenant' : 'owner')}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#cb997e] hover:text-[#6b705c] transition-colors cursor-pointer bg-[#cb997e]/5 hover:bg-[#6b705c]/5 px-3 py-1.5 rounded-xl border border-dashed border-[#cb997e]/30 hover:border-[#6b705c]/30"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#cb997e] hover:text-[#6b705c] transition-colors cursor-pointer bg-[#cb997e]/5 hover:bg-[#6b705c]/5 px-2.5 py-1 rounded-lg border border-dashed border-[#cb997e]/30"
                 >
-                  ✨ {userRole === 'owner' ? 'Terapist' : 'Ofis Sahibi'} Rolüne Geçmek İstiyorum (Talep Gönder)
+                  ✨ {userRole === 'owner' ? 'Terapist' : 'Ofis Sahibi'} Rolüne Geçiş Talep Et
                 </button>
               </div>
             )}
-
-            {showExplanations && (
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 mt-1.5">
-                {userRole === 'owner' 
-                  ? 'Mülk sahibi yetkilerinizle çoklu takvim entegrasyonu yapabilir ve kira gelirlerinizi listeleyebilirsiniz.'
-                  : 'Terapist yetkilerinizle seanslarınızı, seans başı bakıcı/kira giderlerinizi ve borçlarınızı takip edebilirsiniz.'}
-              </p>
-            )}
           </div>
 
-          {/* Session Prices (Online & Face-to-face) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Online Seans (₺)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
+          {/* 2x2 Grid for Default Prices & Fees (Inset Labels) */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">ONLİNE SEANS (₺)</label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-bold text-[#a5a58d]">₺</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -305,18 +299,15 @@ export default function SettingsModal({
                     }
                   }}
                   onFocus={(e) => e.target.select()}
-                  className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full bg-transparent py-0.5 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none"
                 />
               </div>
-              {showExplanations && (
-                <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Online seanslar için başlangıç fiyatı.</p>
-              )}
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan Yüz Yüze Seans (₺)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2 text-sm font-bold text-[#a5a58d]">₺</span>
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">YÜZ YÜZE SEANS (₺)</label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-bold text-[#a5a58d]">₺</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -330,97 +321,106 @@ export default function SettingsModal({
                     setDefaultFaceToFacePrice(num);
                   }}
                   onFocus={(e) => e.target.select()}
-                  className="w-full pl-8 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                  className="w-full bg-transparent py-0.5 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none"
                 />
               </div>
-              {showExplanations && (
-                <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüz yüze seanslar için başlangıç fiyatı.</p>
-              )}
+            </div>
+
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 truncate">
+                <Baby className="w-2.5 h-2.5 text-[#a5a58d] shrink-0" />
+                <span>BAKICI GİDERİ (₺)</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-bold text-[#a5a58d]">₺</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
+                  required
+                  min="0"
+                  value={defaultBabysitterFee === 0 ? '' : defaultBabysitterFee}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDefaultBabysitterFee(val === '' ? '' : Number(val));
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-transparent py-0.5 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 truncate">
+                <Landmark className="w-2.5 h-2.5 text-[#a5a58d] shrink-0" />
+                <span>OFİS KİRA GİDERİ (₺)</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-bold text-[#a5a58d]">₺</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
+                  required
+                  min="0"
+                  value={defaultOfficeRentFee === 0 ? '' : defaultOfficeRentFee}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDefaultOfficeRentFee(val === '' ? '' : Number(val));
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-transparent py-0.5 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Babysitter Fee */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Başı Bakıcı Ücreti (₺)</label>
-            <div className="relative">
-              <Baby className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+          {/* Accounting & Debt Tracking Start Date & Default Landing Page */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 truncate">
+                <Calendar className="w-2.5 h-2.5 text-[#cb997e] shrink-0" />
+                <span>MUHASEBE BAŞLANGIÇ TARİHİ</span>
+              </label>
               <input
-                type="number"
-                inputMode="decimal"
-                pattern="[0-9]*"
-                required
-                min="0"
-                value={defaultBabysitterFee === 0 ? '' : defaultBabysitterFee}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setDefaultBabysitterFee(val === '' ? '' : Number(val));
-                }}
-                onFocus={(e) => e.target.select()}
-                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                type="date"
+                value={accountingStartDate}
+                onChange={(e) => setAccountingStartDate(e.target.value)}
+                className="w-full bg-transparent py-0.5 text-xs font-semibold text-slate-800 focus:outline-none [color-scheme:light]"
               />
             </div>
-            {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Seans süresince çocuğa bakan bakıcıya seans başı verilen sabit ücret.</p>
-            )}
-          </div>
 
-          {/* Office Rent Fee */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Seans Başı Ofis Kira Gideri (₺)</label>
-            <div className="relative">
-              <Landmark className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
-              <input
-                type="number"
-                inputMode="decimal"
-                pattern="[0-9]*"
-                required
-                min="0"
-                value={defaultOfficeRentFee === 0 ? '' : defaultOfficeRentFee}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setDefaultOfficeRentFee(val === '' ? '' : Number(val));
-                }}
-                onFocus={(e) => e.target.select()}
-                className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-              />
+            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">AÇILIŞ SEKMESİ</label>
+              <select
+                value={defaultLandingPage}
+                onChange={(e) => setDefaultLandingPage(e.target.value as any)}
+                className="w-full bg-transparent py-0.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                <option value="agenda">📅 Ajanda / Takvim</option>
+                <option value="stats">📊 Analiz & İstatistikler</option>
+                <option value="debts">💸 Borç Takip</option>
+                <option value="audit">📋 Seans Sağlama & Tablo</option>
+                <option value="sync">🔄 Takvim Senkronizasyonu</option>
+                <option value="backup">💾 Veri Yedekleme</option>
+                <option value="search">🔍 Gelişmiş Arama</option>
+              </select>
             </div>
-            {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">Yüzyüze seansların yapıldığı ofis için ödenecek seans başı kira payı.</p>
-            )}
-          </div>
-
-          {/* Accounting & Debt Tracking Start Date */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#cb997e]" />
-              <span>Muhasebe & Borç Takip Başlangıç Tarihi</span>
-            </label>
-            <input
-              type="date"
-              value={accountingStartDate}
-              onChange={(e) => setAccountingStartDate(e.target.value)}
-              className="w-full px-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
-            />
-            {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
-                Bu tarihten önceki takvim seansları geçmiş/kapanmış dönem kabul edilir ve borç takip listesinde ödenmemiş olarak birikmez.
-              </p>
-            )}
           </div>
 
           {/* KDV (Katma Değer Vergisi) Toggle & Default Percentage */}
           <div className="space-y-2 pt-1 border-t border-[#f5f5f0]">
-            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
-              <div className="space-y-0.5 max-w-[75%]">
+            <div className="flex items-center justify-between p-3 rounded-xl border border-[#e5e1d8] bg-[#fdfbf7]">
+              <div className="space-y-0.5 max-w-[78%]">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Percent className="w-3.5 h-3.5 text-[#cb997e]" />
-                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">KDV (Vergi) Kesintisini Aktif Et</label>
+                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">KDV Kesintisini Aktif Et</label>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#6b705c]/10 text-[#6b705c] font-semibold">
                     {enableKDV ? 'AÇIK' : 'KAPALI'}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-500 leading-tight">
-                  Açıldığında seans ekleme/düzenleme ekranında KDV seçeneği belirir ve net muhasebe hesaplamasına KDV kesintisi eklenir.
+                  Açıldığında seanslarda KDV kesintisi hesaplanır.
                 </p>
               </div>
               <button
@@ -445,11 +445,13 @@ export default function SettingsModal({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="space-y-1 pl-1 pt-1"
+                className="space-y-2 pt-1"
               >
-                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan KDV Oranı (%)</label>
-                <div className="relative">
-                  <Percent className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+                <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+                  <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1">
+                    <Percent className="w-2.5 h-2.5 text-[#a5a58d]" />
+                    <span>VARSAYILAN KDV ORANI (%)</span>
+                  </label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -464,209 +466,145 @@ export default function SettingsModal({
                       setDefaultKdvRate(val === '' ? '' : Number(val));
                     }}
                     onFocus={(e) => e.target.select()}
-                    className="w-full pl-10 pr-4 py-2 text-base sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c]"
+                    className="w-full bg-transparent py-0.5 text-xs font-bold text-slate-800 focus:outline-none"
                     placeholder="Örn. 20"
                   />
                 </div>
-                {showExplanations && (
-                  <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
-                    Yeni seanslarda varsayılan olarak uygulanacak KDV yüzdesi (örn: %20, %10).
-                  </p>
-                )}
 
-                <div className="space-y-1.5 pt-2">
-                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Varsayılan KDV Tipi</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDefaultIsKdvInclusive(true)}
-                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                        defaultIsKdvInclusive
-                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
-                          : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
-                      }`}
-                    >
-                      KDV Dahil (Fiyata Dahil)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDefaultIsKdvInclusive(false)}
-                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                        !defaultIsKdvInclusive
-                          ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
-                          : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
-                      }`}
-                    >
-                      KDV Hariç (+KDV Eklensin)
-                    </button>
-                  </div>
-                  {showExplanations && (
-                    <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
-                      {defaultIsKdvInclusive
-                        ? 'Girilen seans ücretinin içinden KDV hesaplanır.'
-                        : 'Girilen seans ücretinin üzerine % KDV eklenerek toplam fatura/ciro hesaplanır.'}
-                    </p>
-                  )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDefaultIsKdvInclusive(true)}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      defaultIsKdvInclusive
+                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                        : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                    }`}
+                  >
+                    KDV Dahil
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDefaultIsKdvInclusive(false)}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      !defaultIsKdvInclusive
+                        ? 'bg-[#6b705c] text-white border-[#6b705c] shadow-xs'
+                        : 'bg-[#fdfbf7] text-slate-600 border-[#e5e1d8] hover:bg-slate-50'
+                    }`}
+                  >
+                    KDV Hariç (+KDV)
+                  </button>
                 </div>
               </motion.div>
             )}
           </div>
 
           {/* Auto Mark Short Events (<= 30 mins) as Non-Session Toggle */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
-              <div className="space-y-0.5 max-w-[75%]">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Clock className="w-3.5 h-3.5 text-[#cb997e]" />
-                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Kısa Etkinlikleri Seans Dışı Say (≤30 Dk)</label>
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Takvimden aktarılan 30 dakika ve altındaki etkinlikleri (kısa görüşme, not, blok) otomatik "Seans Dışı Not" kabul eder ve muhasebe hesabına katmaz.
-                </p>
+          <div className="flex items-center justify-between p-3 rounded-xl border border-[#e5e1d8] bg-[#fdfbf7]">
+            <div className="space-y-0.5 max-w-[78%]">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Clock className="w-3.5 h-3.5 text-[#cb997e]" />
+                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Kısa Etkinlikler Seans Dışı (≤30 Dk)</label>
               </div>
-              <button
-                type="button"
-                onClick={() => setAutoMarkShortEventsAsNonSession(!autoMarkShortEventsAsNonSession)}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  autoMarkShortEventsAsNonSession ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
-                }`}
-                role="switch"
-                aria-checked={autoMarkShortEventsAsNonSession}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    autoMarkShortEventsAsNonSession ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <p className="text-[10px] text-slate-500 leading-tight">
+                30 dk ve altındaki takvim etkinliklerini otomatik "Seans Dışı Not" sayar.
+              </p>
             </div>
-          </div>
-          <div className="space-y-1">
-            <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-colors ${
-              !featuresSmartPriceMatchingAllowed ? 'border-rose-100 bg-rose-50/10' : 'border-[#e5e1d8] bg-[#fdfbf7]'
-            }`}>
-              <div className="space-y-0.5 max-w-[75%]">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Sparkles className="w-3.5 h-3.5 text-[#cb997e]" />
-                  <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Akıllı Fiyat Eşitleme</label>
-                  {!featuresSmartPriceMatchingAllowed && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-rose-50 text-rose-500 uppercase tracking-wide">
-                      <Lock className="w-2 h-2" /> Sınırlandırıldı
-                    </span>
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Aynı danışanın farklı varyasyon seanslarında (örn. Zuhal Şen 1, Zuhal Şen 2) son girilen zamlı fiyatı ileri tarihli seanslara otomatik uygular.
-                </p>
-                {!featuresSmartPriceMatchingAllowed && (
-                  <p className="text-[9px] text-rose-500 font-medium mt-1">
-                    Bu özellik yöneticiniz tarafından sınırlandırılmıştır.
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                disabled={!featuresSmartPriceMatchingAllowed}
-                onClick={() => {
-                  if (featuresSmartPriceMatchingAllowed) {
-                    setPendingSmartPriceToggle(!enableSmartClientPriceMatching);
-                    setConfirmCountdown(5);
-                  }
-                }}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  !featuresSmartPriceMatchingAllowed ? 'bg-slate-100 cursor-not-allowed opacity-60' :
-                  enableSmartClientPriceMatching ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
+            <button
+              type="button"
+              onClick={() => setAutoMarkShortEventsAsNonSession(!autoMarkShortEventsAsNonSession)}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                autoMarkShortEventsAsNonSession ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
+              }`}
+              role="switch"
+              aria-checked={autoMarkShortEventsAsNonSession}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                  autoMarkShortEventsAsNonSession ? 'translate-x-5' : 'translate-x-0'
                 }`}
-                role="switch"
-                aria-checked={enableSmartClientPriceMatching}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    enableSmartClientPriceMatching && featuresSmartPriceMatchingAllowed ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
+              />
+            </button>
           </div>
 
-          {/* Default Landing Page Option */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Açılış Sekmesi</label>
-            <div className="relative">
-              <select
-                value={defaultLandingPage}
-                onChange={(e) => setDefaultLandingPage(e.target.value as any)}
-                className="w-full pl-4 pr-10 py-2.5 text-xs sm:text-sm bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl focus:outline-none focus:border-[#6b705c] appearance-none cursor-pointer font-semibold text-slate-700"
-              >
-                <option value="agenda">📅 Ajanda / Takvim</option>
-                <option value="stats">📊 Analiz & İstatistikler</option>
-                <option value="debts">💸 Borç Takip</option>
-                <option value="audit">📋 Seans Sağlama & Tablo</option>
-                <option value="sync">🔄 Takvim Senkronizasyonu</option>
-                <option value="backup">💾 Veri Yedekleme</option>
-                <option value="search">🔍 Gelişmiş Arama</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                <ChevronDown className="w-4 h-4" />
+          {/* Smart Price Matching Toggle */}
+          <div className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+            !featuresSmartPriceMatchingAllowed ? 'border-rose-100 bg-rose-50/10' : 'border-[#e5e1d8] bg-[#fdfbf7]'
+          }`}>
+            <div className="space-y-0.5 max-w-[78%]">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Sparkles className="w-3.5 h-3.5 text-[#cb997e]" />
+                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Akıllı Fiyat Eşitleme</label>
+                {!featuresSmartPriceMatchingAllowed && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-rose-50 text-rose-500 uppercase tracking-wide">
+                    <Lock className="w-2 h-2" /> Sınırlandırıldı
+                  </span>
+                )}
               </div>
-            </div>
-            {showExplanations && (
-              <p className="text-[10px] text-slate-600 font-medium animate-fade-in">
-                Uygulama ilk açıldığında sizi otomatik karşılayacak ana sekme.
+              <p className="text-[10px] text-slate-500 leading-tight">
+                Aynı danışanın farklı seanslarında son girilen ücreti ileri tarihli seanslara otomatik uygular.
               </p>
-            )}
+            </div>
+            <button
+              type="button"
+              disabled={!featuresSmartPriceMatchingAllowed}
+              onClick={() => {
+                if (featuresSmartPriceMatchingAllowed) {
+                  setPendingSmartPriceToggle(!enableSmartClientPriceMatching);
+                  setConfirmCountdown(5);
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                !featuresSmartPriceMatchingAllowed ? 'bg-slate-100 cursor-not-allowed opacity-60' :
+                enableSmartClientPriceMatching ? 'bg-[#6b705c] cursor-pointer' : 'bg-slate-200 cursor-pointer'
+              }`}
+              role="switch"
+              aria-checked={enableSmartClientPriceMatching}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                  enableSmartClientPriceMatching && featuresSmartPriceMatchingAllowed ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           {/* Toggle Explanations Switch */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#e5e1d8] bg-[#fdfbf7]">
-              <div className="space-y-0.5 max-w-[75%]">
-                <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Yardımcı Açıklamaları Göster</label>
-                <p className="text-[10px] text-slate-500 leading-tight">Arayüzdeki rehber, uyarı ve bilgilendirici metinleri gösterir.</p>
-              </div>
-              <button
-                type="button"
-                onClick={onToggleExplanations}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'
-                }`}
-                role="switch"
-                aria-checked={showExplanations}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    showExplanations ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+          <div className="flex items-center justify-between p-3 rounded-xl border border-[#e5e1d8] bg-[#fdfbf7]">
+            <div className="space-y-0.5 max-w-[78%]">
+              <label className="text-xs font-bold text-[#555a4a] uppercase tracking-wider block">Yardımcı Açıklamaları Göster</label>
+              <p className="text-[10px] text-slate-500 leading-tight">Arayüzdeki rehber ve bilgilendirici metinleri gösterir.</p>
             </div>
+            <button
+              type="button"
+              onClick={onToggleExplanations}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                showExplanations ? 'bg-[#6b705c]' : 'bg-slate-200'
+              }`}
+              role="switch"
+              aria-checked={showExplanations}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                  showExplanations ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
           </div>
 
-          {/* Tip */}
-          {showExplanations && (
-            <div className="bg-[#f5f5f0] p-4 rounded-2xl border border-[#e5e1d8]/60 flex gap-3 items-start animate-fade-in">
-              <ShieldAlert className="w-5 h-5 text-[#cb997e] shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-xs font-semibold text-slate-700 font-sans">Otomatik Hesaplama Algoritması</h4>
-                <p className="text-[10px] text-slate-600 leading-relaxed font-sans font-medium">
-                  Uygulama, seans gelirlerinizden seans başı bakıcı ücretini otomatik düşer. Yüzyüze seanslarda ise ek olarak seans başı ofis kira gideri de düşülerek net kârınız anlık hesaplanır. Online seanslarda ofis kirası kesilmez.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="pt-4 border-t border-[#f5f5f0] flex gap-3 justify-end">
+          {/* Sticky Actions Footer (Always visible above mobile virtual keyboard) */}
+          <div className="px-4 sm:px-6 py-3 border-t border-[#e5e1d8] bg-[#fdfbf7]/95 backdrop-blur-md flex gap-2.5 justify-end items-center shrink-0 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-full border border-[#e5e1d8] bg-white hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer"
             >
               Vazgeç
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-5 py-2 rounded-full bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
               <Save className="w-3.5 h-3.5" />
               Ayarları Kaydet

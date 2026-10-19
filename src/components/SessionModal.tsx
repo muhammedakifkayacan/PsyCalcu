@@ -424,18 +424,19 @@ export default function SessionModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] z-10 overscroll-contain touch-pan-y"
+            className="relative w-full max-w-lg bg-white rounded-[1.75rem] sm:rounded-[2rem] border border-[#e5e1d8] overflow-hidden shadow-2xl flex flex-col max-h-[88dvh] sm:max-h-[86vh] z-10 overscroll-contain touch-pan-y"
             id="session-modal-content"
           >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7] shrink-0">
+        <div className="px-5 py-3 sm:px-6 sm:py-3.5 border-b border-[#f0ede6] flex justify-between items-center bg-[#fdfbf7] shrink-0">
           <div>
-            <h3 className="text-base sm:text-lg font-serif text-[#6b705c] italic">
+            <h3 className="text-base sm:text-lg font-serif text-[#6b705c] italic leading-tight">
               {sessionToEdit ? 'Seans Bilgilerini Düzenle' : 'Yeni Seans Kaydı'}
             </h3>
-            <p className="text-[10px] sm:text-xs text-slate-600 font-medium">Danışan seans detaylarını girin</p>
+            <p className="text-[10px] sm:text-xs text-slate-500 font-medium">Danışan seans detaylarını girin</p>
           </div>
           <button 
+            type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-[#f5f5f0] hover:bg-[#e5e5df] text-[#6b705c] flex items-center justify-center transition-colors cursor-pointer"
           >
@@ -443,11 +444,12 @@ export default function SessionModal({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-3.5 flex-1 overflow-y-auto">
+        {/* Form with scrollable body and sticky bottom action bar */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-4 sm:p-5 space-y-2.5 flex-1 overflow-y-auto overscroll-contain">
           {/* Closed / Locked Month Warning Banner */}
           {isEditingClosedMonthSession && (
-            <div className="bg-emerald-50/95 border-2 border-emerald-300 text-emerald-950 rounded-2xl p-3.5 space-y-1.5 shadow-2xs animate-fade-in" id="closed-month-edit-banner">
+            <div className="bg-emerald-50/95 border-2 border-emerald-300 text-emerald-950 rounded-2xl p-3 space-y-1 shadow-2xs animate-fade-in" id="closed-month-edit-banner">
               <div className="flex items-center gap-2 font-bold text-emerald-900 text-xs">
                 <Lock className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>Kapatılmış Muhasebe Dönemi ({formatMonthKey(closedMonthKey)})</span>
@@ -459,7 +461,7 @@ export default function SessionModal({
           )}
 
           {isCreatingInClosedMonth && (
-            <div className="bg-amber-50/95 border-2 border-amber-300 text-amber-950 rounded-2xl p-3.5 space-y-1.5 shadow-2xs animate-fade-in" id="closed-month-lock-banner">
+            <div className="bg-amber-50/95 border-2 border-amber-300 text-amber-950 rounded-2xl p-3 space-y-1 shadow-2xs animate-fade-in" id="closed-month-lock-banner">
               <div className="flex items-center gap-2 font-bold text-amber-900 text-xs">
                 <Lock className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>Kapatılmış & Kilitli Ay ({formatMonthKey(closedMonthKey)})</span>
@@ -470,64 +472,68 @@ export default function SessionModal({
             </div>
           )}
 
-          {/* Client Name */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
-                {type === 'rent-income' 
-                  ? 'ÖDEMEYİ YAPAN / TERAPİST' 
-                  : type === 'non-session' 
-                    ? 'ETKİNLİK / TOPLANTI BAŞLIĞI' 
-                    : 'DANIŞAN ADI SOYADI'}
+          {/* Client Name (Inset Label inside Box) */}
+          <div className={`relative rounded-xl border px-3 pt-1.5 pb-1.5 transition-colors focus-within:border-[#6b705c] focus-within:bg-white ${
+            isSessionInClosedMonth 
+              ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
+              : 'bg-[#fdfbf7] border-[#e5e1d8]'
+          }`}>
+            <div className="flex items-center justify-between gap-2 mb-0.5">
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1">
+                <User className="w-3 h-3 text-[#a5a58d] shrink-0" />
+                <span>
+                  {type === 'rent-income' 
+                    ? 'ÖDEMEYİ YAPAN / TERAPİST' 
+                    : type === 'non-session' 
+                      ? 'ETKİNLİK / TOPLANTI BAŞLIĞI' 
+                      : 'DANIŞAN ADI SOYADI'}
+                </span>
               </label>
               {onOpenClientHistory && clientName.trim().length > 0 && type !== 'non-session' && (
                 <button
                   type="button"
                   onClick={() => onOpenClientHistory(clientName)}
-                  className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200/60"
+                  className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/60"
                   title="Bu danışanın tüm seans geçmişini ve bakiyesini gör"
                 >
-                  <History className="w-3 h-3 text-emerald-600" />
+                  <History className="w-2.5 h-2.5 text-emerald-600" />
                   <span>Seans Geçmişi</span>
                 </button>
               )}
             </div>
-            <div className="relative">
-              <User className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
-              <input
-                type="text"
-                required
-                disabled={isSessionInClosedMonth}
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2 text-base sm:text-sm border rounded-2xl focus:outline-none focus:border-[#6b705c] ${
-                  isSessionInClosedMonth 
-                    ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed font-medium' 
-                    : 'bg-[#fdfbf7] border-[#e5e1d8]'
-                }`}
-                placeholder={
-                  type === 'rent-income' 
-                    ? "Örn. Psk. Ahmet Yılmaz" 
-                    : type === 'non-session' 
-                      ? "Örn. Ekip Toplantısı, Süpervizyon" 
-                      : "Örn. Ahmet Yılmaz"
-                }
-              />
-            </div>
+            <input
+              type="text"
+              required
+              disabled={isSessionInClosedMonth}
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              className={`w-full bg-transparent text-sm sm:text-xs font-semibold focus:outline-none ${
+                isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 placeholder:text-slate-400 placeholder:font-normal'
+              }`}
+              placeholder={
+                type === 'rent-income' 
+                  ? "Örn. Psk. Ahmet Yılmaz" 
+                  : type === 'non-session' 
+                    ? "Örn. Ekip Toplantısı, Süpervizyon" 
+                    : "Danışan adını yazın (Örn. Ahmet Yılmaz)"
+              }
+            />
           </div>
 
-          {/* Session Type Selector (Dropdown) */}
-          <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">ETKİNLİK TİPİ</label>
-            <div className="relative">
+          {/* Session Type & Room Selector (Inset Labels) */}
+          <div className={`grid grid-cols-1 ${(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 ? 'sm:grid-cols-2' : ''} gap-2.5`}>
+            <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 transition-colors focus-within:border-[#6b705c] ${
+              isSessionInClosedMonth 
+                ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
+                : 'bg-[#fdfbf7] border-[#e5e1d8]'
+            }`}>
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block">ETKİNLİK TİPİ</label>
               <select
                 value={type}
                 disabled={isSessionInClosedMonth}
                 onChange={(e) => handleTypeChange(e.target.value as SessionType)}
-                className={`w-full px-3.5 py-2 text-sm sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] h-[38px] font-semibold transition-colors ${
-                  isSessionInClosedMonth 
-                    ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
-                    : 'bg-[#fdfbf7] border-[#e5e1d8] text-slate-800 cursor-pointer'
+                className={`w-full bg-transparent text-xs font-semibold focus:outline-none py-0.5 ${
+                  isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                 }`}
               >
                 <option value="online">🌐 Online Seans</option>
@@ -539,31 +545,29 @@ export default function SessionModal({
                 )}
               </select>
             </div>
-          </div>
 
-          {/* Room Selector (Sadece Yüz Yüze veya Kira Geliri seçildiğinde görünür) */}
-          {(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-1 overflow-hidden"
-              id="modal-room-selector"
-            >
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">KLİNİK ODA SEÇİMİ</label>
-              <div className="relative">
-                <Building className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
+            {(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 && (
+              <div
+                className={`relative rounded-xl border px-3 pt-1.5 pb-1 transition-colors focus-within:border-[#6b705c] ${
+                  isSessionInClosedMonth 
+                    ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
+                    : 'bg-[#fdfbf7] border-[#e5e1d8]'
+                }`}
+                id="modal-room-selector"
+              >
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1">
+                  <Building className="w-2.5 h-2.5 text-[#a5a58d]" />
+                  <span>KLİNİK ODA SEÇİMİ</span>
+                </label>
                 <select
                   value={roomId}
                   disabled={isSessionInClosedMonth}
                   onChange={(e) => setRoomId(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-2 text-base sm:text-xs border rounded-2xl focus:outline-none focus:border-[#6b705c] h-[38px] font-medium ${
-                    isSessionInClosedMonth 
-                      ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
-                      : 'bg-[#fdfbf7] border-[#e5e1d8] cursor-pointer'
+                  className={`w-full bg-transparent text-xs font-medium focus:outline-none py-0.5 ${
+                    isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                   }`}
                 >
-                  <option value="">-- Herhangi bir odada (Atanmamış) --</option>
+                  <option value="">-- Oda Atanmamış --</option>
                   {rooms.map(r => (
                     <option key={r.id} value={r.id}>
                       🛋️ {r.name} ({r.type === 'standard' ? 'Bireysel' : r.type === 'play-therapy' ? 'Oyun' : r.type === 'family-therapy' ? 'Aile & Çift' : r.type === 'group-therapy' ? 'Grup' : 'Diğer'})
@@ -571,8 +575,8 @@ export default function SessionModal({
                   ))}
                 </select>
               </div>
-            </motion.div>
-          )}
+            )}
+          </div>
 
           {/* Session Time Conflict Detection Warning Banner */}
           {conflictingSessions.length > 0 && type !== 'cancelled' && (
@@ -580,7 +584,7 @@ export default function SessionModal({
               initial={{ opacity: 0, y: -6, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.98 }}
-              className="bg-amber-50/90 border-2 border-amber-300 text-amber-950 rounded-2xl p-3.5 space-y-2 text-xs shadow-sm overflow-hidden"
+              className="bg-amber-50/90 border-2 border-amber-300 text-amber-950 rounded-2xl p-3 space-y-1.5 text-xs shadow-sm overflow-hidden"
               id="session-conflict-alert"
             >
               <div className="flex items-center gap-2 font-bold text-amber-900">
@@ -590,14 +594,14 @@ export default function SessionModal({
               <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
                 Seçilen saat diliminde ({time} - {minutesToTime(currentEnd)}) mevcut {conflictingSessions.length} seans ile zaman çakışması tespit edildi:
               </p>
-              <div className="space-y-1.5 pt-0.5">
+              <div className="space-y-1 pt-0.5">
                 {conflictingSessions.map(cs => {
                   const csStart = timeToMinutes(cs.time);
                   const csEnd = csStart + (cs.duration || 50);
                   const roomObj = rooms.find(r => r.id === cs.roomId);
                   return (
-                    <div key={cs.id} className="bg-white/95 border border-amber-200/80 rounded-xl px-3 py-2 flex items-center justify-between text-[11px] shadow-3xs">
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div key={cs.id} className="bg-white/95 border border-amber-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px] shadow-3xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                         <span className="font-bold text-slate-800 truncate">{cs.clientName || 'İsimsiz Seans'}</span>
                         {roomObj && (
@@ -616,12 +620,19 @@ export default function SessionModal({
             </motion.div>
           )}
 
-          {/* Core Fields Grid: (Date, Time, Duration, Price) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5 min-w-0 w-full max-w-full box-border">
+          {/* Core Fields Grid: 2x2 on all screen sizes with Inset Labels */}
+          <div className="grid grid-cols-2 gap-2.5 min-w-0 w-full max-w-full box-border">
             {/* Row 1, Col 1: Tarih */}
-            <div className="space-y-1 min-w-0 w-full max-w-full box-border">
+            <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
+              isDateTimeLocked 
+                ? 'bg-slate-100/80 border-slate-200 cursor-not-allowed' 
+                : 'bg-[#fdfbf7] border-[#e5e1d8]'
+            }`}>
               <div className="flex items-center justify-between">
-                <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">TARİH</label>
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 truncate">
+                  <Calendar className="w-2.5 h-2.5 text-[#a5a58d] shrink-0" />
+                  <span>TARİH</span>
+                </label>
                 {dateNotice && (
                   <div className="relative inline-flex items-center">
                     <button
@@ -633,10 +644,10 @@ export default function SessionModal({
                       title={dateNotice.text}
                       aria-label="Tarih bilgi notu"
                     >
-                      <Info className="w-3.5 h-3.5" />
+                      <Info className="w-3 h-3" />
                     </button>
                     {showDateNoticeTooltip && (
-                      <div className="absolute left-0 bottom-full mb-1.5 z-50 w-64 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl pointer-events-none leading-relaxed animate-fade-in">
+                      <div className="absolute left-0 bottom-full mb-1.5 z-50 w-60 p-2 bg-slate-900 text-white text-[10px] rounded-xl shadow-xl pointer-events-none leading-relaxed animate-fade-in">
                         <div className="font-bold text-amber-300 mb-0.5 flex items-center gap-1">
                           <Info className="w-3 h-3 text-amber-300 shrink-0" />
                           <span>{dateNotice.title}</span>
@@ -647,55 +658,54 @@ export default function SessionModal({
                   </div>
                 )}
               </div>
-              <div className="relative min-w-0 w-full max-w-full box-border overflow-hidden">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a5a58d] pointer-events-none z-10 shrink-0" />
-                <input
-                  type="date"
-                  required
-                  disabled={isDateTimeLocked}
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className={`w-full max-w-full min-w-0 block box-border appearance-none pl-9 pr-2 py-2 text-sm sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] [color-scheme:light] [&::-webkit-datetime-edit]:p-0 [&::-webkit-datetime-edit]:max-w-full [&::-webkit-datetime-edit-fields-wrapper]:p-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer ${
-                    isDateTimeLocked 
-                      ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
-                      : 'bg-[#fdfbf7] border-[#e5e1d8] text-slate-800'
-                  }`}
-                />
-              </div>
+              <input
+                type="date"
+                required
+                disabled={isDateTimeLocked}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={`w-full max-w-full min-w-0 block box-border appearance-none bg-transparent py-0.5 text-xs font-semibold focus:outline-none [color-scheme:light] [&::-webkit-datetime-edit]:p-0 [&::-webkit-datetime-edit-fields-wrapper]:p-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer ${
+                  isDateTimeLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                }`}
+              />
             </div>
 
             {/* Row 1, Col 2: Saat */}
-            <div className="space-y-1 min-w-0 w-full max-w-full box-border">
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">SAAT</label>
-              <div className="relative min-w-0 w-full max-w-full box-border overflow-hidden">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a5a58d] pointer-events-none z-10 shrink-0" />
-                <input
-                  type="time"
-                  required
-                  disabled={isDateTimeLocked}
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className={`w-full max-w-full min-w-0 block box-border appearance-none pl-9 pr-2 py-2 text-sm sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] [color-scheme:light] [&::-webkit-datetime-edit]:p-0 [&::-webkit-datetime-edit]:max-w-full [&::-webkit-datetime-edit-fields-wrapper]:p-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer ${
-                    isDateTimeLocked 
-                      ? 'bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed font-medium' 
-                      : 'bg-[#fdfbf7] border-[#e5e1d8] text-slate-800'
-                  }`}
-                />
-              </div>
+            <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
+              isDateTimeLocked 
+                ? 'bg-slate-100/80 border-slate-200 cursor-not-allowed' 
+                : 'bg-[#fdfbf7] border-[#e5e1d8]'
+            }`}>
+              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 truncate">
+                <Clock className="w-2.5 h-2.5 text-[#a5a58d] shrink-0" />
+                <span>SAAT</span>
+              </label>
+              <input
+                type="time"
+                required
+                disabled={isDateTimeLocked}
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className={`w-full max-w-full min-w-0 block box-border appearance-none bg-transparent py-0.5 text-xs font-semibold focus:outline-none [color-scheme:light] [&::-webkit-datetime-edit]:p-0 [&::-webkit-datetime-edit-fields-wrapper]:p-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer ${
+                  isDateTimeLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                }`}
+              />
             </div>
 
             {/* Row 2, Col 1: Süre */}
             {type !== 'rent-income' && (
-              <div className="space-y-1 min-w-0 w-full max-w-full box-border">
-                <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">SÜRE</label>
+              <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
+                isSessionInClosedMonth
+                  ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
+                  : 'bg-[#fdfbf7] border-[#e5e1d8]'
+              }`}>
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">SÜRE</label>
                 <select
                   value={duration}
                   disabled={isSessionInClosedMonth}
                   onChange={(e) => setDuration(Number(e.target.value))}
-                  className={`w-full max-w-full min-w-0 box-border block px-3 py-2 text-sm sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] h-[38px] ${
-                    isSessionInClosedMonth
-                      ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                      : 'bg-[#fdfbf7] border-[#e5e1d8] text-slate-800'
+                  className={`w-full max-w-full min-w-0 box-border block bg-transparent py-0.5 text-xs font-semibold focus:outline-none ${
+                    isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                   }`}
                 >
                   <option value="30">30 Dakika</option>
@@ -708,40 +718,47 @@ export default function SessionModal({
             )}
 
             {/* Row 2, Col 2: Seans Ücreti */}
-            <div className={`space-y-1 min-w-0 w-full max-w-full box-border ${type === 'rent-income' ? 'sm:col-span-2' : ''}`}>
-              <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block truncate">
-                {type === 'rent-income' ? 'KİRA TUTARI (₺)' : 'SEANS ÜCRETİ (₺)'}
-              </label>
-              <div className="relative min-w-0 w-full max-w-full box-border">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#a5a58d] pointer-events-none z-10">₺</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  required
-                  min="0"
-                  disabled={isSessionInClosedMonth || type === 'cancelled' || type === 'non-session'}
-                  value={(type === 'cancelled' || type === 'non-session') ? 0 : (price === 0 ? '' : price)}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setPrice(val === '' ? '' : Number(val));
-                    setIsPriceManuallyEdited(true);
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  className={`w-full max-w-full min-w-0 block box-border pl-7 pr-3 py-2 text-sm sm:text-xs border rounded-xl focus:outline-none focus:border-[#6b705c] ${
-                    (isSessionInClosedMonth || type === 'cancelled' || type === 'non-session')
-                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed font-medium'
-                      : 'bg-[#fdfbf7] border-[#e5e1d8] text-slate-800'
-                  }`}
-                />
+            <div className={`min-w-0 w-full max-w-full box-border ${type === 'rent-income' ? 'col-span-2' : ''}`}>
+              <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
+                (isSessionInClosedMonth || type === 'cancelled' || type === 'non-session')
+                  ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
+                  : 'bg-[#fdfbf7] border-[#e5e1d8]'
+              }`}>
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">
+                  {type === 'rent-income' ? 'KİRA TUTARI (₺)' : 'SEANS ÜCRETİ (₺)'}
+                </label>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-bold text-[#a5a58d] shrink-0">₺</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    pattern="[0-9]*"
+                    required
+                    min="0"
+                    placeholder="0"
+                    disabled={isSessionInClosedMonth || type === 'cancelled' || type === 'non-session'}
+                    value={(type === 'cancelled' || type === 'non-session') ? 0 : (price === 0 ? '' : price)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPrice(val === '' ? '' : Number(val));
+                      setIsPriceManuallyEdited(true);
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className={`w-full max-w-full min-w-0 block box-border bg-transparent py-0.5 text-xs font-bold focus:outline-none ${
+                      (isSessionInClosedMonth || type === 'cancelled' || type === 'non-session')
+                        ? 'text-slate-400 cursor-not-allowed'
+                        : 'text-slate-800'
+                    }`}
+                  />
+                </div>
               </div>
               {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && type !== 'cancelled' && type !== 'rent-income' && (() => {
                 const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
                 if (matchedCosts.price !== defaultPrice && Number(price) === matchedCosts.price) {
                   return (
-                    <p className="text-[9px] sm:text-[10px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-1 animate-fade-in" id="smart-price-badge">
-                      <Sparkles className="w-3 h-3 text-[#cb997e]" />
-                      Akıllı fiyat uygulandı ({formatMoney(matchedCosts.price)})
+                    <p className="text-[9px] text-[#cb997e] font-sans font-bold flex items-center gap-1 mt-0.5 animate-fade-in" id="smart-price-badge">
+                      <Sparkles className="w-2.5 h-2.5 text-[#cb997e]" />
+                      Akıllı fiyat ({formatMoney(matchedCosts.price)})
                     </p>
                   );
                 }
@@ -752,12 +769,12 @@ export default function SessionModal({
 
           {/* Payment Status Selector */}
           {type !== 'cancelled' && type !== 'non-session' && (
-            <div className="space-y-3 bg-[#fdfbf7] p-3.5 rounded-2xl border border-[#e5e1d8] animate-fade-in">
+            <div className="space-y-2.5 bg-[#fdfbf7] p-3 rounded-2xl border border-[#e5e1d8] animate-fade-in">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-[#6b705c] block">
                   Ücret tahsil edildi mi?
                 </span>
-                <div className="flex gap-1.5 bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8]/60">
+                <div className="flex gap-1 bg-[#f5f5f0] p-1 rounded-xl border border-[#e5e1d8]/60">
                   <button
                     type="button"
                     disabled={isCreatingInClosedMonth}
@@ -766,7 +783,7 @@ export default function SessionModal({
                       setPaidAmount('');
                       setPaymentMethod('');
                     }}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
                       isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'unpaid'
@@ -785,7 +802,7 @@ export default function SessionModal({
                         setPaidAmount('');
                       }
                     }}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
                       isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'partial'
@@ -802,7 +819,7 @@ export default function SessionModal({
                       setPaymentStatus('paid');
                       setPaidAmount(price);
                     }}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all select-none ${
                       isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                     } ${
                       paymentStatus === 'paid'
@@ -816,7 +833,7 @@ export default function SessionModal({
               </div>
 
               {paymentStatus === 'partial' && (
-                <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-2 animate-fade-in">
+                <div className="pt-2 border-t border-[#e5e1d8]/70 space-y-2 animate-fade-in">
                   <div className="flex items-center justify-between gap-3">
                     <label className="text-xs font-bold text-amber-900 flex items-center gap-1.5 shrink-0">
                       <span>Alınan Tutar (₺):</span>
@@ -854,9 +871,9 @@ export default function SessionModal({
                 </div>
               )}
 
-              {/* Payment Method Selector (Sadece Ödendi veya Kısmi Ödendi durumunda gösterilir) */}
+              {/* Payment Method Selector */}
               {(paymentStatus === 'paid' || paymentStatus === 'partial') && (
-                <div className="pt-2.5 border-t border-[#e5e1d8]/70 space-y-1.5 animate-fade-in">
+                <div className="pt-2 border-t border-[#e5e1d8]/70 space-y-1.5 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-[#6b705c] flex items-center gap-1.5">
                       <Wallet className="w-3.5 h-3.5 text-[#6b705c]" />
@@ -877,7 +894,7 @@ export default function SessionModal({
                       type="button"
                       disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'card' ? '' : 'card')}
-                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
                         isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'card'
@@ -892,7 +909,7 @@ export default function SessionModal({
                       type="button"
                       disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'cash' ? '' : 'cash')}
-                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
                         isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'cash'
@@ -907,7 +924,7 @@ export default function SessionModal({
                       type="button"
                       disabled={isCreatingInClosedMonth}
                       onClick={() => setPaymentMethod(paymentMethod === 'transfer' ? '' : 'transfer')}
-                      className={`px-2 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
                         isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                       } ${
                         paymentMethod === 'transfer'
@@ -924,14 +941,14 @@ export default function SessionModal({
             </div>
           )}
 
-          {/* Seans Giderleri (Doğrudan Erişilebilir & Hızlı İşaretleme) */}
+          {/* Seans Giderleri */}
           {(type === 'online' || type === 'face-to-face') && (
-            <div className="space-y-3 pt-1">
-              <div className={`grid grid-cols-1 ${type === 'face-to-face' ? 'sm:grid-cols-2' : ''} gap-3`}>
-                {/* 1. Bakıcı Gideri (Her seansta hızlıca işaretlenebilmesi için doğrudan formda) */}
-                <div className="bg-[#f5f5f0] p-3 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px]">
+            <div className="space-y-2.5">
+              <div className={`grid grid-cols-1 ${type === 'face-to-face' ? 'sm:grid-cols-2' : ''} gap-2.5`}>
+                {/* 1. Bakıcı Gideri */}
+                <div className="bg-[#f5f5f0] p-2.5 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] sm:text-xs font-bold text-slate-700">Bakıcı Gideri?</span>
+                    <span className="text-[11px] font-bold text-slate-700">Bakıcı Gideri?</span>
                     <label className={`relative inline-flex items-center ${isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
@@ -945,9 +962,9 @@ export default function SessionModal({
                   </div>
 
                   {hasBabysitterFee && (
-                    <div className="mt-1 flex flex-col gap-1 w-full animate-fade-in">
-                      <div className="flex items-center gap-1">
-                        <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                    <div className="mt-1.5 flex flex-col gap-1 w-full animate-fade-in">
+                      <div className="flex items-center bg-white border border-[#e5e1d8] rounded-lg px-2 py-1 focus-within:border-[#6b705c]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase mr-1.5 shrink-0">TUTAR</span>
                         <input
                           type="number"
                           inputMode="decimal"
@@ -961,11 +978,11 @@ export default function SessionModal({
                             setIsBabysitterFeeManuallyEdited(true);
                           }}
                           onFocus={(e) => e.target.select()}
-                          className={`w-full px-2 py-1 text-base sm:text-xs border rounded-lg focus:outline-none focus:border-[#6b705c] ${
-                            isSessionInClosedMonth ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-[#e5e1d8]'
+                          className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
+                            isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
                           }`}
                         />
-                        <span className="text-[10px] font-bold text-slate-500">₺</span>
+                        <span className="text-[10px] font-bold text-slate-500 ml-1">₺</span>
                       </div>
                       {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
                         const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
@@ -983,11 +1000,11 @@ export default function SessionModal({
                   )}
                 </div>
 
-                {/* 2. Ofis Kira Gideri (SADECE Yüzyüze Seanslarda Görünür, Online'da ASLA Yoktur) */}
+                {/* 2. Ofis Kira Gideri */}
                 {type === 'face-to-face' && (
-                  <div className="bg-[#f5f5f0] p-3 rounded-2xl border border-[#e5e1d8]/60 flex flex-col justify-between min-h-[72px] animate-fade-in">
+                  <div className="bg-[#f5f5f0] p-2.5 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between animate-fade-in">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] sm:text-xs font-bold text-slate-700">Ofis Kira Gideri?</span>
+                      <span className="text-[11px] font-bold text-slate-700">Ofis Kira Gideri?</span>
                       <label className={`relative inline-flex items-center ${isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                         <input
                           type="checkbox"
@@ -1001,9 +1018,9 @@ export default function SessionModal({
                     </div>
 
                     {hasOfficeRentFee && (
-                      <div className="mt-1 flex flex-col gap-1 w-full animate-fade-in">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[9px] text-slate-500 shrink-0">Tutar:</span>
+                      <div className="mt-1.5 flex flex-col gap-1 w-full animate-fade-in">
+                        <div className="flex items-center bg-white border border-[#e5e1d8] rounded-lg px-2 py-1 focus-within:border-[#6b705c]">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase mr-1.5 shrink-0">TUTAR</span>
                           <input
                             type="number"
                             inputMode="decimal"
@@ -1017,11 +1034,11 @@ export default function SessionModal({
                               setIsOfficeRentFeeManuallyEdited(true);
                             }}
                             onFocus={(e) => e.target.select()}
-                            className={`w-full px-2 py-1 text-base sm:text-xs border rounded-lg focus:outline-none focus:border-[#6b705c] ${
-                              isSessionInClosedMonth ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-[#e5e1d8]'
+                            className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
+                              isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
                             }`}
                           />
-                          <span className="text-[10px] font-bold text-slate-500">₺</span>
+                          <span className="text-[10px] font-bold text-slate-500 ml-1">₺</span>
                         </div>
                         {isOpen && !sessionToEdit && enableSmartClientPriceMatching && clientName.trim() && (() => {
                           const matchedCosts = getSmartClientCosts(clientName, date, sessions, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee);
@@ -1043,11 +1060,11 @@ export default function SessionModal({
 
               {/* Gelişmiş Seçenekler: KDV / Fatura Kesintisi Akordeonu */}
               {(enableKDV || sessionToEdit?.hasKDV) && (
-                <div className="border border-[#e5e1d8] rounded-2xl overflow-hidden bg-[#faf8f5] transition-all">
+                <div className="border border-[#e5e1d8] rounded-xl overflow-hidden bg-[#faf8f5] transition-all">
                   <button
                     type="button"
                     onClick={() => setIsAdvancedOptionsOpen(prev => !prev)}
-                    className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-[#f3f0ea] transition-colors cursor-pointer select-none"
+                    className="w-full px-3.5 py-2 flex items-center justify-between text-left hover:bg-[#f3f0ea] transition-colors cursor-pointer select-none"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <Receipt className="w-3.5 h-3.5 text-[#6b705c] shrink-0" />
@@ -1073,10 +1090,10 @@ export default function SessionModal({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden border-t border-[#e5e1d8]/80"
                       >
-                        <div className="p-3 bg-[#fdfbf7]">
-                          <div className="bg-[#f5f5f0] p-3 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between">
+                        <div className="p-2.5 bg-[#fdfbf7]">
+                          <div className="bg-[#f5f5f0] p-2.5 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between">
                             <div className="flex justify-between items-center">
-                              <span className="text-[10px] sm:text-xs font-bold text-slate-700 flex items-center gap-1">
+                              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
                                 <Receipt className="w-3.5 h-3.5 text-[#6b705c]" />
                                 KDV Kesintisi / Fatura?
                               </span>
@@ -1125,28 +1142,25 @@ export default function SessionModal({
                                   </button>
                                 </div>
 
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] text-slate-500 shrink-0 font-medium">Oran:</span>
-                                  <div className="relative flex-1">
-                                    <span className="absolute left-2 top-1 text-[10px] font-bold text-slate-400">%</span>
-                                    <input
-                                      type="number"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      min="0"
-                                      max="100"
-                                      disabled={isSessionInClosedMonth}
-                                      value={kdvRate === 0 ? '' : kdvRate}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setKdvRate(val === '' ? '' : Number(val));
-                                      }}
-                                      onFocus={(e) => e.target.select()}
-                                      className={`w-full pl-5 pr-2 py-1 text-base sm:text-xs border rounded-lg focus:outline-none ${
-                                        isSessionInClosedMonth ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-[#e5e1d8]'
-                                      }`}
-                                    />
-                                  </div>
+                                <div className="flex items-center bg-white border border-[#e5e1d8] rounded-lg px-2 py-1">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase mr-2 shrink-0">KDV ORANI (%)</span>
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    min="0"
+                                    max="100"
+                                    disabled={isSessionInClosedMonth}
+                                    value={kdvRate === 0 ? '' : kdvRate}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setKdvRate(val === '' ? '' : Number(val));
+                                    }}
+                                    onFocus={(e) => e.target.select()}
+                                    className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
+                                      isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                                    }`}
+                                  />
                                 </div>
 
                                 {Number(price) > 0 && (() => {
@@ -1173,7 +1187,7 @@ export default function SessionModal({
             </div>
           )}
 
-          {/* Dedicated Calculation Summary Card (Formdan ayrılmış, hafif gri Card & Net Tutar büyük/kalın punto) */}
+          {/* Dedicated Calculation Summary Card */}
           {Number(price) > 0 && (type === 'online' || type === 'face-to-face' || type === 'rent-income') && (() => {
             const p = Number(price);
             const r = Number(kdvRate) || 0;
@@ -1186,67 +1200,59 @@ export default function SessionModal({
             const netEarnings = Math.max(0, grossCollected - totalDeductions);
 
             return (
-              <div className="bg-[#f5f5f2] border border-[#e5e1d8] rounded-2xl p-3.5 sm:p-4 shadow-2xs space-y-2.5 animate-fade-in">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <div className="bg-[#f5f5f2] border border-[#e5e1d8] rounded-2xl p-3 space-y-2 animate-fade-in">
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   <div className="flex items-center gap-1.5">
                     <Receipt className="w-3.5 h-3.5 text-[#6b705c]" />
                     <span>HESAPLAMA ÖZETİ</span>
                   </div>
                   {totalDeductions > 0 && (
                     <span className="text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/60 font-semibold">
-                      Toplam Kesinti: -{formatMoney(totalDeductions)}
+                      Kesinti: -{formatMoney(totalDeductions)}
                     </span>
                   )}
                 </div>
 
-                <div className="space-y-1.5 text-xs pt-0.5">
+                <div className="space-y-1 text-[11px]">
                   <div className="flex justify-between items-center text-slate-600">
-                    <span>{hasKDV && !isKdvInclusive && type !== 'rent-income' ? 'Yalın Seans Ücreti (Matrah):' : 'Brüt Seans Ücreti:'}</span>
+                    <span>{hasKDV && !isKdvInclusive && type !== 'rent-income' ? 'Yalın Seans Ücreti:' : 'Brüt Seans Ücreti:'}</span>
                     <span className="font-semibold text-slate-800">{formatMoney(p)}</span>
                   </div>
 
                   {hasKDV && !isKdvInclusive && type !== 'rent-income' && (
-                    <div className="flex justify-between items-center text-emerald-700 text-[11px] font-medium">
+                    <div className="flex justify-between items-center text-emerald-700 text-[10px] font-medium">
                       <span>+ KDV (%{r}):</span>
                       <span>+{formatMoney(kdvCut)}</span>
                     </div>
                   )}
 
-                  {hasKDV && !isKdvInclusive && type !== 'rent-income' && (
-                    <div className="flex justify-between items-center text-slate-700 font-bold border-t border-dashed border-[#e5e1d8] pt-1">
-                      <span>Danışandan Tahsil Edilen (Brüt Toplam):</span>
-                      <span>{formatMoney(grossCollected)}</span>
-                    </div>
-                  )}
-
                   {hasKDV && type !== 'rent-income' && (
-                    <div className="flex justify-between items-center text-rose-600 text-[11px]">
+                    <div className="flex justify-between items-center text-rose-600 text-[10px]">
                       <span>KDV Kesintisi (%{r} {isKdvInclusive ? 'Dahil' : 'Hariç'}):</span>
                       <span className="font-semibold">-{formatMoney(kdvCut)}</span>
                     </div>
                   )}
 
                   {hasBabysitterFee && baby > 0 && type !== 'rent-income' && (
-                    <div className="flex justify-between items-center text-orange-700 text-[11px]">
+                    <div className="flex justify-between items-center text-orange-700 text-[10px]">
                       <span>Bakıcı Gideri:</span>
                       <span className="font-semibold">-{formatMoney(baby)}</span>
                     </div>
                   )}
 
                   {type === 'face-to-face' && hasOfficeRentFee && office > 0 && (
-                    <div className="flex justify-between items-center text-amber-800 text-[11px]">
+                    <div className="flex justify-between items-center text-amber-800 text-[10px]">
                       <span>Ofis Kira Gideri:</span>
                       <span className="font-semibold">-{formatMoney(office)}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="border-t border-[#e0dcce] pt-2.5 flex justify-between items-center">
+                <div className="border-t border-[#e0dcce] pt-2 flex justify-between items-center">
                   <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-800 block">Net Ele Geçen Tutar</span>
-                    <span className="text-[10px] text-slate-500 font-medium">Tüm kesintiler sonrası kalan kazanç</span>
+                    <span className="text-xs font-bold text-slate-800 block">Net Ele Geçen Tutar</span>
                   </div>
-                  <span className="text-lg sm:text-xl font-extrabold text-emerald-700 tracking-tight">
+                  <span className="text-base sm:text-lg font-extrabold text-emerald-700 tracking-tight">
                     {formatMoney(netEarnings)}
                   </span>
                 </div>
@@ -1254,30 +1260,33 @@ export default function SessionModal({
             );
           })()}
 
-          {/* Notes */}
-          <div className="space-y-1">
-            <label className="text-[10px] sm:text-xs font-bold text-[#555a4a] tracking-wider block">
-              {type === 'rent-income' ? 'KİRA GELİRİ NOTLARI (ÖZEL)' : 'SEANS NOTLARI (ÖZEL)'}
+          {/* Notes (Inset Label inside Box) */}
+          <div className={`relative rounded-xl border px-3 pt-1.5 pb-1.5 transition-colors focus-within:border-[#6b705c] focus-within:bg-white ${
+            isCreatingInClosedMonth
+              ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
+              : 'bg-[#fdfbf7] border-[#e5e1d8]'
+          }`}>
+            <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
+              <FileText className="w-2.5 h-2.5 text-[#a5a58d]" />
+              <span>{type === 'rent-income' ? 'KİRA GELİRİ NOTLARI (ÖZEL)' : 'SEANS NOTLARI (ÖZEL)'}</span>
             </label>
-            <div className="relative">
-              <FileText className="absolute left-3 top-2.5 w-4 h-4 text-[#a5a58d]" />
-              <textarea
-                value={notes}
-                disabled={isCreatingInClosedMonth}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={1}
-                className={`w-full pl-10 pr-4 py-2 text-base sm:text-xs border rounded-2xl focus:outline-none focus:border-[#6b705c] resize-none ${
-                  isCreatingInClosedMonth
-                    ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                    : 'bg-[#fdfbf7] border-[#e5e1d8]'
-                }`}
-                placeholder={isCreatingInClosedMonth ? "Kapatılmış ay - yeni kayıt yapılamaz" : "Geçmiş terapi notları, ödeme planı veya oda bilgisi..."}
-              />
-            </div>
+            <textarea
+              value={notes}
+              disabled={isCreatingInClosedMonth}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={1}
+              className={`w-full bg-transparent text-xs focus:outline-none resize-none ${
+                isCreatingInClosedMonth
+                  ? 'text-slate-500 cursor-not-allowed'
+                  : 'text-slate-800 placeholder:text-slate-400'
+              }`}
+              placeholder={isCreatingInClosedMonth ? "Kapatılmış ay - yeni kayıt yapılamaz" : "Geçmiş terapi notları, ödeme planı veya oda bilgisi..."}
+            />
+          </div>
           </div>
 
-          {/* Actions */}
-          <div className="pt-3 border-t border-[#f5f5f0] flex gap-3 justify-between items-center shrink-0">
+          {/* Sticky Footer Actions (Always pinned above keyboard on mobile) */}
+          <div className="px-4 sm:px-6 py-3 border-t border-[#e5e1d8] bg-[#fdfbf7]/95 backdrop-blur-md flex gap-2.5 justify-between items-center shrink-0 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
             {sessionToEdit && !sessionToEdit.isSyncedFromCalendar ? (
               <motion.button
                 type="button"
@@ -1302,21 +1311,21 @@ export default function SessionModal({
                   };
                   downloadSessionAsICS(currentSessionData);
                 }}
-                className="px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer select-none touch-manipulation"
+                className="px-3.5 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer select-none touch-manipulation"
                 title="Bu seansı cihazınızın takvimine kaydetmek için .ics dosyası indirin"
               >
-                <CalendarPlus className="w-3.5 h-3.5" />
-                Takvime Ekle (Cihaz)
+                <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Takvime Ekle</span>
               </motion.button>
             ) : (
               <div />
             )}
-            <div className="flex gap-3">
+            <div className="flex gap-2.5 items-center ml-auto">
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="px-4 py-2 rounded-full border border-[#e5e1d8] hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer select-none touch-manipulation"
+                className="px-4 py-2 rounded-full border border-[#e5e1d8] bg-white hover:bg-[#f5f5f0] text-xs font-semibold text-[#6b705c] transition-colors cursor-pointer select-none touch-manipulation"
               >
                 Vazgeç
               </motion.button>
@@ -1324,7 +1333,7 @@ export default function SessionModal({
                 type="submit"
                 disabled={isCreatingInClosedMonth}
                 whileTap={isCreatingInClosedMonth ? {} : { scale: 0.95 }}
-                className={`px-5 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 select-none touch-manipulation ${
+                className={`px-5 py-2 rounded-full text-xs font-bold transition-colors flex items-center gap-1.5 select-none touch-manipulation ${
                   isCreatingInClosedMonth
                     ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
                     : 'bg-[#6b705c] hover:bg-[#585c4c] text-white cursor-pointer shadow-xs'
@@ -1333,7 +1342,7 @@ export default function SessionModal({
                 {isCreatingInClosedMonth ? (
                   <>
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Kilitli Ay (Kayıt Yapılamaz)</span>
+                    <span>Kilitli Ay</span>
                   </>
                 ) : isEditingClosedMonthSession ? (
                   <>
