@@ -21,14 +21,55 @@ function foldTurkishAscii(str: string): string {
     .replace(/ı/g, "i")
     .replace(/ö/g, "o")
     .replace(/ç/g, "c")
+    .replace(/['’`.,;!?()-]/g, " ")
     .replace(/[\s\u00A0]+/g, " ")
     .trim();
 }
 
+function normalizeSpokenTurkishNumbers(asciiText: string): string {
+  let s = asciiText;
+  const replacements: Array<[RegExp, string]> = [
+    [/\biki bin bes yuz\b/g, "2500"],
+    [/\biki bin iki yuz elli\b/g, "2250"],
+    [/\biki bin iki yuz\b/g, "2200"],
+    [/\biki bin\b/g, "2000"],
+    [/\buc bin bes yuz\b/g, "3500"],
+    [/\buc bin\b/g, "3000"],
+    [/\bdort bin\b/g, "4000"],
+    [/\bbes bin\b/g, "5000"],
+    [/\bbin dokuz yuz\b/g, "1900"],
+    [/\bbin sekiz yuz\b/g, "1800"],
+    [/\bbin yedi yuz elli\b/g, "1750"],
+    [/\bbin yedi yuz\b/g, "1700"],
+    [/\bbin alti yuz\b/g, "1600"],
+    [/\bbin bes yuz\b/g, "1500"],
+    [/\bbin dort yuz\b/g, "1400"],
+    [/\bbin uc yuz\b/g, "1300"],
+    [/\bbin iki yuz elli\b/g, "1250"],
+    [/\bbin iki yuz\b/g, "1200"],
+    [/\bbin yuz\b/g, "1100"],
+    [/\bbin\b/g, "1000"],
+    [/\bdokuz yuz\b/g, "900"],
+    [/\bsekiz yuz\b/g, "800"],
+    [/\byedi yuz elli\b/g, "750"],
+    [/\byedi yuz\b/g, "700"],
+    [/\balti yuz\b/g, "600"],
+    [/\bbes yuz\b/g, "500"],
+    [/\bdort yuz\b/g, "400"],
+    [/\buc yuz elli\b/g, "350"],
+    [/\buc yuz\b/g, "300"],
+    [/\biki yuz elli\b/g, "250"],
+    [/\biki yuz\b/g, "200"]
+  ];
+  for (const [regex, val] of replacements) {
+    s = s.replace(regex, val);
+  }
+  return s;
+}
+
 function processSmartLocalCommand(message: string, pageContext: any, sessions: any[]): { reply: string; actions: any[] } {
   const rawMsg = (message || "").trim();
-  const lowerMsg = rawMsg.toLocaleLowerCase("tr-TR");
-  const asciiMsg = foldTurkishAscii(rawMsg);
+  const asciiMsg = normalizeSpokenTurkishNumbers(foldTurkishAscii(rawMsg));
 
   const defaultPrice = Number(pageContext?.defaultSessionPrice) || 1200;
   const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
@@ -40,6 +81,8 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
   if (
     (asciiMsg.includes("kac seans") || asciiMsg.includes("toplam gelir") || asciiMsg.includes("ozet") || asciiMsg.includes("durum ne") || asciiMsg.includes("ne kadar")) &&
     !asciiMsg.includes("odendi") &&
+    !asciiMsg.includes("odemesi") &&
+    !asciiMsg.includes("parasi") &&
     !asciiMsg.includes("fiyat") &&
     !asciiMsg.includes("ucret") &&
     !asciiMsg.includes("tamamlandi") &&
@@ -69,21 +112,32 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
   });
 
   let matchedClientName = "";
-  let bestMatchLen = 0;
+  let bestMatchScore = 0;
 
   for (const [asciiClient, originalClient] of uniqueClients.entries()) {
     if (asciiClient.length >= 3 && asciiMsg.includes(asciiClient)) {
-      if (asciiClient.length > bestMatchLen) {
-        bestMatchLen = asciiClient.length;
+      const score = asciiClient.length + 100;
+      if (score > bestMatchScore) {
+        bestMatchScore = score;
         matchedClientName = originalClient;
       }
     } else {
-      // Check multi-token match
       const tokens = asciiClient.split(" ").filter((t) => t.length >= 2);
       if (tokens.length >= 2 && tokens.every((t) => asciiMsg.includes(t))) {
-        if (asciiClient.length > bestMatchLen) {
-          bestMatchLen = asciiClient.length;
+        const score = asciiClient.length + 50;
+        if (score > bestMatchScore) {
+          bestMatchScore = score;
           matchedClientName = originalClient;
+        }
+      } else if (tokens.length >= 1 && tokens[0].length >= 3) {
+        const firstToken = tokens[0];
+        const wordRegex = new RegExp(`\\b${firstToken}[a-z]{0,4}\\b`, "i");
+        if (wordRegex.test(asciiMsg)) {
+          const score = firstToken.length;
+          if (score > bestMatchScore) {
+            bestMatchScore = score;
+            matchedClientName = originalClient;
+          }
         }
       }
     }
@@ -123,7 +177,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
   const updates: any = {};
 
   // Session type / status
-  if (asciiMsg.includes("iptal")) {
+  if (asciiMsg.includes("iptal") || asciiMsg.includes("gelmedi")) {
     updates.type = "cancelled";
     updates.price = 0;
     updates.hasBabysitterFee = false;
@@ -132,7 +186,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     updates.officeRentFeeAmount = 0;
   } else if (asciiMsg.includes("yuz yuze") || asciiMsg.includes("yuzyuze")) {
     updates.type = "face-to-face";
-  } else if (asciiMsg.includes("online") || asciiMsg.includes("goruntulu")) {
+  } else if (asciiMsg.includes("online") || asciiMsg.includes("onlayn") || asciiMsg.includes("goruntulu")) {
     updates.type = "online";
     updates.hasOfficeRentFee = false;
     updates.officeRentFeeAmount = 0;
@@ -140,16 +194,6 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
 
   // Payment status
   if (
-    asciiMsg.includes("odendi") ||
-    asciiMsg.includes("odemesi alindi") ||
-    asciiMsg.includes("parasi alindi") ||
-    asciiMsg.includes("parasini verdi") ||
-    asciiMsg.includes("ucreti alindi") ||
-    asciiMsg.includes("tahsil edildi") ||
-    asciiMsg.includes("odedi")
-  ) {
-    updates.paymentStatus = "paid";
-  } else if (
     asciiMsg.includes("odenmedi") ||
     asciiMsg.includes("odemedi") ||
     asciiMsg.includes("alinmadi") ||
@@ -157,15 +201,30 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
   ) {
     updates.paymentStatus = "unpaid";
     updates.paidAmount = 0;
+  } else if (
+    asciiMsg.includes("odendi") ||
+    asciiMsg.includes("odemesi alindi") ||
+    asciiMsg.includes("oden parasi alindi") ||
+    asciiMsg.includes("odeme parasi alindi") ||
+    asciiMsg.includes("parasi alindi") ||
+    asciiMsg.includes("parasini verdi") ||
+    asciiMsg.includes("ucreti alindi") ||
+    asciiMsg.includes("tahsil edildi") ||
+    asciiMsg.includes("odedi")
+  ) {
+    updates.paymentStatus = "paid";
   }
 
   // Payment method
   if (asciiMsg.includes("nakit")) {
     updates.paymentMethod = "cash";
+    if (!updates.paymentStatus) updates.paymentStatus = "paid";
   } else if (asciiMsg.includes("kredi kart") || asciiMsg.includes("kartla") || asciiMsg.includes("kart")) {
     updates.paymentMethod = "card";
+    if (!updates.paymentStatus) updates.paymentStatus = "paid";
   } else if (asciiMsg.includes("havale") || asciiMsg.includes("eft") || asciiMsg.includes("iban") || asciiMsg.includes("banka")) {
     updates.paymentMethod = "transfer";
+    if (!updates.paymentStatus) updates.paymentStatus = "paid";
   }
 
   // Babysitter fee
@@ -183,7 +242,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     asciiMsg.includes("bakici var") ||
     asciiMsg.includes("bakici ucreti var") ||
     asciiMsg.includes("bakici eklensin") ||
-    asciiMsg.includes("bakici parasi")
+    /bakici(?:\s+parasi|\s+ucreti)?\s+\d{2,5}/.test(asciiMsg)
   ) {
     updates.hasBabysitterFee = true;
     const babyNumMatch = asciiMsg.match(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?(\d{2,5})/);
@@ -205,7 +264,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     asciiMsg.includes("oda kirasi var") ||
     asciiMsg.includes("kira var") ||
     asciiMsg.includes("ofis ucreti var") ||
-    asciiMsg.includes("ofis kirasi")
+    /(?:ofis|oda)\s*(?:kirasi|ucreti)\s+\d{2,5}/.test(asciiMsg)
   ) {
     updates.hasOfficeRentFee = true;
     const rentNumMatch = asciiMsg.match(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/);
@@ -215,25 +274,30 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     }
   }
 
-  // Price parsing (e.g. "fiyatı 1500", "ücreti 2000", "1500 tl", "1.500 lira")
-  const cleanedForPrice = asciiMsg.replace(/(\d)\.(\d{3})\b/g, "$1$2");
+  // Price parsing
+  const msgWithoutFeeNumbers = asciiMsg
+    .replace(/(\d)\.(\d{3})\b/g, "$1$2")
+    .replace(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?\d{2,5}/g, "")
+    .replace(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?\d{2,5}/g, "");
+
   const pricePatterns = [
     /(?:fiyati|fiyat|ucreti|ucret|seans ucreti|tutar|tutari)\s*(?:su kadar\s*)?(\d{3,5})/i,
-    /(\d{3,5})\s*(?:tl|lira|₺|türk lirasi)/i,
-    /(?:fiyati|ucreti|odendi|alindi)\s+(\d{3,5})\b/i
+    /(\d{3,5})\s*(?:tl|lira|₺|turk lirasi)/i,
+    /(?:fiyati|ucreti|odendi|alindi)\s+(\d{3,5})\b/i,
+    /\b(\d{3,5})\b/
   ];
   for (const pat of pricePatterns) {
-    const pm = cleanedForPrice.match(pat);
+    const pm = msgWithoutFeeNumbers.match(pat);
     if (pm && pm[1]) {
       const val = parseInt(pm[1], 10);
-      if (val >= 100 && val <= 50000) {
+      const isYearLike = (val === 2024 || val === 2025 || val === 2026) && pat.source === "\\b(\\d{3,5})\\b";
+      if (!isYearLike && val >= 200 && val <= 50000) {
         updates.price = val;
         break;
       }
     }
   }
 
-  // Also check if user said "seans tamamlandı"
   const mentionsCompleted =
     asciiMsg.includes("tamamlandi") ||
     asciiMsg.includes("yapildi") ||
@@ -241,7 +305,6 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     asciiMsg.includes("bitti");
 
   if (matchedClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
-    // Find matching sessions for this client
     const clientSessions = (sessions || []).filter(
       (s: any) => s && s.clientName && foldTurkishAscii(s.clientName) === foldTurkishAscii(matchedClientName)
     );
@@ -255,7 +318,6 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
       if (onSelected.length > 0) targetSessions = onSelected;
     }
 
-    // If still multiple sessions and user didn't say "tüm" / "hepsi", pick the most recent or closest to selectedDate
     const wantsAll = asciiMsg.includes("tum ") || asciiMsg.includes("hepsi") || asciiMsg.includes("butun ");
     if (!wantsAll && targetSessions.length > 1) {
       const sorted = [...targetSessions].sort((a: any, b: any) => {
@@ -269,7 +331,6 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     const sessionIds = targetSessions.map((s: any) => s.id).filter(Boolean);
     const firstSession = targetSessions[0];
 
-    // If session was cancelled and user says "seans tamamlandı", restore it to online or face-to-face
     if (mentionsCompleted && !updates.type && firstSession?.type === "cancelled") {
       updates.type = updates.hasOfficeRentFee ? "face-to-face" : "online";
     }
@@ -447,15 +508,16 @@ async function startServer() {
 
   // API Route for Page-Aware Voice & Chat Assistant
   app.post("/api/assistant/chat", async (req, res) => {
+    const { message, pageContext, sessions, history } = req.body || {};
+    const localFallback = processSmartLocalCommand(message || "", pageContext, sessions || []);
+
     try {
-      const { message, pageContext, sessions, history } = req.body;
       if (!message || !String(message).trim()) {
         return res.status(400).json({ error: "Mesaj boş olamaz." });
       }
 
       if (!process.env.GEMINI_API_KEY) {
-        const fallbackResult = processSmartLocalCommand(message, pageContext, sessions || []);
-        return res.json(fallbackResult);
+        return res.json(localFallback);
       }
 
       const ai = new GoogleGenAI({
@@ -467,7 +529,7 @@ async function startServer() {
         }
       });
 
-      const compactSessions = (sessions || []).slice(0, 250).map((s: any) => ({
+      const compactSessions = (sessions || []).slice(0, 75).map((s: any) => ({
         id: s.id,
         clientName: s.clientName,
         date: s.date,
@@ -484,7 +546,7 @@ async function startServer() {
       }));
 
       const recentHistory = Array.isArray(history)
-        ? history.slice(-6).map((h: any) => `${h.role === "user" ? "Kullanıcı" : "Asistan"}: ${h.content}`).join("\n")
+        ? history.slice(-4).map((h: any) => `${h.role === "user" ? "Kullanıcı" : "Asistan"}: ${h.content}`).join("\n")
         : "";
 
       const systemPrompt = `Sen PsyCalcu klinik yönetim ve muhasebe uygulamasının her sayfada çalışan akıllı Sesli ve Yazılı Asistanısın.
@@ -511,7 +573,7 @@ GÖREVİN:
    - Listeden Ahmet Yılmaz'ın ilgili seansını (eğer tarih belirtildiyse o tarihteki, belirtilmediyse mevcut sayfadaki/gündeki/aydaki ilgili seansını) bul ve 'sessionIds' dizisine o seansın 'id' değerini ekle.
    - 'updates' içinde:
      * Fiyat belirtildiyse: price = belirtilen tutar (örn. 1500).
-     * "ödemesi alındı / ödendi / parası alındı" dendiyse: paymentStatus = "paid". "ödenmedi" dendiyse: paymentStatus = "unpaid".
+     * "ödemesi alındı / ödendi / parası alındı / öden parası alındı" dendiyse: paymentStatus = "paid". "ödenmedi" dendiyse: paymentStatus = "unpaid".
      * Ödeme yöntemi belirtildiyse ("nakit" -> "cash", "kart/kredi kartı" -> "card", "havale/eft/banka" -> "transfer") paymentMethod alanını ayarla.
      * "bakıcı parası var / bakıcı var" dendiyse: hasBabysitterFee = true, babysitterFeeAmount = (belirtildiyse tutar, yoksa varsayılan ${pageContext?.defaultBabysitterFee || 250}).
      * "bakıcı parası yok / bakıcı yok" dendiyse: hasBabysitterFee = false, babysitterFeeAmount = 0.
@@ -646,15 +708,19 @@ KULLANICI KOMUTU: "${message}"`;
 
       const rawText = response.text || "{}";
       const parsed = JSON.parse(rawText);
+      const aiActions = Array.isArray(parsed.actions) ? parsed.actions : [];
+
+      if (aiActions.length === 0 && localFallback.actions.length > 0) {
+        return res.json(localFallback);
+      }
+
       return res.json({
-        reply: parsed.reply || "İşleminiz tamamlandı.",
-        actions: Array.isArray(parsed.actions) ? parsed.actions : []
+        reply: parsed.reply || localFallback.reply || "İşleminiz tamamlandı.",
+        actions: aiActions
       });
     } catch (error: any) {
       console.error("Assistant API error, falling back to local Turkish command parser:", error);
-      const { message, pageContext, sessions } = req.body;
-      const fallbackResult = processSmartLocalCommand(message, pageContext, sessions || []);
-      return res.json(fallbackResult);
+      return res.json(localFallback);
     }
   });
 
