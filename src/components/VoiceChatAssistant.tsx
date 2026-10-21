@@ -34,6 +34,7 @@ export interface AssistantAction {
   sessionIds?: string[];
   clientName?: string;
   targetDate?: string;
+  targetMonth?: string;
   applyToScope?: 'single' | 'date' | 'visible_period' | 'all_unpaid' | 'all';
   updates?: {
     price?: number;
@@ -121,6 +122,43 @@ const TAB_LABELS: Record<string, string> = {
   admin: 'Yönetici Paneli'
 };
 
+const TURKISH_MONTHS: Record<string, string> = {
+  ocak: '01',
+  subat: '02',
+  mart: '03',
+  nisan: '04',
+  mayis: '05',
+  haziran: '06',
+  temmuz: '07',
+  agustos: '08',
+  eylul: '09',
+  ekim: '10',
+  kasim: '11',
+  aralik: '12'
+};
+
+const TURKISH_MONTH_DISPLAY: Record<string, string> = {
+  '01': 'Ocak',
+  '02': 'Şubat',
+  '03': 'Mart',
+  '04': 'Nisan',
+  '05': 'Mayıs',
+  '06': 'Haziran',
+  '07': 'Temmuz',
+  '08': 'Ağustos',
+  '09': 'Eylül',
+  '10': 'Ekim',
+  '11': 'Kasım',
+  '12': 'Aralık'
+};
+
+function formatLocalDateIso(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function foldTurkishAscii(str: string): string {
   if (!str) return '';
   return str
@@ -137,11 +175,55 @@ function foldTurkishAscii(str: string): string {
 }
 
 /**
- * Converts common spoken Turkish number words into digits (e.g. "bin beş yüz" -> "1500")
+ * Converts spoken Turkish numbers (both prices 200-5000 and day numbers 1-31 before month names) into digits.
  */
 function normalizeSpokenTurkishNumbers(asciiText: string): string {
   let s = asciiText;
-  const replacements: Array<[RegExp, string]> = [
+
+  // 1. Convert spoken day numbers (1..31) when followed by a Turkish month name
+  const monthNamesPattern =
+    '(?:ocak|subat|mart|nisan|mayis|haziran|temmuz|agustos|eylul|ekim|kasim|aralik)';
+  const dayWordPairs: Array<[string, string]> = [
+    ['otuz bir', '31'],
+    ['otuz', '30'],
+    ['yirmi dokuz', '29'],
+    ['yirmi sekiz', '28'],
+    ['yirmi yedi', '27'],
+    ['yirmi alti', '26'],
+    ['yirmi bes', '25'],
+    ['yirmi dort', '24'],
+    ['yirmi uc', '23'],
+    ['yirmi iki', '22'],
+    ['yirmi bir', '21'],
+    ['yirmi', '20'],
+    ['on dokuz', '19'],
+    ['on sekiz', '18'],
+    ['on yedi', '17'],
+    ['on alti', '16'],
+    ['on bes', '15'],
+    ['on dort', '14'],
+    ['on uc', '13'],
+    ['on iki', '12'],
+    ['on bir', '11'],
+    ['on', '10'],
+    ['dokuz', '9'],
+    ['sekiz', '8'],
+    ['yedi', '7'],
+    ['alti', '6'],
+    ['bes', '5'],
+    ['dort', '4'],
+    ['uc', '3'],
+    ['iki', '2'],
+    ['bir', '1']
+  ];
+
+  for (const [word, digit] of dayWordPairs) {
+    const reg = new RegExp(`\\b${word}\\s+(?=${monthNamesPattern}\\b)`, 'gi');
+    s = s.replace(reg, `${digit} `);
+  }
+
+  // 2. Convert spoken hundreds/thousands for prices
+  const priceReplacements: Array<[RegExp, string]> = [
     [/\biki bin bes yuz\b/g, '2500'],
     [/\biki bin iki yuz elli\b/g, '2250'],
     [/\biki bin iki yuz\b/g, '2200'],
@@ -174,15 +256,295 @@ function normalizeSpokenTurkishNumbers(asciiText: string): string {
     [/\biki yuz elli\b/g, '250'],
     [/\biki yuz\b/g, '200']
   ];
-  for (const [regex, val] of replacements) {
+  for (const [regex, val] of priceReplacements) {
     s = s.replace(regex, val);
   }
   return s;
 }
 
 /**
+ * Extracts explicit targetDate (YYYY-MM-DD), targetMonth (YYYY-MM), and resolvedYear from a Turkish command.
+ * Rule:
+ * - If no year is mentioned by the user (e.g., just "7 Ekim" or "Ekim'de"), ALWAYS use the current year (new Date().getFullYear()).
+ * - If an older or specific year is mentioned (e.g., "7 Ekim 2024", "2025 Mayıs", "geçen yıl"), use that year.
+ */
+function parseTurkishDateFromCommand(asciiMsg: string): {
+  targetDate?: string;
+  targetMonth?: string;
+  explicitYear?: number;
+  cleanedMsgWithoutDate: string;
+} {
+  const currentYear = new Date().getFullYear();
+  let explicitYear: number | undefined = undefined;
+  let cleaned = asciiMsg;
+
+  // Check for "gecen yil" / "gecen sene"
+  if (/\bgecen\s+(?:yil|sene)\b/i.test(cleaned)) {
+    explicitYear = currentYear - 1;
+    cleaned = cleaned.replace(/\bgecen\s+(?:yil|sene)\b/gi, ' ');
+  } else if (/\bbu\s+(?:yil|sene)\b/i.test(cleaned)) {
+    explicitYear = currentYear;
+    cleaned = cleaned.replace(/\bbu\s+(?:yil|sene)\b/gi, ' ');
+  }
+
+  // Check for 4-digit year (e.g. 2020..2030) attached to a month, or followed by yil/sene, or non-price year
+  const monthKeys = Object.keys(TURKISH_MONTHS).join('|');
+  const yearNearMonthRegex = new RegExp(
+    `\\b(201\\d|202\\d|203\\d)\\s*(?:yili|yilinda|senesi|senesinde)?\\s*(?=\\b(?:${monthKeys}|\\d{1,2}\\s+(?:${monthKeys})))|\\b(?:${monthKeys})(?:ta|te|da|de|daki|deki)?\\s+(?:ayi\\s+|ayinda\\s+)?(201\\d|202\\d|203\\d)\\b|\\b(201\\d|202\\d|203\\d)\\s+(?:yili|yilinda|senesi|senesinde)\\b`,
+    'i'
+  );
+  const ymMatch = cleaned.match(yearNearMonthRegex);
+  if (ymMatch) {
+    const yrStr = ymMatch[1] || ymMatch[2] || ymMatch[3];
+    if (yrStr) {
+      explicitYear = parseInt(yrStr, 10);
+    }
+  } else {
+    // Also check if a year like 2021, 2022, 2023, 2024, 2025, 2026 appears and is NOT preceded by fiyat/ücret or followed by tl/lira
+    const genericYearRegex = /\b(201[5-9]|202[0-9])\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = genericYearRegex.exec(cleaned)) !== null) {
+      const val = parseInt(m[1], 10);
+      // 2020 and 2025 are divisible by 5, but 2000/2500 are prices; 2015..2029 are years unless preceded by fiyat/ucret
+      const before = cleaned.slice(Math.max(0, m.index - 20), m.index);
+      const after = cleaned.slice(m.index + m[0].length, m.index + m[0].length + 15);
+      const looksLikePrice =
+        /(?:fiyat|fiyati|ucret|ucreti|tutar|tutari)\s*$/i.test(before.trim()) ||
+        /^\s*(?:tl|lira|₺|turk lirasi)/i.test(after);
+      if (!looksLikePrice && val !== 2000) {
+        explicitYear = val;
+        break;
+      }
+    }
+  }
+
+  const resolvedYear = explicitYear || currentYear;
+
+  // Relative dates: bugün, dün, yarın
+  if (/\bbugun(?:ku|de|deki)?\b/i.test(cleaned)) {
+    const iso = formatLocalDateIso(new Date());
+    cleaned = cleaned.replace(/\bbugun(?:ku|de|deki)?\b/gi, ' ');
+    return {
+      targetDate: iso,
+      targetMonth: iso.slice(0, 7),
+      explicitYear,
+      cleanedMsgWithoutDate: cleaned
+    };
+  }
+  if (/\bdun(?:ku|de|deki)?\b/i.test(cleaned)) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const iso = formatLocalDateIso(d);
+    cleaned = cleaned.replace(/\bdun(?:ku|de|deki)?\b/gi, ' ');
+    return {
+      targetDate: iso,
+      targetMonth: iso.slice(0, 7),
+      explicitYear,
+      cleanedMsgWithoutDate: cleaned
+    };
+  }
+  if (/\byarin(?:ki|da|daki)?\b/i.test(cleaned)) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const iso = formatLocalDateIso(d);
+    cleaned = cleaned.replace(/\byarin(?:ki|da|daki)?\b/gi, ' ');
+    return {
+      targetDate: iso,
+      targetMonth: iso.slice(0, 7),
+      explicitYear,
+      cleanedMsgWithoutDate: cleaned
+    };
+  }
+
+  // Day + Month name: e.g. "7 ekim", "7 ekimde", "7 ekim 2025", "ekimin 7 si", "ekim 7"
+  for (const [mName, mNum] of Object.entries(TURKISH_MONTHS)) {
+    // Pattern A: <day> <month> [year]
+    const dayFirstRegex = new RegExp(
+      `\\b(\\d{1,2})\\s*${mName}(?:ta|te|da|de|daki|deki|tan|ten|dan|den)?(?:\\s+gunu|\\s+tarihli|\\s+tarihinde)?(?:\\s+(201\\d|202\\d|203\\d))?\\b`,
+      'i'
+    );
+    const mA = cleaned.match(dayFirstRegex);
+    if (mA) {
+      const dayNum = parseInt(mA[1], 10);
+      if (dayNum >= 1 && dayNum <= 31) {
+        const yr = mA[2] ? parseInt(mA[2], 10) : resolvedYear;
+        const dayStr = String(dayNum).padStart(2, '0');
+        const targetDate = `${yr}-${mNum}-${dayStr}`;
+        cleaned = cleaned.replace(dayFirstRegex, ' ');
+        return {
+          targetDate,
+          targetMonth: `${yr}-${mNum}`,
+          explicitYear: mA[2] ? yr : explicitYear,
+          cleanedMsgWithoutDate: cleaned
+        };
+      }
+    }
+
+    // Pattern B: <month>[in/un] <day>[si/i] (e.g. "ekimin 7 si", "ekim 7")
+    const monthFirstDayRegex = new RegExp(
+      `\\b${mName}(?:in|un|nin|nun)?\\s+(\\d{1,2})(?:\\s*(?:si|i|u|su|sinde|inde|unda|sinda))?\\b`,
+      'i'
+    );
+    const mB = cleaned.match(monthFirstDayRegex);
+    if (mB) {
+      const dayNum = parseInt(mB[1], 10);
+      if (dayNum >= 1 && dayNum <= 31) {
+        const dayStr = String(dayNum).padStart(2, '0');
+        const targetDate = `${resolvedYear}-${mNum}-${dayStr}`;
+        cleaned = cleaned.replace(monthFirstDayRegex, ' ');
+        return {
+          targetDate,
+          targetMonth: `${resolvedYear}-${mNum}`,
+          explicitYear,
+          cleanedMsgWithoutDate: cleaned
+        };
+      }
+    }
+  }
+
+  // Month-only reference: e.g. "ekimde", "ekim'de", "ekim ayinda", "ekimdeki", "ekim 2025", or "ekim"
+  for (const [mName, mNum] of Object.entries(TURKISH_MONTHS)) {
+    const monthOnlyRegex = new RegExp(
+      `\\b${mName}(?:ta|te|da|de|daki|deki|tan|ten|dan|den)?(?:\\s+ayi|\\s+ayinda|\\s+ayindaki|\\s+icinde)?(?:\\s+(201\\d|202\\d|203\\d))?\\b`,
+      'i'
+    );
+    const mM = cleaned.match(monthOnlyRegex);
+    if (mM) {
+      const yr = mM[1] ? parseInt(mM[1], 10) : resolvedYear;
+      cleaned = cleaned.replace(monthOnlyRegex, ' ');
+      return {
+        targetDate: undefined,
+        targetMonth: `${yr}-${mNum}`,
+        explicitYear: mM[1] ? yr : explicitYear,
+        cleanedMsgWithoutDate: cleaned
+      };
+    }
+  }
+
+  return {
+    targetDate: undefined,
+    targetMonth: undefined,
+    explicitYear,
+    cleanedMsgWithoutDate: cleaned
+  };
+}
+
+const COMMAND_STOP_WORDS = new Set([
+  'seans',
+  'seansi',
+  'tamamlandi',
+  'yapildi',
+  'odendi',
+  'oden',
+  'odemesi',
+  'parasi',
+  'alindi',
+  'fiyati',
+  'fiyat',
+  'ucreti',
+  'ucret',
+  'bakici',
+  'ofis',
+  'kirasi',
+  'kira',
+  'var',
+  'yok',
+  'bugun',
+  'dun',
+  'yarin',
+  'online',
+  'onlayn',
+  'yuzyuze',
+  'yuz',
+  'yuze',
+  'iptal',
+  'nakit',
+  'kart',
+  'havale',
+  'eft',
+  'bu',
+  'ay',
+  'ayi',
+  'ayinda',
+  'gun',
+  'gunu',
+  'icin',
+  'ekle',
+  'tl',
+  'lira',
+  'ocak',
+  'subat',
+  'mart',
+  'nisan',
+  'mayis',
+  'haziran',
+  'temmuz',
+  'agustos',
+  'eylul',
+  'ekim',
+  'kasim',
+  'aralik'
+]);
+
+/**
+ * Finds the best matching client name ONLY within the provided session pool.
+ */
+function findBestClientMatchInPool(asciiMsgWithoutDate: string, pool: Session[]): string {
+  const uniqueClients = new Map<string, string>(); // asciiName -> original display name
+  for (const s of pool) {
+    if (s && s.clientName && !s.isDeleted) {
+      const cleanName = String(s.clientName).trim();
+      const asciiName = foldTurkishAscii(cleanName);
+      if (asciiName && !uniqueClients.has(asciiName)) {
+        uniqueClients.set(asciiName, cleanName);
+      }
+    }
+  }
+
+  let matchedClientName = '';
+  let bestMatchScore = 0;
+
+  for (const [asciiClient, originalClient] of uniqueClients.entries()) {
+    if (asciiClient.length >= 3 && asciiMsgWithoutDate.includes(asciiClient)) {
+      const score = asciiClient.length + 100;
+      if (score > bestMatchScore) {
+        bestMatchScore = score;
+        matchedClientName = originalClient;
+      }
+    } else {
+      const tokens = asciiClient
+        .split(' ')
+        .filter(t => t.length >= 2 && !COMMAND_STOP_WORDS.has(t));
+      if (tokens.length >= 2 && tokens.every(t => asciiMsgWithoutDate.includes(t))) {
+        const score = asciiClient.length + 50;
+        if (score > bestMatchScore) {
+          bestMatchScore = score;
+          matchedClientName = originalClient;
+        }
+      } else if (tokens.length >= 1) {
+        for (const token of tokens) {
+          if (token.length < 3) continue;
+          // Match token with optional Turkish possessive/dative/locative suffix
+          const wordRegex = new RegExp(`\\b${token}[a-z]{0,4}\\b`, 'i');
+          if (wordRegex.test(asciiMsgWithoutDate)) {
+            const score = token.length + 15;
+            if (score > bestMatchScore) {
+              bestMatchScore = score;
+              matchedClientName = originalClient;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return matchedClientName;
+}
+
+/**
  * Smart Client-Side Turkish Command & Q&A Processor.
- * Guarantees instant, zero-error execution even if the backend API is unreachable or times out.
+ * Strictly respects spoken dates (e.g. "7 Ekim") and spoken months (e.g. "Ekim'de"),
+ * defaulting to the current year when no year is mentioned.
  */
 function processClientCommandLocally(
   message: string,
@@ -197,7 +559,7 @@ function processClientCommandLocally(
   const defaultPrice = Number(pageContext?.defaultSessionPrice) || 1200;
   const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
   const defaultOfficeRentFee = Number(pageContext?.defaultOfficeRentFee) || 200;
-  const selectedDate: string = pageContext?.selectedDate || new Date().toISOString().split('T')[0];
+  const selectedDate: string = pageContext?.selectedDate || formatLocalDateIso();
   const visibleMonth: string = pageContext?.visibleMonth || selectedDate.slice(0, 7);
 
   // 1. Check for page navigation commands
@@ -273,11 +635,13 @@ function processClientCommandLocally(
     const gross = activeList.reduce((acc, s) => acc + (Number(s.price) || 0), 0);
     const unpaidTotal = unpaidList.reduce((acc, s) => acc + (Number(s.price) || 0), 0);
     const babysitterTotal = activeList.reduce(
-      (acc, s) => acc + (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) || defaultBabysitterFee : 0),
+      (acc, s) =>
+        acc + (s.hasBabysitterFee ? Number(s.babysitterFeeAmount) || defaultBabysitterFee : 0),
       0
     );
     const officeRentTotal = activeList.reduce(
-      (acc, s) => acc + (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) || defaultOfficeRentFee : 0),
+      (acc, s) =>
+        acc + (s.hasOfficeRentFee ? Number(s.officeRentFeeAmount) || defaultOfficeRentFee : 0),
       0
     );
     const net = gross - babysitterTotal - officeRentTotal;
@@ -288,159 +652,14 @@ function processClientCommandLocally(
     };
   }
 
-  // 3. Match client name from pageSessions first, then allSessions
-  const combinedPool = [...(pageSessions || []), ...(allSessions || []).filter(s => !s.isDeleted)];
-  const uniqueClients = new Map<string, string>(); // asciiName -> original display name
-  combinedPool.forEach(s => {
-    if (s && s.clientName) {
-      const cleanName = String(s.clientName).trim();
-      const asciiName = foldTurkishAscii(cleanName);
-      if (asciiName && !uniqueClients.has(asciiName)) {
-        uniqueClients.set(asciiName, cleanName);
-      }
-    }
-  });
+  // 3. Parse explicit date (e.g. "7 Ekim") or explicit month (e.g. "Ekim'de") FIRST!
+  const { targetDate, targetMonth, cleanedMsgWithoutDate } = parseTurkishDateFromCommand(asciiMsg);
 
-  let matchedClientName = '';
-  let bestMatchScore = 0;
+  const allActiveSessions = (allSessions || []).filter(s => !s.isDeleted);
 
-  for (const [asciiClient, originalClient] of uniqueClients.entries()) {
-    if (asciiClient.length >= 3 && asciiMsg.includes(asciiClient)) {
-      const score = asciiClient.length + 100;
-      if (score > bestMatchScore) {
-        bestMatchScore = score;
-        matchedClientName = originalClient;
-      }
-    } else {
-      const tokens = asciiClient.split(' ').filter(t => t.length >= 2);
-      if (tokens.length >= 2 && tokens.every(t => asciiMsg.includes(t))) {
-        const score = asciiClient.length + 50;
-        if (score > bestMatchScore) {
-          bestMatchScore = score;
-          matchedClientName = originalClient;
-        }
-      } else if (tokens.length >= 1 && tokens[0].length >= 3) {
-        // Check first name match if spoken with or without Turkish suffix
-        const firstToken = tokens[0];
-        const wordRegex = new RegExp(`\\b${firstToken}[a-z]{0,4}\\b`, 'i');
-        if (wordRegex.test(asciiMsg)) {
-          const score = firstToken.length;
-          if (score > bestMatchScore) {
-            bestMatchScore = score;
-            matchedClientName = originalClient;
-          }
-        }
-      }
-    }
-  }
-
-  if (!matchedClientName && pageContext?.selectedClientName) {
-    matchedClientName = pageContext.selectedClientName;
-  }
-
-  // Extract a spoken name if user said a name that isn't in sessions yet (e.g. "Ahmet Yılmaz seans tamamlandı...")
-  let extractedNewClientName = '';
-  if (!matchedClientName) {
-    const stopWords = new Set([
-      'seans',
-      'seansi',
-      'tamamlandi',
-      'yapildi',
-      'odendi',
-      'oden',
-      'odemesi',
-      'parasi',
-      'alindi',
-      'fiyati',
-      'fiyat',
-      'ucreti',
-      'ucret',
-      'bakici',
-      'ofis',
-      'kirasi',
-      'kira',
-      'var',
-      'yok',
-      'bugun',
-      'dun',
-      'yarin',
-      'online',
-      'yuzyuze',
-      'yuz',
-      'yuze',
-      'iptal',
-      'nakit',
-      'kart',
-      'havale',
-      'eft',
-      'bu',
-      'ay',
-      'gun',
-      'icin',
-      'ekle'
-    ]);
-    const rawWords = rawMsg.split(/\s+/);
-    const nameWords: string[] = [];
-    for (const w of rawWords) {
-      const cleanW = foldTurkishAscii(w);
-      if (!cleanW || /^\d+$/.test(cleanW) || stopWords.has(cleanW)) {
-        if (nameWords.length > 0) break;
-        continue;
-      }
-      nameWords.push(w.replace(/['’`.,;!?].*$/, ''));
-      if (nameWords.length >= 3) break;
-    }
-    if (nameWords.length >= 1) {
-      extractedNewClientName = nameWords
-        .map(w => w.charAt(0).toLocaleUpperCase('tr-TR') + w.slice(1))
-        .join(' ');
-    }
-  }
-
-  // 4. Parse explicit date in command if any (e.g., "15 ekim", "bugün", "dün", "yarın")
-  const turkishMonths: Record<string, string> = {
-    ocak: '01',
-    subat: '02',
-    mart: '03',
-    nisan: '04',
-    mayis: '05',
-    haziran: '06',
-    temmuz: '07',
-    agustos: '08',
-    eylul: '09',
-    ekim: '10',
-    kasim: '11',
-    aralik: '12'
-  };
-
-  let targetDate: string | undefined = undefined;
-  if (asciiMsg.includes('bugun')) {
-    targetDate = new Date().toISOString().split('T')[0];
-  } else if (asciiMsg.includes('dun')) {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    targetDate = d.toISOString().split('T')[0];
-  } else if (asciiMsg.includes('yarin')) {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    targetDate = d.toISOString().split('T')[0];
-  } else {
-    for (const [mName, mNum] of Object.entries(turkishMonths)) {
-      const regex = new RegExp(`\\b(\\d{1,2})\\s*${mName}\\b`, 'i');
-      const m = asciiMsg.match(regex);
-      if (m) {
-        const day = String(parseInt(m[1], 10)).padStart(2, '0');
-        const year = visibleMonth ? visibleMonth.slice(0, 4) : String(new Date().getFullYear());
-        targetDate = `${year}-${mNum}-${day}`;
-        break;
-      }
-    }
-  }
-
-  // 5. Parse updates from Turkish command
+  // 4. Parse updates from Turkish command
   const updates: NonNullable<AssistantAction['updates']> = {};
 
-  // Session type / status
   if (asciiMsg.includes('iptal') || asciiMsg.includes('gelmedi') || asciiMsg.includes('katilmadi')) {
     updates.type = 'cancelled';
     updates.price = 0;
@@ -448,15 +667,22 @@ function processClientCommandLocally(
     updates.babysitterFeeAmount = 0;
     updates.hasOfficeRentFee = false;
     updates.officeRentFeeAmount = 0;
-  } else if (asciiMsg.includes('yuz yuze') || asciiMsg.includes('yuzyuze') || asciiMsg.includes('ofiste')) {
+  } else if (
+    asciiMsg.includes('yuz yuze') ||
+    asciiMsg.includes('yuzyuze') ||
+    asciiMsg.includes('ofiste')
+  ) {
     updates.type = 'face-to-face';
-  } else if (asciiMsg.includes('online') || asciiMsg.includes('onlayn') || asciiMsg.includes('goruntulu')) {
+  } else if (
+    asciiMsg.includes('online') ||
+    asciiMsg.includes('onlayn') ||
+    asciiMsg.includes('goruntulu')
+  ) {
     updates.type = 'online';
     updates.hasOfficeRentFee = false;
     updates.officeRentFeeAmount = 0;
   }
 
-  // Payment status (handles "öden parası alındı", "ödemesi alındı", "ödendi", "parası alındı", etc.)
   if (
     asciiMsg.includes('odenmedi') ||
     asciiMsg.includes('odemedi') ||
@@ -483,11 +709,14 @@ function processClientCommandLocally(
     updates.paymentStatus = 'paid';
   }
 
-  // Payment method
   if (asciiMsg.includes('nakit') || asciiMsg.includes('elden')) {
     updates.paymentMethod = 'cash';
     if (!updates.paymentStatus) updates.paymentStatus = 'paid';
-  } else if (asciiMsg.includes('kredi kart') || asciiMsg.includes('kartla') || asciiMsg.includes('pos')) {
+  } else if (
+    asciiMsg.includes('kredi kart') ||
+    asciiMsg.includes('kartla') ||
+    asciiMsg.includes('pos')
+  ) {
     updates.paymentMethod = 'card';
     if (!updates.paymentStatus) updates.paymentStatus = 'paid';
   } else if (
@@ -500,7 +729,6 @@ function processClientCommandLocally(
     if (!updates.paymentStatus) updates.paymentStatus = 'paid';
   }
 
-  // Babysitter fee
   if (
     asciiMsg.includes('bakici parasi yok') ||
     asciiMsg.includes('bakici yok') ||
@@ -521,10 +749,11 @@ function processClientCommandLocally(
   ) {
     updates.hasBabysitterFee = true;
     const babyNumMatch = asciiMsg.match(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?(\d{2,5})/);
-    updates.babysitterFeeAmount = babyNumMatch ? parseInt(babyNumMatch[1], 10) : defaultBabysitterFee;
+    updates.babysitterFeeAmount = babyNumMatch
+      ? parseInt(babyNumMatch[1], 10)
+      : defaultBabysitterFee;
   }
 
-  // Office rent fee
   if (
     asciiMsg.includes('ofis kirasi yok') ||
     asciiMsg.includes('oda kirasi yok') ||
@@ -545,15 +774,19 @@ function processClientCommandLocally(
     /(?:ofis|oda)\s*(?:kirasi|ucreti)\s+\d{2,5}/.test(asciiMsg)
   ) {
     updates.hasOfficeRentFee = true;
-    const rentNumMatch = asciiMsg.match(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/);
-    updates.officeRentFeeAmount = rentNumMatch ? parseInt(rentNumMatch[1], 10) : defaultOfficeRentFee;
+    const rentNumMatch = asciiMsg.match(
+      /(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/
+    );
+    updates.officeRentFeeAmount = rentNumMatch
+      ? parseInt(rentNumMatch[1], 10)
+      : defaultOfficeRentFee;
     if (!updates.type) {
       updates.type = 'face-to-face';
     }
   }
 
-  // Price parsing (strip thousand separator dots like 1.500 -> 1500, and strip babysitter/office phrases first so their numbers don't collide)
-  const msgWithoutFeeNumbers = asciiMsg
+  // Price parsing on cleanedMsgWithoutDate so that day/year numbers are never mistaken for prices
+  const msgWithoutFeeNumbers = cleanedMsgWithoutDate
     .replace(/(\d)\.(\d{3})\b/g, '$1$2')
     .replace(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?\d{2,5}/g, '')
     .replace(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?\d{2,5}/g, '');
@@ -569,8 +802,8 @@ function processClientCommandLocally(
     const pm = msgWithoutFeeNumbers.match(pat);
     if (pm && pm[1]) {
       const val = parseInt(pm[1], 10);
-      // Avoid matching years like 2025/2026 unless explicitly preceded by fiyat/ücret/TL
-      const isYearLike = (val === 2024 || val === 2025 || val === 2026) && pat.source === '\\b(\\d{3,5})\\b';
+      const isYearLike =
+        val >= 2015 && val <= 2030 && val !== 2000 && pat.source === '\\b(\\d{3,5})\\b';
       if (!isYearLike && val >= 200 && val <= 50000) {
         updates.price = val;
         break;
@@ -584,60 +817,144 @@ function processClientCommandLocally(
     asciiMsg.includes('gerceklesti') ||
     asciiMsg.includes('bitti');
 
-  // Bulk pay all debts for client
-  if (
-    matchedClientName &&
-    (asciiMsg.includes('tum borc') || asciiMsg.includes('butun borc') || asciiMsg.includes('hepsini odedi'))
-  ) {
-    return {
-      reply: `**${matchedClientName}** danışanının bekleyen tüm seans ödemeleri tahsil edildi olarak işaretlendi.`,
-      actions: [
-        {
-          actionType: 'MARK_CLIENT_ALL_PAID',
-          clientName: matchedClientName,
-          updates: { paymentMethod: updates.paymentMethod }
-        }
-      ]
-    };
+  // 5. Strictly Scope Sessions by Date / Month BEFORE matching Client Name!
+  // This guarantees that "7 Ekim Özlem" ONLY looks at 7 October (of the resolved year),
+  // and "Ekim'de Özlem" ONLY looks at October (of the resolved year), NEVER touching 5 May!
+  let scopedPool: Session[] = [];
+  let scopeDescription = '';
+
+  if (targetDate) {
+    scopedPool = allActiveSessions.filter(s => s.date === targetDate);
+    const [yr, mn, dy] = targetDate.split('-');
+    scopeDescription = `${parseInt(dy, 10)} ${TURKISH_MONTH_DISPLAY[mn] || mn} ${yr}`;
+  } else if (targetMonth) {
+    scopedPool = allActiveSessions.filter(s => s.date.startsWith(targetMonth));
+    const [yr, mn] = targetMonth.split('-');
+    scopeDescription = `${TURKISH_MONTH_DISPLAY[mn] || mn} ${yr}`;
+  } else if (pageContext?.activeTab === 'agenda') {
+    if (pageContext?.agendaViewMode === 'day' && selectedDate) {
+      const dayPool = allActiveSessions.filter(s => s.date === selectedDate);
+      const matchedOnDay = findBestClientMatchInPool(cleanedMsgWithoutDate, dayPool);
+      if (matchedOnDay) {
+        scopedPool = dayPool;
+      } else {
+        scopedPool = allActiveSessions.filter(s => s.date.startsWith(visibleMonth));
+      }
+    } else {
+      // Monthly or Weekly Agenda view: strictly scope to visibleMonth first!
+      scopedPool = allActiveSessions.filter(s => s.date.startsWith(visibleMonth));
+    }
+  } else {
+    scopedPool = pageSessions && pageSessions.length > 0 ? pageSessions : allActiveSessions;
   }
 
-  // Update existing session(s) if client matched (or if only 1 session is on the current day view)
-  if (!matchedClientName && pageContext?.activeTab === 'agenda' && pageContext?.agendaViewMode === 'day') {
-    const daySessions = (pageSessions || []).filter(s => s.date === selectedDate && !s.isDeleted);
+  let matchedClientName = findBestClientMatchInPool(cleanedMsgWithoutDate, scopedPool);
+
+  // If the user explicitly gave a targetDate or targetMonth (e.g. "7 Ekim Özlem" or "Ekim'de Özlem")
+  // and no session for that client exists in that date/month:
+  // DO NOT fall back to modifying a session from another month (like 5 May)!
+  if (!matchedClientName && (targetDate || targetMonth)) {
+    const globalClientMatch = findBestClientMatchInPool(cleanedMsgWithoutDate, allActiveSessions);
+    const wantsExplicitCreate =
+      asciiMsg.includes('yeni seans') ||
+      asciiMsg.includes('seans ekle') ||
+      asciiMsg.includes('randevu ekle') ||
+      asciiMsg.includes('kayit ekle');
+
+    if (!wantsExplicitCreate) {
+      const whoLabel = globalClientMatch ? `**${globalClientMatch}**` : 'belirtilen danışan';
+      return {
+        reply: `**${scopeDescription}** tarihinde ${whoLabel} adına kayıtlı bir seans bulunamadı. Başka aylardaki veya tarihlerdeki seanslara hata olmaması için dokunulmadı.\n\n*(Eğer bu tarihe yeni seans eklemek isterseniz "7 Ekim ${globalClientMatch || 'Özlem'} yeni seans ekle" diyebilirsiniz.)*`,
+        actions: []
+      };
+    }
+    matchedClientName = globalClientMatch;
+  }
+
+  // If no explicit date/month was given and not found in visibleMonth, check pageContext.selectedClientName
+  if (!matchedClientName && !targetDate && !targetMonth && pageContext?.selectedClientName) {
+    matchedClientName = pageContext.selectedClientName;
+  }
+
+  // Bulk pay all debts for client (only when user explicitly says "tüm borçları")
+  if (
+    !targetDate &&
+    !targetMonth &&
+    (asciiMsg.includes('tum borc') ||
+      asciiMsg.includes('butun borc') ||
+      asciiMsg.includes('hepsini odedi'))
+  ) {
+    const debtClient =
+      matchedClientName || findBestClientMatchInPool(cleanedMsgWithoutDate, allActiveSessions);
+    if (debtClient) {
+      return {
+        reply: `**${debtClient}** danışanının bekleyen tüm seans ödemeleri tahsil edildi olarak işaretlendi.`,
+        actions: [
+          {
+            actionType: 'MARK_CLIENT_ALL_PAID',
+            clientName: debtClient,
+            updates: { paymentMethod: updates.paymentMethod }
+          }
+        ]
+      };
+    }
+  }
+
+  // Single-session day view shortcut when client name is omitted
+  if (
+    !matchedClientName &&
+    !targetDate &&
+    !targetMonth &&
+    pageContext?.activeTab === 'agenda' &&
+    pageContext?.agendaViewMode === 'day'
+  ) {
+    const daySessions = scopedPool.filter(s => s.date === selectedDate && !s.isDeleted);
     if (daySessions.length === 1 && (Object.keys(updates).length > 0 || mentionsCompleted)) {
       matchedClientName = daySessions[0].clientName;
     }
   }
 
+  // 6. Execute update on the strictly scoped sessions for matchedClientName
   if (matchedClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
-    const clientSessions = combinedPool.filter(
+    const clientSessionsInScope = scopedPool.filter(
       s => s && s.clientName && areClientNamesEquivalent(s.clientName, matchedClientName)
     );
 
-    // Deduplicate by id
-    const uniqueClientSessions = Array.from(new Map(clientSessions.map(s => [s.id, s])).values());
+    const uniqueClientSessions = Array.from(
+      new Map(clientSessionsInScope.map(s => [s.id, s])).values()
+    );
 
-    let targetSessions = uniqueClientSessions;
-    if (targetDate) {
-      const onDate = uniqueClientSessions.filter(s => s.date === targetDate);
-      if (onDate.length > 0) targetSessions = onDate;
-    } else if (pageContext?.activeTab === 'agenda' && pageContext?.agendaViewMode === 'day' && selectedDate) {
-      const onSelected = uniqueClientSessions.filter(s => s.date === selectedDate);
-      if (onSelected.length > 0) targetSessions = onSelected;
-    } else if (visibleMonth) {
-      const inMonth = uniqueClientSessions.filter(s => s.date.startsWith(visibleMonth));
-      if (inMonth.length > 0) targetSessions = inMonth;
+    if (uniqueClientSessions.length === 0) {
+      return {
+        reply: `**${scopeDescription || visibleMonth}** döneminde **${matchedClientName}** adına kayıtlı seans bulunamadı. Diğer dönemlerdeki kayıtlara müdahale edilmedi.`,
+        actions: []
+      };
     }
 
-    const wantsAll = asciiMsg.includes('tum ') || asciiMsg.includes('hepsi') || asciiMsg.includes('butun ');
+    let targetSessions = uniqueClientSessions;
+    const wantsAll =
+      asciiMsg.includes('tum ') || asciiMsg.includes('hepsi') || asciiMsg.includes('butun ');
+
     if (!wantsAll && targetSessions.length > 1) {
-      const refDate = targetDate || selectedDate;
-      const sorted = [...targetSessions].sort((a, b) => {
-        const diffA = Math.abs(new Date(a.date).getTime() - new Date(refDate).getTime());
-        const diffB = Math.abs(new Date(b.date).getTime() - new Date(refDate).getTime());
-        return diffA - diffB;
-      });
-      targetSessions = [sorted[0]];
+      // If user is marking as paid and there's exactly 1 unpaid session in this scope, prefer it
+      const unpaidInScope = targetSessions.filter(s => s.paymentStatus !== 'paid');
+      if (updates.paymentStatus === 'paid' && unpaidInScope.length === 1) {
+        targetSessions = unpaidInScope;
+      } else {
+        // Pick reference date inside the same month (avoid stale selectedDate from another month!)
+        const activeMonthPrefix = targetMonth || visibleMonth;
+        const refDate =
+          targetDate ||
+          (selectedDate && selectedDate.startsWith(activeMonthPrefix)
+            ? selectedDate
+            : formatLocalDateIso());
+        const sorted = [...targetSessions].sort((a, b) => {
+          const diffA = Math.abs(new Date(a.date).getTime() - new Date(refDate).getTime());
+          const diffB = Math.abs(new Date(b.date).getTime() - new Date(refDate).getTime());
+          return diffA - diffB;
+        });
+        targetSessions = [sorted[0]];
+      }
     }
 
     const sessionIds = targetSessions.map(s => s.id).filter(Boolean);
@@ -691,6 +1008,7 @@ function processClientCommandLocally(
           sessionIds,
           clientName: matchedClientName,
           targetDate: dateLabel,
+          targetMonth: targetMonth || dateLabel.slice(0, 7),
           applyToScope: wantsAll ? 'visible_period' : 'single',
           updates
         }
@@ -698,55 +1016,9 @@ function processClientCommandLocally(
     };
   }
 
-  // If the client doesn't exist in the calendar yet, but user gave a clear session command with a name (e.g. "Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500...")
-  if (extractedNewClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
-    const newType: SessionType = updates.type || (updates.hasOfficeRentFee ? 'face-to-face' : 'online');
-    const newPrice = typeof updates.price === 'number' ? updates.price : defaultPrice;
-    const newDate = targetDate || selectedDate;
-    const timeMatch = asciiMsg.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
-    const newTime = timeMatch ? `${String(timeMatch[1]).padStart(2, '0')}:${timeMatch[2]}` : '14:00';
-
-    const summaryParts: string[] = [
-      `Ücret: ₺${newPrice.toLocaleString('tr-TR')}`,
-      updates.paymentStatus === 'paid' ? 'Ödeme: Ödendi ✓' : 'Ödeme: Ödenmedi',
-      updates.hasBabysitterFee
-        ? `Bakıcı: Var (₺${updates.babysitterFeeAmount || defaultBabysitterFee})`
-        : 'Bakıcı: Yok',
-      updates.hasOfficeRentFee
-        ? `Ofis Kirası: Var (₺${updates.officeRentFeeAmount || defaultOfficeRentFee})`
-        : 'Ofis Kirası: Yok'
-    ];
-
-    return {
-      reply: `**${extractedNewClientName}** için ${newDate} tarihinde kayıtlı seans bulunamadığından yeni seans oluşturuldu ve bilgiler işlendi:\n• ${summaryParts.join('\n• ')}`,
-      actions: [
-        {
-          actionType: 'CREATE_SESSION',
-          newSession: {
-            clientName: extractedNewClientName,
-            date: newDate,
-            time: newTime,
-            type: newType,
-            price: newPrice,
-            paymentStatus: updates.paymentStatus === 'paid' ? 'paid' : 'unpaid',
-            paymentMethod: updates.paymentMethod,
-            hasBabysitterFee: updates.hasBabysitterFee ?? false,
-            babysitterFeeAmount: updates.hasBabysitterFee
-              ? updates.babysitterFeeAmount || defaultBabysitterFee
-              : 0,
-            hasOfficeRentFee: updates.hasOfficeRentFee ?? false,
-            officeRentFeeAmount: updates.hasOfficeRentFee
-              ? updates.officeRentFeeAmount || defaultOfficeRentFee
-              : 0
-          }
-        }
-      ]
-    };
-  }
-
   return {
     reply:
-      'Komutunuzu aldım ancak hangi danışan için işlem yapılacağını belirleyemedim. Lütfen danışan adını belirterek tekrar söyleyin. Örn: *"Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500, bakıcı parası var, ofis kirası yok"*',
+      'Komutunuzu aldım ancak bu tarih/görünümde eşleşen bir danışan seansı bulamadım. Lütfen tarih ve danışan adını kontrol ederek tekrar söyleyin. Örn: *"7 Ekim Özlem seans tamamlandı, ödemesi alındı, fiyatı 1500, bakıcı parası var, ofis kirası yok"*',
     actions: []
   };
 }
@@ -790,7 +1062,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     return calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
   }, [calendarViewDate]);
 
-  // Filter sessions relevant to the current screen so the assistant sees what the user sees
   const pageRelevantSessions = useMemo(() => {
     const active = sessions.filter(s => !s.isDeleted);
     if (activeTab === 'client' && selectedClientName) {
@@ -820,7 +1091,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     return active.slice(-150);
   }, [sessions, activeTab, agendaViewMode, selectedDate, visibleMonthKey, selectedClientName]);
 
-  // Dynamic context label shown in header
   const pageContextBadge = useMemo(() => {
     if (activeTab === 'agenda') {
       if (agendaViewMode === 'month') {
@@ -837,21 +1107,20 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     return TAB_LABELS[activeTab] || 'Klinik Paneli';
   }, [activeTab, agendaViewMode, selectedDate, visibleMonthLabel, selectedClientName]);
 
-  // Sample client name from current view for helpful quick command examples
   const exampleClientName = useMemo(() => {
     if (selectedClientName) return selectedClientName;
-    const dayMatch = sessions.find(s => !s.isDeleted && s.date === selectedDate && s.clientName);
-    if (dayMatch) return dayMatch.clientName;
     const monthMatch = pageRelevantSessions.find(s => s.clientName && s.type !== 'cancelled');
     if (monthMatch) return monthMatch.clientName;
-    return 'Ahmet Yılmaz';
+    const dayMatch = sessions.find(s => !s.isDeleted && s.date === selectedDate && s.clientName);
+    if (dayMatch) return dayMatch.clientName;
+    return 'Özlem';
   }, [selectedClientName, sessions, selectedDate, pageRelevantSessions]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     {
       id: 'welcome_msg',
       role: 'assistant',
-      content: `Merhaba! Bulunduğunuz sayfadaki seansları ve muhasebe verilerini görebiliyorum. Bana sesli veya yazılı olarak komut verebilirsiniz.\n\n**Örnek Komut:**\n*"${exampleClientName} seans tamamlandı, ödemesi alındı, fiyatı ${settings.defaultSessionPrice || 1200} TL, bakıcı parası var, ofis kirası yok"*`,
+      content: `Merhaba! Bulunduğunuz sayfadaki seansları ve muhasebe verilerini görebiliyorum. Bana tarih veya ay belirterek sesli/yazılı komut verebilirsiniz.\n\n**Örnek Komut:**\n*"7 Ekim ${exampleClientName} seans tamamlandı, ödemesi alındı, fiyatı ${settings.defaultSessionPrice || 1200} TL, bakıcı parası var, ofis kirası yok"*`,
       timestamp: Date.now()
     }
   ]);
@@ -870,7 +1139,8 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
   }, [messages, isOpen, interimTranscript]);
 
   const speakText = (text: string) => {
-    if (!voiceReplyEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (!voiceReplyEnabled || typeof window === 'undefined' || !('speechSynthesis' in window))
+      return;
     try {
       window.speechSynthesis.cancel();
       const cleanText = text
@@ -900,8 +1170,10 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     });
   };
 
-  // Execute structured actions synchronously and deterministically
-  const executeAssistantActions = (actions: AssistantAction[]): AppliedChangeRecord | undefined => {
+  const executeAssistantActions = (
+    actions: AssistantAction[],
+    enforcedDateScope?: { targetDate?: string; targetMonth?: string }
+  ): AppliedChangeRecord | undefined => {
     if (!Array.isArray(actions) || actions.length === 0) return undefined;
 
     const previousSnapshot = [...sessions];
@@ -911,23 +1183,40 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     for (const action of actions) {
       if (action.actionType === 'UPDATE_SESSIONS' && action.updates) {
         const u = action.updates;
-        const matchedIds = new Set<string>(Array.isArray(action.sessionIds) ? action.sessionIds : []);
+        const effectiveTargetDate = enforcedDateScope?.targetDate || action.targetDate;
+        const effectiveTargetMonth = enforcedDateScope?.targetMonth || action.targetMonth;
 
-        const hasValidId = sessions.some(s => matchedIds.has(s.id));
-        if (!hasValidId && action.clientName) {
-          const clientMatches = sessions.filter(
+        // Filter action.sessionIds so that no session outside effectiveTargetDate / effectiveTargetMonth can EVER be modified
+        const rawIds = Array.isArray(action.sessionIds) ? action.sessionIds : [];
+        const matchedIds = new Set<string>();
+
+        for (const id of rawIds) {
+          const found = sessions.find(s => s.id === id && !s.isDeleted);
+          if (!found) continue;
+          if (effectiveTargetDate && found.date !== effectiveTargetDate) continue;
+          if (effectiveTargetMonth && !found.date.startsWith(effectiveTargetMonth)) continue;
+          matchedIds.add(id);
+        }
+
+        if (matchedIds.size === 0 && action.clientName) {
+          let candidates = sessions.filter(
             s => !s.isDeleted && areClientNamesEquivalent(s.clientName, action.clientName!)
           );
-          let candidates = clientMatches;
-          if (action.targetDate) {
-            const onDate = clientMatches.filter(s => s.date === action.targetDate);
-            if (onDate.length > 0) candidates = onDate;
+
+          if (effectiveTargetDate) {
+            // Strictly filter to effectiveTargetDate — NEVER fall back to another date!
+            candidates = candidates.filter(s => s.date === effectiveTargetDate);
+          } else if (effectiveTargetMonth) {
+            // Strictly filter to effectiveTargetMonth — NEVER fall back to another month!
+            candidates = candidates.filter(s => s.date.startsWith(effectiveTargetMonth));
           } else if (activeTab === 'agenda' && agendaViewMode === 'day') {
-            const onSelected = clientMatches.filter(s => s.date === selectedDate);
-            if (onSelected.length > 0) candidates = onSelected;
+            const onSelected = candidates.filter(s => s.date === selectedDate);
+            candidates =
+              onSelected.length > 0
+                ? onSelected
+                : candidates.filter(s => s.date.startsWith(visibleMonthKey));
           } else {
-            const inMonth = clientMatches.filter(s => s.date.startsWith(visibleMonthKey));
-            if (inMonth.length > 0) candidates = inMonth;
+            candidates = candidates.filter(s => s.date.startsWith(visibleMonthKey));
           }
 
           if (
@@ -935,7 +1224,12 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
             action.applyToScope !== 'all' &&
             candidates.length > 1
           ) {
-            const refDate = action.targetDate || selectedDate;
+            const monthPrefix = effectiveTargetMonth || visibleMonthKey;
+            const refDate =
+              effectiveTargetDate ||
+              (selectedDate && selectedDate.startsWith(monthPrefix)
+                ? selectedDate
+                : formatLocalDateIso());
             candidates = [...candidates]
               .sort((a, b) => {
                 const da = Math.abs(new Date(a.date).getTime() - new Date(refDate).getTime());
@@ -947,7 +1241,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
           candidates.forEach(c => matchedIds.add(c.id));
         }
 
-        // Precompute updated sessions synchronously so detailLines and modifiedCount are immediately ready
         const updatedById = new Map<string, Session>();
         for (const s of sessions) {
           if (!matchedIds.has(s.id)) continue;
@@ -1069,7 +1362,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
         const created: Session = {
           id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           clientName: ns.clientName || 'Danışan',
-          date: ns.date || selectedDate,
+          date: enforcedDateScope?.targetDate || ns.date || selectedDate,
           time: ns.time || '14:00',
           duration: 50,
           type,
@@ -1082,7 +1375,9 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
             ? ns.babysitterFeeAmount || settings.defaultBabysitterFee
             : 0,
           hasOfficeRentFee: hasOffice,
-          officeRentFeeAmount: hasOffice ? ns.officeRentFeeAmount || settings.defaultOfficeRentFee : 0,
+          officeRentFeeAmount: hasOffice
+            ? ns.officeRentFeeAmount || settings.defaultOfficeRentFee
+            : 0,
           notes: ns.notes || '',
           isManuallyEdited: true,
           updatedAt: Date.now()
@@ -1092,8 +1387,12 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
         const changeBadges: string[] = [
           `Ücret: ₺${created.price.toLocaleString('tr-TR')}`,
           created.paymentStatus === 'paid' ? 'Ödendi ✓' : 'Ödenmedi',
-          created.hasBabysitterFee ? `Bakıcı: Var (₺${created.babysitterFeeAmount})` : 'Bakıcı: Yok',
-          created.hasOfficeRentFee ? `Ofis Kirası: Var (₺${created.officeRentFeeAmount})` : 'Ofis Kirası: Yok'
+          created.hasBabysitterFee
+            ? `Bakıcı: Var (₺${created.babysitterFeeAmount})`
+            : 'Bakıcı: Yok',
+          created.hasOfficeRentFee
+            ? `Ofis Kirası: Var (₺${created.officeRentFeeAmount})`
+            : 'Ofis Kirası: Yok'
         ];
         detailLines.push(
           `Yeni Seans: ${created.clientName} (${created.date} ${created.time}) → ${changeBadges.join(' • ')}`
@@ -1101,16 +1400,20 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
       } else if (action.actionType === 'MARK_CLIENT_ALL_PAID' && action.clientName) {
         onMarkClientAllPaid(action.clientName, action.updates?.paymentMethod);
         modifiedCount++;
-        detailLines.push(`${action.clientName} danışanının tüm bekleyen seans ödemeleri tahsil edildi.`);
+        detailLines.push(
+          `${action.clientName} danışanının tüm bekleyen seans ödemeleri tahsil edildi.`
+        );
       } else if (action.actionType === 'ADD_EXPENSE' && action.newExpense) {
         onAddExpense({
           title: action.newExpense.title || 'Klinik Gideri',
           amount: Number(action.newExpense.amount) || 0,
           category: (action.newExpense.category as any) || 'other',
-          date: action.newExpense.date || selectedDate
+          date: enforcedDateScope?.targetDate || action.newExpense.date || selectedDate
         });
         modifiedCount++;
-        detailLines.push(`Yeni Gider Eklendi: ${action.newExpense.title} (₺${action.newExpense.amount})`);
+        detailLines.push(
+          `Yeni Gider Eklendi: ${action.newExpense.title} (₺${action.newExpense.amount})`
+        );
       } else if (action.actionType === 'NAVIGATE_TAB' && action.tab) {
         onNavigateTab(action.tab, action.viewMode, action.date);
         detailLines.push(`Sayfa yönlendirildi: ${TAB_LABELS[action.tab] || action.tab}`);
@@ -1184,6 +1487,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
       agendaViewMode,
       selectedDate,
       visibleMonth: visibleMonthKey,
+      currentYear: new Date().getFullYear(),
       selectedClientName,
       defaultSessionPrice: settings.defaultSessionPrice,
       defaultOnlinePrice: settings.defaultOnlinePrice || settings.defaultSessionPrice,
@@ -1192,7 +1496,11 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
       defaultOfficeRentFee: settings.defaultOfficeRentFee
     };
 
-    // Always compute deterministic local result first so we have an instant, zero-failure fallback
+    // Parse date/month scope from the command first
+    const asciiNormalized = normalizeSpokenTurkishNumbers(foldTurkishAscii(textToSend));
+    const parsedDateScope = parseTurkishDateFromCommand(asciiNormalized);
+
+    // Run deterministic local command processor
     const localResult = processClientCommandLocally(
       textToSend,
       pageContext,
@@ -1203,59 +1511,81 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     let replyText = localResult.reply;
     let actions: AssistantAction[] = localResult.actions;
 
-    // If local parser didn't find a concrete session update action, or to enrich Q&A, query backend with a fast timeout
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6500);
+    // If localResult already matched concrete session actions OR explicitly blocked a wrong-date match,
+    // execute immediately with zero risk of AI picking a wrong date (like 5 May instead of 7 October)!
+    const isExplicitDateNotFoundWarning =
+      (parsedDateScope.targetDate || parsedDateScope.targetMonth) &&
+      localResult.actions.length === 0 &&
+      localResult.reply.includes('kayıtlı bir seans bulunamadı');
 
-      const compactPayloadSessions = pageRelevantSessions.slice(0, 75).map(s => ({
-        id: s.id,
-        clientName: s.clientName,
-        date: s.date,
-        time: s.time,
-        type: s.type,
-        price: s.price,
-        paymentStatus: s.paymentStatus || 'unpaid',
-        paidAmount: s.paidAmount || 0,
-        paymentMethod: s.paymentMethod || null,
-        hasBabysitterFee: Boolean(s.hasBabysitterFee),
-        babysitterFeeAmount: s.babysitterFeeAmount || 0,
-        hasOfficeRentFee: Boolean(s.hasOfficeRentFee),
-        officeRentFeeAmount: s.officeRentFeeAmount || 0
-      }));
+    if (localResult.actions.length === 0 && !isExplicitDateNotFoundWarning) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6500);
 
-      const response = await fetch('/api/assistant/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          message: textToSend,
-          pageContext,
-          sessions: compactPayloadSessions,
-          history: messages.slice(-4).map(m => ({ role: m.role, content: m.content }))
-        })
-      });
-
-      clearTimeout(timeoutId);
-
-      const contentType = response.headers.get('content-type') || '';
-      if (response.ok && contentType.includes('application/json')) {
-        const data = await response.json();
-        const serverActions: AssistantAction[] = Array.isArray(data.actions) ? data.actions : [];
-        if (serverActions.length > 0) {
-          actions = serverActions;
-          replyText = data.reply || localResult.reply;
-        } else if (localResult.actions.length === 0 && data.reply) {
-          replyText = data.reply;
+        // Scope sessions sent to backend to parsedDateScope if present so AI can never see other months' sessions
+        let candidateSessionsForApi = pageRelevantSessions;
+        if (parsedDateScope.targetDate) {
+          candidateSessionsForApi = sessions.filter(
+            s => !s.isDeleted && s.date === parsedDateScope.targetDate
+          );
+        } else if (parsedDateScope.targetMonth) {
+          candidateSessionsForApi = sessions.filter(
+            s => !s.isDeleted && s.date.startsWith(parsedDateScope.targetMonth!)
+          );
         }
+
+        const compactPayloadSessions = candidateSessionsForApi.slice(0, 75).map(s => ({
+          id: s.id,
+          clientName: s.clientName,
+          date: s.date,
+          time: s.time,
+          type: s.type,
+          price: s.price,
+          paymentStatus: s.paymentStatus || 'unpaid',
+          paidAmount: s.paidAmount || 0,
+          paymentMethod: s.paymentMethod || null,
+          hasBabysitterFee: Boolean(s.hasBabysitterFee),
+          babysitterFeeAmount: s.babysitterFeeAmount || 0,
+          hasOfficeRentFee: Boolean(s.hasOfficeRentFee),
+          officeRentFeeAmount: s.officeRentFeeAmount || 0
+        }));
+
+        const response = await fetch('/api/assistant/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            message: textToSend,
+            pageContext,
+            sessions: compactPayloadSessions,
+            history: messages.slice(-4).map(m => ({ role: m.role, content: m.content }))
+          })
+        });
+
+        clearTimeout(timeoutId);
+
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          const data = await response.json();
+          const serverActions: AssistantAction[] = Array.isArray(data.actions) ? data.actions : [];
+          if (serverActions.length > 0) {
+            actions = serverActions;
+            replyText = data.reply || localResult.reply;
+          } else if (data.reply) {
+            replyText = data.reply;
+          }
+        }
+      } catch (err) {
+        console.warn('Backend assistant unreachable or timed out, using local command engine:', err);
       }
-    } catch (err) {
-      // Silently fall back to localResult — never show a connection error to the user
-      console.warn('Backend assistant unreachable or timed out, using local command engine:', err);
     }
 
     try {
-      const appliedRecord = executeAssistantActions(actions);
+      const appliedRecord = executeAssistantActions(actions, {
+        targetDate: parsedDateScope.targetDate,
+        targetMonth: parsedDateScope.targetMonth
+      });
 
       const assistantMsg: ChatMessage = {
         id: `ast_${Date.now()}`,
@@ -1362,7 +1692,9 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mediaRecorder.mimeType || 'audio/webm'
+        });
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64String = (reader.result as string)?.split(',')[1];
@@ -1404,7 +1736,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     const baseClient = exampleClientName;
     const defPrice = settings.defaultSessionPrice || 1200;
     return [
-      `${baseClient} seans tamamlandı, ödemesi alındı, fiyatı ${defPrice}, bakıcı parası var, ofis kirası yok`,
+      `7 Ekim ${baseClient} seans tamamlandı, ödemesi alındı, fiyatı ${defPrice}, bakıcı parası var, ofis kirası yok`,
       `${baseClient} ödemesi nakit alındı`,
       `Bu ekrandaki seans ve gelir özetini söyle`
     ];
@@ -1414,7 +1746,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     <>
       {/* Floating Action Buttons (Accessible on EVERY page) */}
       <div className="fixed bottom-5 right-4 sm:right-6 z-40 flex items-center gap-2">
-        {/* Direct 1-Tap Voice Command Mic Button */}
         {!isOpen && (
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -1431,7 +1762,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
           </motion.button>
         )}
 
-        {/* Main Chatbot & Voice Assistant Launcher */}
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.95 }}
@@ -1482,10 +1812,16 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
                   onClick={toggleVoiceReply}
                   title={voiceReplyEnabled ? 'Sesli Yanıt Açık' : 'Sesli Yanıt Kapalı'}
                   className={`p-2 rounded-xl transition-colors cursor-pointer ${
-                    voiceReplyEnabled ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'
+                    voiceReplyEnabled
+                      ? 'bg-white/20 text-white'
+                      : 'text-white/60 hover:bg-white/10'
                   }`}
                 >
-                  {voiceReplyEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  {voiceReplyEnabled ? (
+                    <Volume2 className="w-4 h-4" />
+                  ) : (
+                    <VolumeX className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1500,7 +1836,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
             {/* Quick Voice Command Guide Banner */}
             <div className="bg-[#fdfbf7] border-b border-[#e5e1d8] px-3.5 py-2 flex items-center justify-between gap-2 shrink-0">
               <div className="text-[11px] text-slate-600 leading-tight">
-                Mikrofona basıp <span className="font-semibold text-[#6b705c]">danışan adı, ücret, ödendi, bakıcı ve ofis kirası</span> bilgilerini söyleyebilirsiniz.
+                Tarih belirterek (<span className="font-semibold text-[#6b705c]">örn. 7 Ekim Özlem...</span>) söylediğinizde yalnızca o gün/ay içindeki danışana işlem uygulanır.
               </div>
             </div>
 
@@ -1522,13 +1858,14 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
 
-                    {/* Visual Confirmation Card for Applied Session Updates */}
                     {msg.appliedChanges && (
                       <div className="mt-2.5 pt-2.5 border-t border-slate-100 bg-emerald-50/70 rounded-xl p-2.5 border border-emerald-200/70">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            {msg.appliedChanges.undone ? 'İşlem Geri Alındı' : msg.appliedChanges.description}
+                            {msg.appliedChanges.undone
+                              ? 'İşlem Geri Alındı'
+                              : msg.appliedChanges.description}
                           </span>
                           {!msg.appliedChanges.undone && (
                             <button
@@ -1546,7 +1883,9 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
                             <li
                               key={i}
                               className={`text-[11px] font-medium ${
-                                msg.appliedChanges?.undone ? 'line-through text-slate-400' : 'text-emerald-900'
+                                msg.appliedChanges?.undone
+                                  ? 'line-through text-slate-400'
+                                  : 'text-emerald-900'
                               }`}
                             >
                               • {line}
@@ -1559,12 +1898,13 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
                 </div>
               ))}
 
-              {/* Interim Live Speech Bubble */}
               {isListening && (
                 <div className="flex items-center gap-2.5 bg-rose-50 border border-rose-200 text-rose-800 px-3.5 py-2.5 rounded-2xl text-xs">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping shrink-0" />
                   <div className="flex-1">
-                    <span className="font-bold block text-[11px] text-rose-700">Dinleniyor (Türkçe)...</span>
+                    <span className="font-bold block text-[11px] text-rose-700">
+                      Dinleniyor (Türkçe)...
+                    </span>
                     <span className="italic text-rose-900">
                       {interimTranscript || 'Lütfen komutunuzu söyleyin...'}
                     </span>
@@ -1626,7 +1966,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
                   type="text"
                   value={input}
                   onChange={e => setInput(e.target.value)}
-                  placeholder={`${exampleClientName} seans tamamlandı, ödendi...`}
+                  placeholder={`7 Ekim ${exampleClientName} seans tamamlandı, ödendi...`}
                   className="w-full text-xs sm:text-sm font-medium text-slate-800 bg-transparent focus:outline-none"
                 />
               </div>

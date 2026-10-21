@@ -32,6 +32,11 @@ function normalizeSpokenTurkishNumbers(asciiText: string): string {
     [/\biki bin bes yuz\b/g, "2500"],
     [/\biki bin iki yuz elli\b/g, "2250"],
     [/\biki bin iki yuz\b/g, "2200"],
+    [/\biki bin yirmi alti\b/g, "2026"],
+    [/\biki bin yirmi bes\b/g, "2025"],
+    [/\biki bin yirmi dort\b/g, "2024"],
+    [/\biki bin yirmi uc\b/g, "2023"],
+    [/\biki bin yirmi iki\b/g, "2022"],
     [/\biki bin\b/g, "2000"],
     [/\buc bin bes yuz\b/g, "3500"],
     [/\buc bin\b/g, "3000"],
@@ -64,44 +69,197 @@ function normalizeSpokenTurkishNumbers(asciiText: string): string {
   for (const [regex, val] of replacements) {
     s = s.replace(regex, val);
   }
+
+  // Convert spoken Turkish day numbers (1..31) when followed by a Turkish month name
+  const monthNamesPattern = "(?:ocak|subat|mart|nisan|mayis|haziran|temmuz|agustos|eylul|ekim|kasim|aralik)";
+  const spokenDays: Array<[string, string]> = [
+    ["otuz bir", "31"], ["otuz", "30"],
+    ["yirmi dokuz", "29"], ["yirmi sekiz", "28"], ["yirmi yedi", "27"], ["yirmi alti", "26"],
+    ["yirmi bes", "25"], ["yirmi dort", "24"], ["yirmi uc", "23"], ["yirmi iki", "22"], ["yirmi bir", "21"], ["yirmi", "20"],
+    ["on dokuz", "19"], ["on sekiz", "18"], ["on yedi", "17"], ["on alti", "16"], ["on bes", "15"],
+    ["on dort", "14"], ["on uc", "13"], ["on iki", "12"], ["on bir", "11"], ["on", "10"],
+    ["dokuz", "9"], ["sekiz", "8"], ["yedi", "7"], ["alti", "6"], ["bes", "5"], ["dort", "4"], ["uc", "3"], ["iki", "2"], ["bir", "1"]
+  ];
+  for (const [word, num] of spokenDays) {
+    const r = new RegExp(`\\b${word}\\s+(?=${monthNamesPattern}\\b)`, "gi");
+    s = s.replace(r, `${num} `);
+  }
+
   return s;
 }
 
-function processSmartLocalCommand(message: string, pageContext: any, sessions: any[]): { reply: string; actions: any[] } {
-  const rawMsg = (message || "").trim();
-  const asciiMsg = normalizeSpokenTurkishNumbers(foldTurkishAscii(rawMsg));
+const TURKISH_MONTHS_MAP: Record<string, { num: string; display: string }> = {
+  ocak: { num: "01", display: "Ocak" },
+  subat: { num: "02", display: "Şubat" },
+  mart: { num: "03", display: "Mart" },
+  nisan: { num: "04", display: "Nisan" },
+  mayis: { num: "05", display: "Mayıs" },
+  haziran: { num: "06", display: "Haziran" },
+  temmuz: { num: "07", display: "Temmuz" },
+  agustos: { num: "08", display: "Ağustos" },
+  eylul: { num: "09", display: "Eylül" },
+  ekim: { num: "10", display: "Ekim" },
+  kasim: { num: "11", display: "Kasım" },
+  aralik: { num: "12", display: "Aralık" }
+};
 
-  const defaultPrice = Number(pageContext?.defaultSessionPrice) || 1200;
-  const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
-  const defaultOfficeRentFee = Number(pageContext?.defaultOfficeRentFee) || 200;
-  const selectedDate = pageContext?.selectedDate || new Date().toISOString().split("T")[0];
-  const visibleMonth = pageContext?.visibleMonth || selectedDate.slice(0, 7);
+interface ParsedCommandDate {
+  targetDate?: string;       // YYYY-MM-DD when a specific day is spoken (e.g. "7 Ekim")
+  targetMonth?: string;      // YYYY-MM when only a month is spoken (e.g. "Ekim'de")
+  explicitYear?: number;
+  resolvedYear: number;
+  dateDisplayLabel?: string; // e.g. "7 Ekim 2026" or "Ekim 2026"
+  cleanedMsgWithoutDate: string;
+}
 
-  // 1. Check if user is asking a question / summary about current page or month
-  if (
-    (asciiMsg.includes("kac seans") || asciiMsg.includes("toplam gelir") || asciiMsg.includes("ozet") || asciiMsg.includes("durum ne") || asciiMsg.includes("ne kadar")) &&
-    !asciiMsg.includes("odendi") &&
-    !asciiMsg.includes("odemesi") &&
-    !asciiMsg.includes("parasi") &&
-    !asciiMsg.includes("fiyat") &&
-    !asciiMsg.includes("ucret") &&
-    !asciiMsg.includes("tamamlandi") &&
-    !asciiMsg.includes("iptal")
-  ) {
-    const activeList = (sessions || []).filter((s: any) => s.type !== "cancelled" && s.type !== "non-session");
-    const paidList = activeList.filter((s: any) => s.paymentStatus === "paid");
-    const unpaidList = activeList.filter((s: any) => s.paymentStatus !== "paid");
-    const gross = activeList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
-    const unpaidTotal = unpaidList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
+function parseTurkishDateFromCommand(asciiMsg: string): ParsedCommandDate {
+  const currentYear = new Date().getFullYear();
+  let explicitYear: number | undefined = undefined;
+
+  const yearMatch = asciiMsg.match(/\b(202[0-9]|203[0-5])\b/);
+  if (yearMatch) {
+    explicitYear = parseInt(yearMatch[1], 10);
+  } else if (asciiMsg.includes("gecen yil") || asciiMsg.includes("gecen sene") || asciiMsg.includes("onceki yil")) {
+    explicitYear = currentYear - 1;
+  } else if (asciiMsg.includes("gelecek yil") || asciiMsg.includes("seneye")) {
+    explicitYear = currentYear + 1;
+  }
+
+  // Rule: If user didn't mention a year, ALWAYS assume the current calendar year
+  const resolvedYear = explicitYear || currentYear;
+  let cleaned = asciiMsg;
+
+  if (/\bbugun(?:un|de|ki)?\b/.test(asciiMsg)) {
+    const today = new Date().toISOString().split("T")[0];
+    cleaned = cleaned.replace(/\bbugun(?:un|de|ki)?\b/g, " ");
     return {
-      reply: `Bu görünümde toplam **${activeList.length} aktif seans** bulunuyor (${paidList.length} ödendi, ${unpaidList.length} bekliyor). Toplam brüt tutar **₺${gross.toLocaleString("tr-TR")}**, tahsilat bekleyen tutar ise **₺${unpaidTotal.toLocaleString("tr-TR")}**.`,
-      actions: []
+      targetDate: today,
+      explicitYear,
+      resolvedYear,
+      dateDisplayLabel: `Bugün (${today})`,
+      cleanedMsgWithoutDate: cleaned
+    };
+  }
+  if (/\bdun(?:un|de|ki)?\b/.test(asciiMsg)) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yesterday = d.toISOString().split("T")[0];
+    cleaned = cleaned.replace(/\bdun(?:un|de|ki)?\b/g, " ");
+    return {
+      targetDate: yesterday,
+      explicitYear,
+      resolvedYear,
+      dateDisplayLabel: `Dün (${yesterday})`,
+      cleanedMsgWithoutDate: cleaned
+    };
+  }
+  if (/\byarin(?:in|da|ki)?\b/.test(asciiMsg)) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const tomorrow = d.toISOString().split("T")[0];
+    cleaned = cleaned.replace(/\byarin(?:in|da|ki)?\b/g, " ");
+    return {
+      targetDate: tomorrow,
+      explicitYear,
+      resolvedYear,
+      dateDisplayLabel: `Yarın (${tomorrow})`,
+      cleanedMsgWithoutDate: cleaned
     };
   }
 
-  // 2. Try to match a client name from the provided sessions or active client profile
-  const uniqueClients = new Map<string, string>(); // asciiName -> original display name
-  (sessions || []).forEach((s: any) => {
+  // Numeric date: DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
+  const numericDateMatch = asciiMsg.match(/\b(\d{1,2})[./-](\d{1,2})(?:[./-](20\d{2}))?\b/);
+  if (numericDateMatch) {
+    const dNum = parseInt(numericDateMatch[1], 10);
+    const mNum = parseInt(numericDateMatch[2], 10);
+    const yNum = numericDateMatch[3] ? parseInt(numericDateMatch[3], 10) : resolvedYear;
+    if (dNum >= 1 && dNum <= 31 && mNum >= 1 && mNum <= 12) {
+      const dd = String(dNum).padStart(2, "0");
+      const mm = String(mNum).padStart(2, "0");
+      cleaned = cleaned.replace(numericDateMatch[0], " ");
+      return {
+        targetDate: `${yNum}-${mm}-${dd}`,
+        explicitYear: numericDateMatch[3] ? yNum : explicitYear,
+        resolvedYear: yNum,
+        dateDisplayLabel: `${dNum}.${mm}.${yNum}`,
+        cleanedMsgWithoutDate: cleaned
+      };
+    }
+  }
+
+  for (const [mKey, mInfo] of Object.entries(TURKISH_MONTHS_MAP)) {
+    const dayBeforeMonthRegex = new RegExp(
+      `\\b(\\d{1,2})\\s*${mKey}(?:[a-z]{0,5})?(?:\\s+(20\\d{2}))?\\b`,
+      "i"
+    );
+    const m1 = asciiMsg.match(dayBeforeMonthRegex);
+    if (m1) {
+      const dayInt = parseInt(m1[1], 10);
+      if (dayInt >= 1 && dayInt <= 31) {
+        const dayStr = String(dayInt).padStart(2, "0");
+        const y = m1[2] ? parseInt(m1[2], 10) : resolvedYear;
+        cleaned = cleaned.replace(m1[0], " ");
+        return {
+          targetDate: `${y}-${mInfo.num}-${dayStr}`,
+          explicitYear: m1[2] ? y : explicitYear,
+          resolvedYear: y,
+          dateDisplayLabel: `${dayInt} ${mInfo.display} ${y}`,
+          cleanedMsgWithoutDate: cleaned
+        };
+      }
+    }
+
+    const monthBeforeDayRegex = new RegExp(
+      `\\b${mKey}(?:\\s+ayinin|\\s+ayi|\\s*in|\\s*un|\\s*nin|\\s*nun)?\\s+(\\d{1,2})(?:\\s*i|\\s*u|\\s*si|\\s*su|\\s*nda|\\s*nde|\\s*inde|\\s*unda)?(?:\\s+(20\\d{2}))?\\b`,
+      "i"
+    );
+    const m2 = asciiMsg.match(monthBeforeDayRegex);
+    if (m2) {
+      const dayInt = parseInt(m2[1], 10);
+      if (dayInt >= 1 && dayInt <= 31) {
+        const dayStr = String(dayInt).padStart(2, "0");
+        const y = m2[2] ? parseInt(m2[2], 10) : resolvedYear;
+        cleaned = cleaned.replace(m2[0], " ");
+        return {
+          targetDate: `${y}-${mInfo.num}-${dayStr}`,
+          explicitYear: m2[2] ? y : explicitYear,
+          resolvedYear: y,
+          dateDisplayLabel: `${dayInt} ${mInfo.display} ${y}`,
+          cleanedMsgWithoutDate: cleaned
+        };
+      }
+    }
+  }
+
+  for (const [mKey, mInfo] of Object.entries(TURKISH_MONTHS_MAP)) {
+    const monthOnlyRegex = new RegExp(
+      `\\b(?:(20\\d{2})\\s+)?${mKey}(?:\\s+ayi|\\s+ayinda|\\s+ayindaki|de|da|teki|taki|deki|daki|in|un|nin|nun)?(?:\\s+(20\\d{2}))?\\b`,
+      "i"
+    );
+    const mm = asciiMsg.match(monthOnlyRegex);
+    if (mm) {
+      const y = mm[1] ? parseInt(mm[1], 10) : mm[2] ? parseInt(mm[2], 10) : resolvedYear;
+      cleaned = cleaned.replace(mm[0], " ");
+      return {
+        targetMonth: `${y}-${mInfo.num}`,
+        explicitYear: mm[1] || mm[2] ? y : explicitYear,
+        resolvedYear: y,
+        dateDisplayLabel: `${mInfo.display} ${y}`,
+        cleanedMsgWithoutDate: cleaned
+      };
+    }
+  }
+
+  return {
+    explicitYear,
+    resolvedYear,
+    cleanedMsgWithoutDate: cleaned
+  };
+}
+
+function findBestClientMatchInPool(asciiMsgWithoutDate: string, pool: any[]): string {
+  const uniqueClients = new Map<string, string>();
+  (pool || []).forEach((s: any) => {
     if (s && s.clientName) {
       const cleanName = String(s.clientName).trim();
       const asciiName = foldTurkishAscii(cleanName);
@@ -115,7 +273,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
   let bestMatchScore = 0;
 
   for (const [asciiClient, originalClient] of uniqueClients.entries()) {
-    if (asciiClient.length >= 3 && asciiMsg.includes(asciiClient)) {
+    if (asciiClient.length >= 3 && asciiMsgWithoutDate.includes(asciiClient)) {
       const score = asciiClient.length + 100;
       if (score > bestMatchScore) {
         bestMatchScore = score;
@@ -123,7 +281,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
       }
     } else {
       const tokens = asciiClient.split(" ").filter((t) => t.length >= 2);
-      if (tokens.length >= 2 && tokens.every((t) => asciiMsg.includes(t))) {
+      if (tokens.length >= 2 && tokens.every((t) => asciiMsgWithoutDate.includes(t))) {
         const score = asciiClient.length + 50;
         if (score > bestMatchScore) {
           bestMatchScore = score;
@@ -132,7 +290,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
       } else if (tokens.length >= 1 && tokens[0].length >= 3) {
         const firstToken = tokens[0];
         const wordRegex = new RegExp(`\\b${firstToken}[a-z]{0,4}\\b`, "i");
-        if (wordRegex.test(asciiMsg)) {
+        if (wordRegex.test(asciiMsgWithoutDate)) {
           const score = firstToken.length;
           if (score > bestMatchScore) {
             bestMatchScore = score;
@@ -143,34 +301,63 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     }
   }
 
-  if (!matchedClientName && pageContext?.selectedClientName) {
-    matchedClientName = pageContext.selectedClientName;
+  return matchedClientName;
+}
+
+function processSmartLocalCommand(message: string, pageContext: any, sessions: any[]): { reply: string; actions: any[] } {
+  const rawMsg = (message || "").trim();
+  const asciiMsg = normalizeSpokenTurkishNumbers(foldTurkishAscii(rawMsg));
+
+  const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
+  const defaultOfficeRentFee = Number(pageContext?.defaultOfficeRentFee) || 200;
+  const selectedDate = pageContext?.selectedDate || new Date().toISOString().split("T")[0];
+  const visibleMonth = pageContext?.visibleMonth || selectedDate.slice(0, 7);
+
+  // 1. Parse date / month / year from command FIRST
+  const parsedDateInfo = parseTurkishDateFromCommand(asciiMsg);
+  const { targetDate, targetMonth, dateDisplayLabel, cleanedMsgWithoutDate } = parsedDateInfo;
+
+  // 2. Check if user is asking a question / summary about current page or month
+  if (
+    (asciiMsg.includes("kac seans") || asciiMsg.includes("toplam gelir") || asciiMsg.includes("ozet") || asciiMsg.includes("durum ne") || asciiMsg.includes("ne kadar")) &&
+    !asciiMsg.includes("odendi") &&
+    !asciiMsg.includes("odemesi") &&
+    !asciiMsg.includes("parasi") &&
+    !asciiMsg.includes("fiyat") &&
+    !asciiMsg.includes("ucret") &&
+    !asciiMsg.includes("tamamlandi") &&
+    !asciiMsg.includes("iptal")
+  ) {
+    const scopedForSummary = targetDate
+      ? (sessions || []).filter((s: any) => s.date === targetDate)
+      : targetMonth
+      ? (sessions || []).filter((s: any) => (s.date || "").startsWith(targetMonth))
+      : sessions || [];
+    const activeList = scopedForSummary.filter((s: any) => s.type !== "cancelled" && s.type !== "non-session");
+    const paidList = activeList.filter((s: any) => s.paymentStatus === "paid");
+    const unpaidList = activeList.filter((s: any) => s.paymentStatus !== "paid");
+    const gross = activeList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
+    const unpaidTotal = unpaidList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
+    const scopeTitle = dateDisplayLabel ? `**${dateDisplayLabel}** döneminde` : "Bu görünümde";
+    return {
+      reply: `${scopeTitle} toplam **${activeList.length} aktif seans** bulunuyor (${paidList.length} ödendi, ${unpaidList.length} bekliyor). Toplam brüt tutar **₺${gross.toLocaleString("tr-TR")}**, tahsilat bekleyen tutar ise **₺${unpaidTotal.toLocaleString("tr-TR")}**.`,
+      actions: []
+    };
   }
 
-  // Parse explicit date in command if any (e.g., "15 ekim", "21 ekim", "bugün", "dün")
-  const turkishMonths: Record<string, string> = {
-    ocak: "01", subat: "02", mart: "03", nisan: "04", mayis: "05", haziran: "06",
-    temmuz: "07", agustos: "08", eylul: "09", ekim: "10", kasim: "11", aralik: "12"
-  };
+  // 3. Strictly filter session pool by targetDate or targetMonth BEFORE matching client
+  let dateScopedPool = sessions || [];
+  if (targetDate) {
+    dateScopedPool = (sessions || []).filter((s: any) => s.date === targetDate);
+  } else if (targetMonth) {
+    dateScopedPool = (sessions || []).filter((s: any) => (s.date || "").startsWith(targetMonth));
+  }
 
-  let targetDate: string | undefined = undefined;
-  if (asciiMsg.includes("bugun")) {
-    targetDate = new Date().toISOString().split("T")[0];
-  } else if (asciiMsg.includes("dun")) {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    targetDate = d.toISOString().split("T")[0];
-  } else {
-    for (const [mName, mNum] of Object.entries(turkishMonths)) {
-      const regex = new RegExp(`\\b(\\d{1,2})\\s*${mName}\\b`, "i");
-      const m = asciiMsg.match(regex);
-      if (m) {
-        const day = String(parseInt(m[1], 10)).padStart(2, "0");
-        const year = visibleMonth ? visibleMonth.slice(0, 4) : String(new Date().getFullYear());
-        targetDate = `${year}-${mNum}-${day}`;
-        break;
-      }
-    }
+  let matchedClientName = findBestClientMatchInPool(cleanedMsgWithoutDate, dateScopedPool);
+  const globalMatchedClientName = matchedClientName || findBestClientMatchInPool(cleanedMsgWithoutDate, sessions || []);
+
+  if (!matchedClientName && !targetDate && !targetMonth && pageContext?.selectedClientName) {
+    matchedClientName = pageContext.selectedClientName;
   }
 
   // Parse updates from Turkish command
@@ -274,8 +461,8 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     }
   }
 
-  // Price parsing
-  const msgWithoutFeeNumbers = asciiMsg
+  // Price parsing (from cleanedMsgWithoutDate so day/year numbers are not mistaken for price)
+  const msgWithoutFeeNumbers = cleanedMsgWithoutDate
     .replace(/(\d)\.(\d{3})\b/g, "$1$2")
     .replace(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?\d{2,5}/g, "")
     .replace(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?\d{2,5}/g, "");
@@ -290,7 +477,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     const pm = msgWithoutFeeNumbers.match(pat);
     if (pm && pm[1]) {
       const val = parseInt(pm[1], 10);
-      const isYearLike = (val === 2024 || val === 2025 || val === 2026) && pat.source === "\\b(\\d{3,5})\\b";
+      const isYearLike = val >= 2020 && val <= 2035 && pat.source === "\\b(\\d{3,5})\\b";
       if (!isYearLike && val >= 200 && val <= 50000) {
         updates.price = val;
         break;
@@ -304,25 +491,80 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
     asciiMsg.includes("gerceklesti") ||
     asciiMsg.includes("bitti");
 
-  if (matchedClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
-    const clientSessions = (sessions || []).filter(
-      (s: any) => s && s.clientName && foldTurkishAscii(s.clientName) === foldTurkishAscii(matchedClientName)
-    );
+  // CRITICAL GUARD: If user explicitly specified a date ("7 Ekim") or month ("Ekim'de")
+  // and no session exists in that date/month for the spoken client, NEVER touch another date/month!
+  if ((targetDate || targetMonth) && (Object.keys(updates).length > 0 || mentionsCompleted)) {
+    if (!matchedClientName) {
+      if (globalMatchedClientName) {
+        const otherDates = (sessions || [])
+          .filter((s: any) => foldTurkishAscii(s.clientName) === foldTurkishAscii(globalMatchedClientName))
+          .map((s: any) => s.date)
+          .slice(0, 3);
+        const otherHint = otherDates.length > 0 ? ` (Diğer kayıtlı seans tarihleri: ${otherDates.join(", ")})` : "";
+        return {
+          reply: `Belirttiğiniz **${dateDisplayLabel || targetDate || targetMonth}** tarihinde **${globalMatchedClientName}** adına kayıtlı bir seans bulunamadı. Başka tarihteki seansların bozulmaması için hiçbir işlem yapılmadı${otherHint}.`,
+          actions: []
+        };
+      }
+      return {
+        reply: `Belirttiğiniz **${dateDisplayLabel || targetDate || targetMonth}** tarihinde eşleşen bir danışan seansı bulunamadı. Herhangi bir seans değiştirilmedi.`,
+        actions: []
+      };
+    }
+  }
 
-    let targetSessions = clientSessions;
+  if (matchedClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
+    const clientFirstToken = foldTurkishAscii(matchedClientName).split(" ")[0];
+    const matchesClient = (s: any) => {
+      if (!s || !s.clientName) return false;
+      const sc = foldTurkishAscii(s.clientName);
+      const mc = foldTurkishAscii(matchedClientName);
+      if (sc === mc) return true;
+      if ( !targetDate && !targetMonth ) return false;
+      const scFirst = sc.split(" ")[0];
+      return scFirst.length >= 3 && scFirst === clientFirstToken;
+    };
+
+    let targetSessions: any[] = [];
     if (targetDate) {
-      const onDate = clientSessions.filter((s: any) => s.date === targetDate);
-      if (onDate.length > 0) targetSessions = onDate;
-    } else if (pageContext?.activeTab === "agenda" && pageContext?.agendaViewMode === "day" && selectedDate) {
-      const onSelected = clientSessions.filter((s: any) => s.date === selectedDate);
-      if (onSelected.length > 0) targetSessions = onSelected;
+      targetSessions = (sessions || []).filter((s: any) => s.date === targetDate && matchesClient(s));
+      if (targetSessions.length === 0) {
+        return {
+          reply: `**${dateDisplayLabel || targetDate}** tarihinde **${matchedClientName}** için seans bulunamadı. Diğer tarihlerdeki seanslara dokunulmadı.`,
+          actions: []
+        };
+      }
+    } else if (targetMonth) {
+      targetSessions = (sessions || []).filter((s: any) => (s.date || "").startsWith(targetMonth) && matchesClient(s));
+      if (targetSessions.length === 0) {
+        return {
+          reply: `**${dateDisplayLabel || targetMonth}** ayında **${matchedClientName}** için seans bulunamadı. Diğer aylardaki seanslara dokunulmadı.`,
+          actions: []
+        };
+      }
+    } else {
+      const clientSessions = (sessions || []).filter((s: any) => foldTurkishAscii(s.clientName) === foldTurkishAscii(matchedClientName));
+      targetSessions = clientSessions;
+
+      if (pageContext?.activeTab === "agenda") {
+        if (pageContext?.agendaViewMode === "day" && selectedDate) {
+          const onSelected = clientSessions.filter((s: any) => s.date === selectedDate);
+          if (onSelected.length > 0) targetSessions = onSelected;
+        } else if (pageContext?.agendaViewMode === "month" && visibleMonth) {
+          const inVisibleMonth = clientSessions.filter((s: any) => (s.date || "").startsWith(visibleMonth));
+          if (inVisibleMonth.length > 0) targetSessions = inVisibleMonth;
+        }
+      }
     }
 
     const wantsAll = asciiMsg.includes("tum ") || asciiMsg.includes("hepsi") || asciiMsg.includes("butun ");
     if (!wantsAll && targetSessions.length > 1) {
+      const referenceDate =
+        targetDate ||
+        (targetMonth ? `${targetMonth}-15` : pageContext?.agendaViewMode === "month" && visibleMonth ? `${visibleMonth}-15` : selectedDate);
       const sorted = [...targetSessions].sort((a: any, b: any) => {
-        const diffA = Math.abs(new Date(a.date).getTime() - new Date(selectedDate).getTime());
-        const diffB = Math.abs(new Date(b.date).getTime() - new Date(selectedDate).getTime());
+        const diffA = Math.abs(new Date(a.date).getTime() - new Date(referenceDate).getTime());
+        const diffB = Math.abs(new Date(b.date).getTime() - new Date(referenceDate).getTime());
         return diffA - diffB;
       });
       targetSessions = [sorted[0]];
@@ -330,6 +572,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
 
     const sessionIds = targetSessions.map((s: any) => s.id).filter(Boolean);
     const firstSession = targetSessions[0];
+    const effectiveClientName = firstSession?.clientName || matchedClientName;
 
     if (mentionsCompleted && !updates.type && firstSession?.type === "cancelled") {
       updates.type = updates.hasOfficeRentFee ? "face-to-face" : "online";
@@ -372,12 +615,12 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
 
     const dateLabel = firstSession?.date || targetDate || selectedDate;
     return {
-      reply: `**${matchedClientName}** (${dateLabel}) seansı komutunuza göre güncellendi: ${summaryParts.join(" • ")}.`,
+      reply: `**${effectiveClientName}** (${dateLabel}) seansı komutunuza göre güncellendi: ${summaryParts.join(" • ")}.`,
       actions: [
         {
           actionType: "UPDATE_SESSIONS",
           sessionIds,
-          clientName: matchedClientName,
+          clientName: effectiveClientName,
           targetDate: dateLabel,
           applyToScope: wantsAll ? "visible_period" : "single",
           updates
@@ -388,7 +631,7 @@ function processSmartLocalCommand(message: string, pageContext: any, sessions: a
 
   return {
     reply:
-      "Komutunuzu aldım ancak hangi danışan veya işlem için uygulanacağını tam eşleştiremedim. Örneğin: *\"Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500 TL, bakıcı parası var, ofis kirası yok\"* şeklinde söyleyebilirsiniz.",
+      "Komutunuzu aldım ancak hangi danışan veya işlem için uygulanacağını tam eşleştiremedim. Örneğin: *\"7 Ekim Özlem seans tamamlandı, ödemesi alındı, fiyatı 1500 TL, bakıcı parası var, ofis kirası yok\"* şeklinde söyleyebilirsiniz.",
     actions: []
   };
 }
@@ -516,6 +759,14 @@ async function startServer() {
         return res.status(400).json({ error: "Mesaj boş olamaz." });
       }
 
+      // If local parser already matched a deterministic session update or date-not-found guard, return immediately
+      const parsedCmdDate = parseTurkishDateFromCommand(normalizeSpokenTurkishNumbers(foldTurkishAscii(message || "")));
+      if (localFallback.actions.length > 0 || parsedCmdDate.targetDate || parsedCmdDate.targetMonth) {
+        if (localFallback.actions.length > 0 || localFallback.reply.includes("bulunamadı")) {
+          return res.json(localFallback);
+        }
+      }
+
       if (!process.env.GEMINI_API_KEY) {
         return res.json(localFallback);
       }
@@ -529,7 +780,14 @@ async function startServer() {
         }
       });
 
-      const compactSessions = (sessions || []).slice(0, 75).map((s: any) => ({
+      const currentCalendarYear = new Date().getFullYear();
+      const scopedInputSessions = parsedCmdDate.targetDate
+        ? (sessions || []).filter((s: any) => s.date === parsedCmdDate.targetDate)
+        : parsedCmdDate.targetMonth
+        ? (sessions || []).filter((s: any) => (s.date || "").startsWith(parsedCmdDate.targetMonth!))
+        : (sessions || []);
+
+      const compactSessions = scopedInputSessions.slice(0, 85).map((s: any) => ({
         id: s.id,
         clientName: s.clientName,
         date: s.date,
@@ -553,6 +811,8 @@ async function startServer() {
 Kullanıcı bir psikolog/klinisyendir. Bulunduğu sayfadaki verilere bakarak sana sesli veya yazılı komutlar verir.
 
 MEVCUT SAYFA VE AYAR BAĞLAMI:
+- Mevcut Takvim Yılı: ${currentCalendarYear} (Kullanıcı yıl belirtmeden "7 Ekim" veya "Ekim'de" derse KESİNLİKLE ${currentCalendarYear} yılını kastediyordur. Sadece açıkça eski bir yıl söylerse o yıla bakılır.)
+- Komuttan Algılanan Hedef Tarih/Ay: ${parsedCmdDate.targetDate || parsedCmdDate.targetMonth || "Belirtilmedi"}
 - Aktif Sekme (activeTab): ${pageContext?.activeTab || "agenda"} (${pageContext?.activeTabLabel || "Ajanda"})
 - Ajanda Görünüm Modu (agendaViewMode): ${pageContext?.agendaViewMode || "day"} (day=Günlük, week=Haftalık, month=Aylık)
 - Seçili Tarih (selectedDate): ${pageContext?.selectedDate || ""}
@@ -567,10 +827,12 @@ ${JSON.stringify(compactSessions)}
 
 ${recentHistory ? `SON KONUŞMA GEÇMİŞİ:\n${recentHistory}\n` : ""}
 
-GÖREVİN:
-1. Kullanıcının Türkçe komutunu dikkatlice analiz et. Sesli konuşmadan kaynaklı ufak yazım/telaffuz hatalarını ("Öden parası alındı" -> "ödemesi alındı", "bakıcı parası var/yok", "ofis kirası var/yok", danışan isimlerindeki ufak harf farkları) akıllıca anla.
-2. Örneğin kullanıcı aylık ekranda veya ajandada: "Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500, bakıcı parası var, ofis kirası yok" dediğinde:
-   - Listeden Ahmet Yılmaz'ın ilgili seansını (eğer tarih belirtildiyse o tarihteki, belirtilmediyse mevcut sayfadaki/gündeki/aydaki ilgili seansını) bul ve 'sessionIds' dizisine o seansın 'id' değerini ekle.
+GÖREVİN VE KESİN TARİH KURALLARI:
+1. Kullanıcının Türkçe komutunu dikkatlice analiz et.
+2. KESİN TARİH VE AY KURALI: Kullanıcı bir gün ("7 Ekim Özlem") veya ay ("Ekim'de Özlem") belirttiyse SADECE o tarihteki veya o aydaki seansı güncelle. O tarihte/ayda o isme ait seans yoksa KESİNLİKLE başka bir aydaki (örneğin Mayıs ayındaki) seansa dokunma, 'actions' dizisini boş döndür ve o tarihte seans bulunamadığını söyle.
+3. YIL KURALI: Kullanıcı yıl söylemediyse (sadece "7 Ekim" dediyse) her zaman mevcut yılı (${currentCalendarYear}) baz al.
+4. Örneğin kullanıcı: "7 Ekim Özlem seans tamamlandı, ödemesi alındı, fiyatı 1500, bakıcı parası var, ofis kirası yok" dediğinde:
+   - Listeden ilgili tarihteki seansı bul ve 'sessionIds' dizisine o seansın 'id' değerini ekle.
    - 'updates' içinde:
      * Fiyat belirtildiyse: price = belirtilen tutar (örn. 1500).
      * "ödemesi alındı / ödendi / parası alındı / öden parası alındı" dendiyse: paymentStatus = "paid". "ödenmedi" dendiyse: paymentStatus = "unpaid".
@@ -581,11 +843,11 @@ GÖREVİN:
      * "ofis kirası yok / kira yok / online" dendiyse: hasOfficeRentFee = false, officeRentFeeAmount = 0.
      * "seans iptal / gelmedi" dendiyse: type = "cancelled", price = 0, hasBabysitterFee = false, hasOfficeRentFee = false.
      * "seans tamamlandı" dendiyse ve mevcut seans "cancelled" ise type = "online" veya "face-to-face" yap.
-3. Eğer kullanıcı yeni bir seans eklemek istiyorsa ("Yarın saat 14:00'e Ayşe Yılmaz için online seans ekle"), actionType = "CREATE_SESSION" kullan.
-4. Eğer kullanıcı bir danışanın tüm borçlarını kapatmak istiyorsa ("Ahmet Yılmaz'ın tüm borçlarını ödendi yap"), actionType = "MARK_CLIENT_ALL_PAID" kullan.
-5. Eğer kullanıcı klinik gideri eklemek istiyorsa ("Elektrik faturası 850 TL gider ekle"), actionType = "ADD_EXPENSE" kullan.
-6. Eğer kullanıcı başka bir sayfaya geçmek istiyorsa ("Borç sayfasına git", "Aylık görünüme geç"), actionType = "NAVIGATE_TAB" kullan.
-7. Eğer kullanıcı sadece sayfadaki verilerle ilgili soru soruyorsa ("Bu ay kaç seans var?", "Ahmet Yılmaz'ın borcu ne kadar?"), actions dizisini boş bırak ve 'reply' içinde net, doğru, Türkçe yanıt ver.
+5. Eğer kullanıcı yeni bir seans eklemek istiyorsa ("Yarın saat 14:00'e Ayşe Yılmaz için online seans ekle"), actionType = "CREATE_SESSION" kullan.
+6. Eğer kullanıcı bir danışanın tüm borçlarını kapatmak istiyorsa ("Ahmet Yılmaz'ın tüm borçlarını ödendi yap"), actionType = "MARK_CLIENT_ALL_PAID" kullan.
+7. Eğer kullanıcı klinik gideri eklemek istiyorsa ("Elektrik faturası 850 TL gider ekle"), actionType = "ADD_EXPENSE" kullan.
+8. Eğer kullanıcı başka bir sayfaya geçmek istiyorsa ("Borç sayfasına git", "Aylık görünüme geç"), actionType = "NAVIGATE_TAB" kullan.
+9. Eğer kullanıcı sadece sayfadaki verilerle ilgili soru soruyorsa ("Bu ay kaç seans var?", "Ahmet Yılmaz'ın borcu ne kadar?"), actions dizisini boş bırak ve 'reply' içinde net, doğru, Türkçe yanıt ver.
 
 KULLANICI KOMUTU: "${message}"`;
 
