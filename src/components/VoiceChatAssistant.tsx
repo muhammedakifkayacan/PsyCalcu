@@ -9,7 +9,10 @@ import {
   VolumeX,
   CheckCircle2,
   RotateCcw,
-  Loader2
+  Loader2,
+  ListChecks,
+  SkipForward,
+  Square
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -89,6 +92,7 @@ interface ChatMessage {
   content: string;
   timestamp: number;
   appliedChanges?: AppliedChangeRecord;
+  queueSessionId?: string;
 }
 
 interface VoiceChatAssistantProps {
@@ -157,6 +161,33 @@ function formatLocalDateIso(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function formatSessionDateDayTime(session: Session): {
+  fullDateLabel: string;
+  dayName: string;
+  timeLabel: string;
+  shortLine: string;
+} {
+  const parts = (session.date || '').split('-').map(Number);
+  let fullDateLabel = session.date;
+  let dayName = '';
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const dt = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    fullDateLabel = dt.toLocaleDateString('tr-TR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    dayName = dt.toLocaleDateString('tr-TR', { weekday: 'long' });
+  }
+  const timeLabel = session.time || '--:--';
+  return {
+    fullDateLabel,
+    dayName,
+    timeLabel,
+    shortLine: `**${session.clientName}** — ${fullDateLabel} ${dayName}, Saat **${timeLabel}**`
+  };
 }
 
 function foldTurkishAscii(str: string): string {
@@ -300,12 +331,10 @@ function parseTurkishDateFromCommand(asciiMsg: string): {
       explicitYear = parseInt(yrStr, 10);
     }
   } else {
-    // Also check if a year like 2021, 2022, 2023, 2024, 2025, 2026 appears and is NOT preceded by fiyat/ücret or followed by tl/lira
     const genericYearRegex = /\b(201[5-9]|202[0-9])\b/g;
     let m: RegExpExecArray | null;
     while ((m = genericYearRegex.exec(cleaned)) !== null) {
       const val = parseInt(m[1], 10);
-      // 2020 and 2025 are divisible by 5, but 2000/2500 are prices; 2015..2029 are years unless preceded by fiyat/ucret
       const before = cleaned.slice(Math.max(0, m.index - 20), m.index);
       const after = cleaned.slice(m.index + m[0].length, m.index + m[0].length + 15);
       const looksLikePrice =
@@ -358,7 +387,6 @@ function parseTurkishDateFromCommand(asciiMsg: string): {
 
   // Day + Month name: e.g. "7 ekim", "7 ekimde", "7 ekim 2025", "ekimin 7 si", "ekim 7"
   for (const [mName, mNum] of Object.entries(TURKISH_MONTHS)) {
-    // Pattern A: <day> <month> [year]
     const dayFirstRegex = new RegExp(
       `\\b(\\d{1,2})\\s*${mName}(?:ta|te|da|de|daki|deki|tan|ten|dan|den)?(?:\\s+gunu|\\s+tarihli|\\s+tarihinde)?(?:\\s+(201\\d|202\\d|203\\d))?\\b`,
       'i'
@@ -380,7 +408,6 @@ function parseTurkishDateFromCommand(asciiMsg: string): {
       }
     }
 
-    // Pattern B: <month>[in/un] <day>[si/i] (e.g. "ekimin 7 si", "ekim 7")
     const monthFirstDayRegex = new RegExp(
       `\\b${mName}(?:in|un|nin|nun)?\\s+(\\d{1,2})(?:\\s*(?:si|i|u|su|sinde|inde|unda|sinda))?\\b`,
       'i'
@@ -487,6 +514,181 @@ const COMMAND_STOP_WORDS = new Set([
 ]);
 
 /**
+ * Extracts session field updates (price, paymentStatus, paymentMethod, babysitter, office rent, type)
+ * from a normalized ASCII Turkish command string.
+ */
+function extractUpdatesFromAsciiCommand(
+  asciiMsg: string,
+  cleanedMsgWithoutDate: string,
+  defaultBabysitterFee: number,
+  defaultOfficeRentFee: number
+): { updates: NonNullable<AssistantAction['updates']>; mentionsCompleted: boolean } {
+  const updates: NonNullable<AssistantAction['updates']> = {};
+
+  if (asciiMsg.includes('iptal') || asciiMsg.includes('gelmedi') || asciiMsg.includes('katilmadi')) {
+    updates.type = 'cancelled';
+    updates.price = 0;
+    updates.hasBabysitterFee = false;
+    updates.babysitterFeeAmount = 0;
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  } else if (
+    asciiMsg.includes('yuz yuze') ||
+    asciiMsg.includes('yuzyuze') ||
+    asciiMsg.includes('ofiste')
+  ) {
+    updates.type = 'face-to-face';
+  } else if (
+    asciiMsg.includes('online') ||
+    asciiMsg.includes('onlayn') ||
+    asciiMsg.includes('goruntulu')
+  ) {
+    updates.type = 'online';
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  }
+
+  if (
+    asciiMsg.includes('odenmedi') ||
+    asciiMsg.includes('odemedi') ||
+    asciiMsg.includes('alinmadi') ||
+    asciiMsg.includes('borc olarak') ||
+    asciiMsg.includes('odeme yok')
+  ) {
+    updates.paymentStatus = 'unpaid';
+    updates.paidAmount = 0;
+  } else if (
+    asciiMsg.includes('odendi') ||
+    asciiMsg.includes('odemesi alindi') ||
+    asciiMsg.includes('oden parasi alindi') ||
+    asciiMsg.includes('odeme parasi alindi') ||
+    asciiMsg.includes('parasi alindi') ||
+    asciiMsg.includes('parasini verdi') ||
+    asciiMsg.includes('parasini aldim') ||
+    asciiMsg.includes('ucreti alindi') ||
+    asciiMsg.includes('ucret alindi') ||
+    asciiMsg.includes('odeme alindi') ||
+    asciiMsg.includes('tahsil edildi') ||
+    asciiMsg.includes('odedi') ||
+    asciiMsg.includes('alindi')
+  ) {
+    updates.paymentStatus = 'paid';
+  }
+
+  if (asciiMsg.includes('nakit') || asciiMsg.includes('elden')) {
+    updates.paymentMethod = 'cash';
+    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
+  } else if (
+    asciiMsg.includes('kredi kart') ||
+    asciiMsg.includes('kartla') ||
+    asciiMsg.includes('kart') ||
+    asciiMsg.includes('pos')
+  ) {
+    updates.paymentMethod = 'card';
+    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
+  } else if (
+    asciiMsg.includes('havale') ||
+    asciiMsg.includes('eft') ||
+    asciiMsg.includes('iban') ||
+    asciiMsg.includes('banka')
+  ) {
+    updates.paymentMethod = 'transfer';
+    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
+  }
+
+  if (
+    asciiMsg.includes('bakici parasi yok') ||
+    asciiMsg.includes('bakici yok') ||
+    asciiMsg.includes('bakici ucreti yok') ||
+    asciiMsg.includes('bakicisiz') ||
+    asciiMsg.includes('bakici olmasin') ||
+    asciiMsg.includes('bakici sil')
+  ) {
+    updates.hasBabysitterFee = false;
+    updates.babysitterFeeAmount = 0;
+  } else if (
+    asciiMsg.includes('bakici parasi var') ||
+    asciiMsg.includes('bakici var') ||
+    asciiMsg.includes('bakici ucreti var') ||
+    asciiMsg.includes('bakici eklensin') ||
+    asciiMsg.includes('bakici parasi olsun') ||
+    /bakici(?:\s+parasi|\s+ucreti)?\s+\d{2,5}/.test(asciiMsg)
+  ) {
+    updates.hasBabysitterFee = true;
+    const babyNumMatch = asciiMsg.match(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?(\d{2,5})/);
+    updates.babysitterFeeAmount = babyNumMatch
+      ? parseInt(babyNumMatch[1], 10)
+      : defaultBabysitterFee;
+  }
+
+  if (
+    asciiMsg.includes('ofis kirasi yok') ||
+    asciiMsg.includes('oda kirasi yok') ||
+    asciiMsg.includes('kira yok') ||
+    asciiMsg.includes('ofis ucreti yok') ||
+    asciiMsg.includes('ofis yok') ||
+    asciiMsg.includes('kirasiz') ||
+    asciiMsg.includes('kira olmasin')
+  ) {
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  } else if (
+    asciiMsg.includes('ofis kirasi var') ||
+    asciiMsg.includes('oda kirasi var') ||
+    asciiMsg.includes('kira var') ||
+    asciiMsg.includes('ofis ucreti var') ||
+    asciiMsg.includes('ofis var') ||
+    /(?:ofis|oda)\s*(?:kirasi|ucreti)\s+\d{2,5}/.test(asciiMsg)
+  ) {
+    updates.hasOfficeRentFee = true;
+    const rentNumMatch = asciiMsg.match(
+      /(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/
+    );
+    updates.officeRentFeeAmount = rentNumMatch
+      ? parseInt(rentNumMatch[1], 10)
+      : defaultOfficeRentFee;
+    if (!updates.type) {
+      updates.type = 'face-to-face';
+    }
+  }
+
+  const msgWithoutFeeNumbers = cleanedMsgWithoutDate
+    .replace(/(\d)\.(\d{3})\b/g, '$1$2')
+    .replace(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?\d{2,5}/g, '')
+    .replace(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?\d{2,5}/g, '');
+
+  const pricePatterns = [
+    /(?:fiyati|fiyat|ucreti|ucret|seans ucreti|tutar|tutari)\s*(?:su kadar\s*)?(\d{3,5})/i,
+    /(\d{3,5})\s*(?:tl|lira|₺|turk lirasi)/i,
+    /(?:fiyati|fiyat|ucreti|ucret|odendi|alindi)\s+(\d{3,5})\b/i,
+    /\b(\d{3,5})\b/
+  ];
+
+  for (const pat of pricePatterns) {
+    const pm = msgWithoutFeeNumbers.match(pat);
+    if (pm && pm[1]) {
+      const val = parseInt(pm[1], 10);
+      const isYearLike =
+        val >= 2015 && val <= 2030 && val !== 2000 && pat.source === '\\b(\\d{3,5})\\b';
+      if (!isYearLike && val >= 200 && val <= 50000) {
+        updates.price = val;
+        break;
+      }
+    }
+  }
+
+  const mentionsCompleted =
+    asciiMsg.includes('tamamlandi') ||
+    asciiMsg.includes('yapildi') ||
+    asciiMsg.includes('gerceklesti') ||
+    asciiMsg.includes('bitti') ||
+    asciiMsg === 'tamam' ||
+    asciiMsg === 'evet';
+
+  return { updates, mentionsCompleted };
+}
+
+/**
  * Finds the best matching client name ONLY within the provided session pool.
  */
 function findBestClientMatchInPool(asciiMsgWithoutDate: string, pool: Session[]): string {
@@ -524,7 +726,6 @@ function findBestClientMatchInPool(asciiMsgWithoutDate: string, pool: Session[])
       } else if (tokens.length >= 1) {
         for (const token of tokens) {
           if (token.length < 3) continue;
-          // Match token with optional Turkish possessive/dative/locative suffix
           const wordRegex = new RegExp(`\\b${token}[a-z]{0,4}\\b`, 'i');
           if (wordRegex.test(asciiMsgWithoutDate)) {
             const score = token.length + 15;
@@ -556,7 +757,6 @@ function processClientCommandLocally(
   const asciiRaw = foldTurkishAscii(rawMsg);
   const asciiMsg = normalizeSpokenTurkishNumbers(asciiRaw);
 
-  const defaultPrice = Number(pageContext?.defaultSessionPrice) || 1200;
   const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
   const defaultOfficeRentFee = Number(pageContext?.defaultOfficeRentFee) || 200;
   const selectedDate: string = pageContext?.selectedDate || formatLocalDateIso();
@@ -658,168 +858,14 @@ function processClientCommandLocally(
   const allActiveSessions = (allSessions || []).filter(s => !s.isDeleted);
 
   // 4. Parse updates from Turkish command
-  const updates: NonNullable<AssistantAction['updates']> = {};
-
-  if (asciiMsg.includes('iptal') || asciiMsg.includes('gelmedi') || asciiMsg.includes('katilmadi')) {
-    updates.type = 'cancelled';
-    updates.price = 0;
-    updates.hasBabysitterFee = false;
-    updates.babysitterFeeAmount = 0;
-    updates.hasOfficeRentFee = false;
-    updates.officeRentFeeAmount = 0;
-  } else if (
-    asciiMsg.includes('yuz yuze') ||
-    asciiMsg.includes('yuzyuze') ||
-    asciiMsg.includes('ofiste')
-  ) {
-    updates.type = 'face-to-face';
-  } else if (
-    asciiMsg.includes('online') ||
-    asciiMsg.includes('onlayn') ||
-    asciiMsg.includes('goruntulu')
-  ) {
-    updates.type = 'online';
-    updates.hasOfficeRentFee = false;
-    updates.officeRentFeeAmount = 0;
-  }
-
-  if (
-    asciiMsg.includes('odenmedi') ||
-    asciiMsg.includes('odemedi') ||
-    asciiMsg.includes('alinmadi') ||
-    asciiMsg.includes('borc olarak') ||
-    asciiMsg.includes('odeme yok')
-  ) {
-    updates.paymentStatus = 'unpaid';
-    updates.paidAmount = 0;
-  } else if (
-    asciiMsg.includes('odendi') ||
-    asciiMsg.includes('odemesi alindi') ||
-    asciiMsg.includes('oden parasi alindi') ||
-    asciiMsg.includes('odeme parasi alindi') ||
-    asciiMsg.includes('parasi alindi') ||
-    asciiMsg.includes('parasini verdi') ||
-    asciiMsg.includes('parasini aldim') ||
-    asciiMsg.includes('ucreti alindi') ||
-    asciiMsg.includes('ucret alindi') ||
-    asciiMsg.includes('odeme alindi') ||
-    asciiMsg.includes('tahsil edildi') ||
-    asciiMsg.includes('odedi')
-  ) {
-    updates.paymentStatus = 'paid';
-  }
-
-  if (asciiMsg.includes('nakit') || asciiMsg.includes('elden')) {
-    updates.paymentMethod = 'cash';
-    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
-  } else if (
-    asciiMsg.includes('kredi kart') ||
-    asciiMsg.includes('kartla') ||
-    asciiMsg.includes('pos')
-  ) {
-    updates.paymentMethod = 'card';
-    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
-  } else if (
-    asciiMsg.includes('havale') ||
-    asciiMsg.includes('eft') ||
-    asciiMsg.includes('iban') ||
-    asciiMsg.includes('banka')
-  ) {
-    updates.paymentMethod = 'transfer';
-    if (!updates.paymentStatus) updates.paymentStatus = 'paid';
-  }
-
-  if (
-    asciiMsg.includes('bakici parasi yok') ||
-    asciiMsg.includes('bakici yok') ||
-    asciiMsg.includes('bakici ucreti yok') ||
-    asciiMsg.includes('bakicisiz') ||
-    asciiMsg.includes('bakici olmasin') ||
-    asciiMsg.includes('bakici sil')
-  ) {
-    updates.hasBabysitterFee = false;
-    updates.babysitterFeeAmount = 0;
-  } else if (
-    asciiMsg.includes('bakici parasi var') ||
-    asciiMsg.includes('bakici var') ||
-    asciiMsg.includes('bakici ucreti var') ||
-    asciiMsg.includes('bakici eklensin') ||
-    asciiMsg.includes('bakici parasi olsun') ||
-    /bakici(?:\s+parasi|\s+ucreti)?\s+\d{2,5}/.test(asciiMsg)
-  ) {
-    updates.hasBabysitterFee = true;
-    const babyNumMatch = asciiMsg.match(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?(\d{2,5})/);
-    updates.babysitterFeeAmount = babyNumMatch
-      ? parseInt(babyNumMatch[1], 10)
-      : defaultBabysitterFee;
-  }
-
-  if (
-    asciiMsg.includes('ofis kirasi yok') ||
-    asciiMsg.includes('oda kirasi yok') ||
-    asciiMsg.includes('kira yok') ||
-    asciiMsg.includes('ofis ucreti yok') ||
-    asciiMsg.includes('ofis yok') ||
-    asciiMsg.includes('kirasiz') ||
-    asciiMsg.includes('kira olmasin')
-  ) {
-    updates.hasOfficeRentFee = false;
-    updates.officeRentFeeAmount = 0;
-  } else if (
-    asciiMsg.includes('ofis kirasi var') ||
-    asciiMsg.includes('oda kirasi var') ||
-    asciiMsg.includes('kira var') ||
-    asciiMsg.includes('ofis ucreti var') ||
-    asciiMsg.includes('ofis var') ||
-    /(?:ofis|oda)\s*(?:kirasi|ucreti)\s+\d{2,5}/.test(asciiMsg)
-  ) {
-    updates.hasOfficeRentFee = true;
-    const rentNumMatch = asciiMsg.match(
-      /(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/
-    );
-    updates.officeRentFeeAmount = rentNumMatch
-      ? parseInt(rentNumMatch[1], 10)
-      : defaultOfficeRentFee;
-    if (!updates.type) {
-      updates.type = 'face-to-face';
-    }
-  }
-
-  // Price parsing on cleanedMsgWithoutDate so that day/year numbers are never mistaken for prices
-  const msgWithoutFeeNumbers = cleanedMsgWithoutDate
-    .replace(/(\d)\.(\d{3})\b/g, '$1$2')
-    .replace(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?\d{2,5}/g, '')
-    .replace(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?\d{2,5}/g, '');
-
-  const pricePatterns = [
-    /(?:fiyati|fiyat|ucreti|ucret|seans ucreti|tutar|tutari)\s*(?:su kadar\s*)?(\d{3,5})/i,
-    /(\d{3,5})\s*(?:tl|lira|₺|turk lirasi)/i,
-    /(?:fiyati|fiyat|ucreti|ucret|odendi|alindi)\s+(\d{3,5})\b/i,
-    /\b(\d{3,5})\b/
-  ];
-
-  for (const pat of pricePatterns) {
-    const pm = msgWithoutFeeNumbers.match(pat);
-    if (pm && pm[1]) {
-      const val = parseInt(pm[1], 10);
-      const isYearLike =
-        val >= 2015 && val <= 2030 && val !== 2000 && pat.source === '\\b(\\d{3,5})\\b';
-      if (!isYearLike && val >= 200 && val <= 50000) {
-        updates.price = val;
-        break;
-      }
-    }
-  }
-
-  const mentionsCompleted =
-    asciiMsg.includes('tamamlandi') ||
-    asciiMsg.includes('yapildi') ||
-    asciiMsg.includes('gerceklesti') ||
-    asciiMsg.includes('bitti');
+  const { updates, mentionsCompleted } = extractUpdatesFromAsciiCommand(
+    asciiMsg,
+    cleanedMsgWithoutDate,
+    defaultBabysitterFee,
+    defaultOfficeRentFee
+  );
 
   // 5. Strictly Scope Sessions by Date / Month BEFORE matching Client Name!
-  // This guarantees that "7 Ekim Özlem" ONLY looks at 7 October (of the resolved year),
-  // and "Ekim'de Özlem" ONLY looks at October (of the resolved year), NEVER touching 5 May!
   let scopedPool: Session[] = [];
   let scopeDescription = '';
 
@@ -841,7 +887,6 @@ function processClientCommandLocally(
         scopedPool = allActiveSessions.filter(s => s.date.startsWith(visibleMonth));
       }
     } else {
-      // Monthly or Weekly Agenda view: strictly scope to visibleMonth first!
       scopedPool = allActiveSessions.filter(s => s.date.startsWith(visibleMonth));
     }
   } else {
@@ -850,9 +895,6 @@ function processClientCommandLocally(
 
   let matchedClientName = findBestClientMatchInPool(cleanedMsgWithoutDate, scopedPool);
 
-  // If the user explicitly gave a targetDate or targetMonth (e.g. "7 Ekim Özlem" or "Ekim'de Özlem")
-  // and no session for that client exists in that date/month:
-  // DO NOT fall back to modifying a session from another month (like 5 May)!
   if (!matchedClientName && (targetDate || targetMonth)) {
     const globalClientMatch = findBestClientMatchInPool(cleanedMsgWithoutDate, allActiveSessions);
     const wantsExplicitCreate =
@@ -871,7 +913,6 @@ function processClientCommandLocally(
     matchedClientName = globalClientMatch;
   }
 
-  // If no explicit date/month was given and not found in visibleMonth, check pageContext.selectedClientName
   if (!matchedClientName && !targetDate && !targetMonth && pageContext?.selectedClientName) {
     matchedClientName = pageContext.selectedClientName;
   }
@@ -936,12 +977,10 @@ function processClientCommandLocally(
       asciiMsg.includes('tum ') || asciiMsg.includes('hepsi') || asciiMsg.includes('butun ');
 
     if (!wantsAll && targetSessions.length > 1) {
-      // If user is marking as paid and there's exactly 1 unpaid session in this scope, prefer it
       const unpaidInScope = targetSessions.filter(s => s.paymentStatus !== 'paid');
       if (updates.paymentStatus === 'paid' && unpaidInScope.length === 1) {
         targetSessions = unpaidInScope;
       } else {
-        // Pick reference date inside the same month (avoid stale selectedDate from another month!)
         const activeMonthPrefix = targetMonth || visibleMonth;
         const refDate =
           targetDate ||
@@ -1052,6 +1091,11 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     }
   });
 
+  // Sequential Unpaid Session Review Queue State
+  const [queueSessionIds, setQueueSessionIds] = useState<string[]>([]);
+  const [queueIndex, setQueueIndex] = useState<number>(0);
+  const [isQueueActive, setIsQueueActive] = useState<boolean>(false);
+
   const visibleMonthKey = useMemo(() => {
     const y = calendarViewDate.getFullYear();
     const m = String(calendarViewDate.getMonth() + 1).padStart(2, '0');
@@ -1061,6 +1105,26 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
   const visibleMonthLabel = useMemo(() => {
     return calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
   }, [calendarViewDate]);
+
+  // Unpaid sessions of the currently viewed month (sorted chronologically by date & time)
+  const monthUnpaidSessions = useMemo(() => {
+    return sessions
+      .filter(
+        s =>
+          !s.isDeleted &&
+          s.type !== 'cancelled' &&
+          s.type !== 'non-session' &&
+          s.paymentStatus !== 'paid' &&
+          s.date.startsWith(visibleMonthKey)
+      )
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+  }, [sessions, visibleMonthKey]);
+
+  const activeQueueSession = useMemo(() => {
+    if (!isQueueActive || queueIndex >= queueSessionIds.length) return null;
+    const targetId = queueSessionIds[queueIndex];
+    return sessions.find(s => s.id === targetId && !s.isDeleted) || null;
+  }, [isQueueActive, queueSessionIds, queueIndex, sessions]);
 
   const pageRelevantSessions = useMemo(() => {
     const active = sessions.filter(s => !s.isDeleted);
@@ -1120,7 +1184,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     {
       id: 'welcome_msg',
       role: 'assistant',
-      content: `Merhaba! Bulunduğunuz sayfadaki seansları ve muhasebe verilerini görebiliyorum. Bana tarih veya ay belirterek sesli/yazılı komut verebilirsiniz.\n\n**Örnek Komut:**\n*"7 Ekim ${exampleClientName} seans tamamlandı, ödemesi alındı, fiyatı ${settings.defaultSessionPrice || 1200} TL, bakıcı parası var, ofis kirası yok"*`,
+      content: `Merhaba! Bulunduğunuz sayfadaki seansları ve muhasebe verilerini görebiliyorum. İsterseniz üstteki **"Bu Ayın Ödenmemiş Seanslarını Sırayla Düzenle"** butonuna basarak bu ayın ödenmemiş seanslarını tek tek hızla güncelleyebilirsiniz.\n\n**Örnek Komut:**\n*"7 Ekim ${exampleClientName} seans tamamlandı, ödemesi alındı, fiyatı ${settings.defaultSessionPrice || 1200} TL, bakıcı parası var, ofis kirası yok"*`,
       timestamp: Date.now()
     }
   ]);
@@ -1170,6 +1234,165 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     });
   };
 
+  const formatQueuePromptForSession = (
+    session: Session,
+    indexOneBased: number,
+    totalCount: number,
+    introHeader?: string
+  ): string => {
+    const info = formatSessionDateDayTime(session);
+    const typeLabel =
+      session.type === 'face-to-face'
+        ? 'Yüz Yüze'
+        : session.type === 'online'
+        ? 'Online'
+        : session.type;
+    const babyLabel = session.hasBabysitterFee
+      ? `Var (₺${session.babysitterFeeAmount || settings.defaultBabysitterFee || 250})`
+      : 'Yok';
+    const officeLabel = session.hasOfficeRentFee
+      ? `Var (₺${session.officeRentFeeAmount || settings.defaultOfficeRentFee || 200})`
+      : 'Yok';
+
+    return `${introHeader ? `${introHeader}\n\n---\n\n` : ''}📋 **Sıradaki Seans (${indexOneBased} / ${totalCount}):**\n• **İsim:** ${session.clientName}\n• **Tarih:** ${info.fullDateLabel}\n• **Gün:** ${info.dayName}\n• **Saat:** ${info.timeLabel}\n• **Mevcut Bilgi:** ${typeLabel} • ₺${(session.price || 0).toLocaleString('tr-TR')} • Bakıcı: ${babyLabel} • Ofis: ${officeLabel}\n\n🎙️ *Bu seans için yanıtınızı söyleyin veya yazın (Örn: "Ödendi, fiyatı ${session.price || settings.defaultSessionPrice || 1200}, bakıcı var, ofis yok" veya "Atla"):*`;
+  };
+
+  const handleStartUnpaidQueue = () => {
+    if (monthUnpaidSessions.length === 0) {
+      const msg: ChatMessage = {
+        id: `ast_queue_empty_${Date.now()}`,
+        role: 'assistant',
+        content: `🎉 **${visibleMonthLabel}** döneminde ödendi işaretlenmemiş (bekleyen) hiçbir seans bulunmuyor! Tüm seans ödemeleri tamamlanmış görünüyor.`,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, msg]);
+      speakText(`${visibleMonthLabel} döneminde ödenmemiş seans bulunmuyor.`);
+      setIsQueueActive(false);
+      setQueueSessionIds([]);
+      setQueueIndex(0);
+      return;
+    }
+
+    const ids = monthUnpaidSessions.map(s => s.id);
+    setQueueSessionIds(ids);
+    setQueueIndex(0);
+    setIsQueueActive(true);
+
+    const listLines = monthUnpaidSessions.map((s, idx) => {
+      const info = formatSessionDateDayTime(s);
+      return `${idx + 1}. **${s.clientName}** — ${info.fullDateLabel} ${info.dayName} • Saat **${info.timeLabel}** *(₺${(s.price || 0).toLocaleString('tr-TR')})*`;
+    });
+
+    const firstSession = monthUnpaidSessions[0];
+    const firstInfo = formatSessionDateDayTime(firstSession);
+    const intro = `**${visibleMonthLabel}** ayında ödendi işaretlenmemiş toplam **${monthUnpaidSessions.length} seans** bulundu:\n\n${listLines.join('\n')}`;
+
+    const fullContent = formatQueuePromptForSession(
+      firstSession,
+      1,
+      monthUnpaidSessions.length,
+      intro
+    );
+
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `ast_queue_start_${Date.now()}`,
+        role: 'assistant',
+        content: fullContent,
+        timestamp: Date.now(),
+        queueSessionId: firstSession.id
+      }
+    ]);
+
+    speakText(
+      `${visibleMonthLabel} ayında ${monthUnpaidSessions.length} ödenmemiş seans var. İlk seans: ${firstSession.clientName}, ${firstInfo.fullDateLabel} ${firstInfo.dayName}, saat ${firstInfo.timeLabel}. Nasıl düzenleyelim?`
+    );
+  };
+
+  const advanceQueueToNext = (
+    fromIndex: number,
+    updatedSessionsLookup?: Map<string, Session>,
+    prefixMessage?: string,
+    appliedRecord?: AppliedChangeRecord
+  ) => {
+    const nextIdx = fromIndex + 1;
+    // Find the next valid session in queueSessionIds
+    let foundNextSession: Session | null = null;
+    let foundIdx = nextIdx;
+
+    while (foundIdx < queueSessionIds.length) {
+      const candidateId = queueSessionIds[foundIdx];
+      const s =
+        updatedSessionsLookup?.get(candidateId) ||
+        sessions.find(item => item.id === candidateId && !item.isDeleted);
+      if (s) {
+        foundNextSession = s;
+        break;
+      }
+      foundIdx++;
+    }
+
+    if (!foundNextSession) {
+      setIsQueueActive(false);
+      setQueueSessionIds([]);
+      setQueueIndex(0);
+      const doneText = `${prefixMessage ? `${prefixMessage}\n\n---\n\n` : ''}✅ **Tebrikler!** **${visibleMonthLabel}** ayındaki tüm ödenmemiş seansların kontrolünü tamamladınız.`;
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `ast_queue_done_${Date.now()}`,
+          role: 'assistant',
+          content: doneText,
+          timestamp: Date.now(),
+          appliedChanges: appliedRecord
+        }
+      ]);
+      speakText('Tebrikler, bu ayın tüm ödenmemiş seanslarını tamamladınız.');
+      return;
+    }
+
+    setQueueIndex(foundIdx);
+    const nextPrompt = formatQueuePromptForSession(
+      foundNextSession,
+      foundIdx + 1,
+      queueSessionIds.length,
+      prefixMessage
+    );
+    const nextInfo = formatSessionDateDayTime(foundNextSession);
+
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `ast_queue_step_${Date.now()}`,
+        role: 'assistant',
+        content: nextPrompt,
+        timestamp: Date.now(),
+        appliedChanges: appliedRecord,
+        queueSessionId: foundNextSession!.id
+      }
+    ]);
+
+    speakText(
+      `Kaydedildi. Sıradaki: ${foundNextSession.clientName}, ${nextInfo.fullDateLabel} ${nextInfo.dayName}, saat ${nextInfo.timeLabel}.`
+    );
+  };
+
+  const handleStopQueue = () => {
+    setIsQueueActive(false);
+    setQueueSessionIds([]);
+    setQueueIndex(0);
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `ast_queue_stop_${Date.now()}`,
+        role: 'assistant',
+        content: '⏹️ Sıralı ödenmemiş seans inceleme modu sonlandırıldı. İstediğiniz zaman tekrar başlatabilirsiniz.',
+        timestamp: Date.now()
+      }
+    ]);
+  };
+
   const executeAssistantActions = (
     actions: AssistantAction[],
     enforcedDateScope?: { targetDate?: string; targetMonth?: string }
@@ -1186,7 +1409,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
         const effectiveTargetDate = enforcedDateScope?.targetDate || action.targetDate;
         const effectiveTargetMonth = enforcedDateScope?.targetMonth || action.targetMonth;
 
-        // Filter action.sessionIds so that no session outside effectiveTargetDate / effectiveTargetMonth can EVER be modified
         const rawIds = Array.isArray(action.sessionIds) ? action.sessionIds : [];
         const matchedIds = new Set<string>();
 
@@ -1204,10 +1426,8 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
           );
 
           if (effectiveTargetDate) {
-            // Strictly filter to effectiveTargetDate — NEVER fall back to another date!
             candidates = candidates.filter(s => s.date === effectiveTargetDate);
           } else if (effectiveTargetMonth) {
-            // Strictly filter to effectiveTargetMonth — NEVER fall back to another month!
             candidates = candidates.filter(s => s.date.startsWith(effectiveTargetMonth));
           } else if (activeTab === 'agenda' && agendaViewMode === 'day') {
             const onSelected = candidates.filter(s => s.date === selectedDate);
@@ -1479,6 +1699,126 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     setMessages(prev => [...prev, userMsg]);
     if (textOverride === undefined) setInput('');
     setInterimTranscript('');
+
+    const asciiNormalized = normalizeSpokenTurkishNumbers(foldTurkishAscii(textToSend));
+
+    // Check if user is asking to start the unpaid queue by voice/text
+    if (
+      (asciiNormalized.includes('odenmemis seans') ||
+        asciiNormalized.includes('odendi isaretlenmemis') ||
+        asciiNormalized.includes('sirayla getir') ||
+        asciiNormalized.includes('sirayla duzenle')) &&
+      !isQueueActive
+    ) {
+      handleStartUnpaidQueue();
+      return;
+    }
+
+    // Handle active Sequential Unpaid Queue Mode
+    if (isQueueActive && activeQueueSession) {
+      // Check for stop / exit queue commands
+      if (
+        asciiNormalized === 'durdur' ||
+        asciiNormalized === 'bitir' ||
+        asciiNormalized === 'kapat' ||
+        asciiNormalized === 'cik' ||
+        asciiNormalized.includes('siralamayi bitir')
+      ) {
+        handleStopQueue();
+        return;
+      }
+
+      // Check for skip / pass commands
+      if (
+        asciiNormalized === 'atla' ||
+        asciiNormalized === 'gec' ||
+        asciiNormalized === 'pas' ||
+        asciiNormalized === 'sonraki' ||
+        asciiNormalized === 'siradaki' ||
+        asciiNormalized.includes('bu seansi atla') ||
+        asciiNormalized.includes('simdilik gec')
+      ) {
+        const skippedInfo = formatSessionDateDayTime(activeQueueSession);
+        advanceQueueToNext(
+          queueIndex,
+          undefined,
+          `⏭️ **${activeQueueSession.clientName}** (${skippedInfo.fullDateLabel} ${skippedInfo.dayName} ${skippedInfo.timeLabel}) seansı değiştirilmeden atlandı.`
+        );
+        return;
+      }
+
+      // Check if user specified a different date or different client explicitly, or if they are replying for the current queue session
+      const parsedDateScope = parseTurkishDateFromCommand(asciiNormalized);
+      const defaultBabysitterFee = Number(settings.defaultBabysitterFee) || 250;
+      const defaultOfficeRentFee = Number(settings.defaultOfficeRentFee) || 200;
+
+      const { updates, mentionsCompleted } = extractUpdatesFromAsciiCommand(
+        asciiNormalized,
+        parsedDateScope.cleanedMsgWithoutDate,
+        defaultBabysitterFee,
+        defaultOfficeRentFee
+      );
+
+      // In queue mode, if user gave updates (or said "tamamlandı" / "ödendi" / "tamam" / price / fee)
+      if (Object.keys(updates).length > 0 || mentionsCompleted) {
+        // If user is reviewing unpaid queue and says "tamamlandı" or gives a price/fee without saying "ödenmedi" or "iptal", default paymentStatus to 'paid' if they said tamam/ödendi
+        if (mentionsCompleted && !updates.paymentStatus && updates.type !== 'cancelled') {
+          updates.paymentStatus = 'paid';
+        }
+
+        const queueAction: AssistantAction = {
+          actionType: 'UPDATE_SESSIONS',
+          sessionIds: [activeQueueSession.id],
+          clientName: activeQueueSession.clientName,
+          targetDate: activeQueueSession.date,
+          targetMonth: activeQueueSession.date.slice(0, 7),
+          applyToScope: 'single',
+          updates
+        };
+
+        const appliedRecord = executeAssistantActions([queueAction], {
+          targetDate: activeQueueSession.date,
+          targetMonth: activeQueueSession.date.slice(0, 7)
+        });
+
+        const curInfo = formatSessionDateDayTime(activeQueueSession);
+        const summaryParts: string[] = [];
+        if (updates.type === 'cancelled') {
+          summaryParts.push('İptal Edildi');
+        } else if (updates.type === 'face-to-face') {
+          summaryParts.push('Yüz Yüze');
+        } else if (updates.type === 'online') {
+          summaryParts.push('Online');
+        }
+        const finalPrice =
+          typeof updates.price === 'number' ? updates.price : activeQueueSession.price;
+        summaryParts.push(`Ücret: ₺${(finalPrice || 0).toLocaleString('tr-TR')}`);
+        if (updates.paymentStatus === 'paid') {
+          summaryParts.push('Ödendi ✓');
+        } else if (updates.paymentStatus === 'unpaid') {
+          summaryParts.push('Ödenmedi');
+        }
+        if (typeof updates.hasBabysitterFee === 'boolean') {
+          summaryParts.push(
+            updates.hasBabysitterFee
+              ? `Bakıcı: Var (₺${updates.babysitterFeeAmount || defaultBabysitterFee})`
+              : 'Bakıcı: Yok'
+          );
+        }
+        if (typeof updates.hasOfficeRentFee === 'boolean') {
+          summaryParts.push(
+            updates.hasOfficeRentFee
+              ? `Ofis Kirası: Var (₺${updates.officeRentFeeAmount || defaultOfficeRentFee})`
+              : 'Ofis Kirası: Yok'
+          );
+        }
+
+        const confirmationHeader = `✅ **${activeQueueSession.clientName}** (${curInfo.fullDateLabel} ${curInfo.dayName}, ${curInfo.timeLabel}) güncellendi:\n• ${summaryParts.join(' • ')}`;
+        advanceQueueToNext(queueIndex, undefined, confirmationHeader, appliedRecord);
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     const pageContext = {
@@ -1496,11 +1836,8 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
       defaultOfficeRentFee: settings.defaultOfficeRentFee
     };
 
-    // Parse date/month scope from the command first
-    const asciiNormalized = normalizeSpokenTurkishNumbers(foldTurkishAscii(textToSend));
     const parsedDateScope = parseTurkishDateFromCommand(asciiNormalized);
 
-    // Run deterministic local command processor
     const localResult = processClientCommandLocally(
       textToSend,
       pageContext,
@@ -1511,8 +1848,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     let replyText = localResult.reply;
     let actions: AssistantAction[] = localResult.actions;
 
-    // If localResult already matched concrete session actions OR explicitly blocked a wrong-date match,
-    // execute immediately with zero risk of AI picking a wrong date (like 5 May instead of 7 October)!
     const isExplicitDateNotFoundWarning =
       (parsedDateScope.targetDate || parsedDateScope.targetMonth) &&
       localResult.actions.length === 0 &&
@@ -1523,7 +1858,6 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6500);
 
-        // Scope sessions sent to backend to parsedDateScope if present so AI can never see other months' sessions
         let candidateSessionsForApi = pageRelevantSessions;
         if (parsedDateScope.targetDate) {
           candidateSessionsForApi = sessions.filter(
@@ -1733,14 +2067,23 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
   };
 
   const quickPrompts = useMemo(() => {
-    const baseClient = exampleClientName;
     const defPrice = settings.defaultSessionPrice || 1200;
+    if (isQueueActive && activeQueueSession) {
+      const p = activeQueueSession.price || defPrice;
+      return [
+        `Ödendi, fiyatı ${p}, bakıcı parası var, ofis kirası yok`,
+        `Ödendi, fiyatı ${p}, bakıcı yok, ofis kirası yok`,
+        `Nakit ödendi`,
+        `Atla`
+      ];
+    }
+    const baseClient = exampleClientName;
     return [
       `7 Ekim ${baseClient} seans tamamlandı, ödemesi alındı, fiyatı ${defPrice}, bakıcı parası var, ofis kirası yok`,
       `${baseClient} ödemesi nakit alındı`,
       `Bu ekrandaki seans ve gelir özetini söyle`
     ];
-  }, [exampleClientName, settings.defaultSessionPrice]);
+  }, [isQueueActive, activeQueueSession, exampleClientName, settings.defaultSessionPrice]);
 
   return (
     <>
@@ -1775,6 +2118,11 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
             )}
           </div>
           <span className="text-xs sm:text-sm font-bold tracking-tight">Sesli Asistan</span>
+          {monthUnpaidSessions.length > 0 && !isOpen && (
+            <span className="bg-amber-400 text-slate-900 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
+              {monthUnpaidSessions.length}
+            </span>
+          )}
         </motion.button>
       </div>
 
@@ -1786,7 +2134,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ type: 'spring', damping: 28, stiffness: 360 }}
-            className="fixed bottom-20 right-3 sm:right-6 left-3 sm:left-auto sm:w-[430px] max-h-[82dvh] bg-white rounded-3xl shadow-2xl border border-[#e5e1d8] z-50 flex flex-col overflow-hidden"
+            className="fixed bottom-20 right-3 sm:right-6 left-3 sm:left-auto sm:w-[440px] max-h-[84dvh] bg-white rounded-3xl shadow-2xl border border-[#e5e1d8] z-50 flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="bg-[#6b705c] text-white px-4 py-3.5 flex items-center justify-between shrink-0">
@@ -1833,70 +2181,180 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
               </div>
             </div>
 
-            {/* Quick Voice Command Guide Banner */}
-            <div className="bg-[#fdfbf7] border-b border-[#e5e1d8] px-3.5 py-2 flex items-center justify-between gap-2 shrink-0">
-              <div className="text-[11px] text-slate-600 leading-tight">
-                Tarih belirterek (<span className="font-semibold text-[#6b705c]">örn. 7 Ekim Özlem...</span>) söylediğinizde yalnızca o gün/ay içindeki danışana işlem uygulanır.
-              </div>
+            {/* Ready Action Bar: Sequential Unpaid Sessions Review */}
+            <div className="bg-[#fdfbf7] border-b border-[#e5e1d8] px-3.5 py-2.5 shrink-0">
+              {!isQueueActive ? (
+                <button
+                  type="button"
+                  onClick={handleStartUnpaidQueue}
+                  className="w-full flex items-center justify-between gap-2 bg-amber-50 hover:bg-amber-100/90 text-amber-950 border border-amber-300/80 rounded-2xl px-3.5 py-2 transition-all cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0 text-left">
+                    <ListChecks className="w-4 h-4 text-amber-700 shrink-0" />
+                    <div className="truncate">
+                      <span className="block text-xs font-bold text-amber-950 truncate">
+                        Bu Ayın Ödenmemiş Seanslarını Sırayla Düzenle
+                      </span>
+                      <span className="block text-[10px] text-amber-800/90 truncate">
+                        {visibleMonthLabel} • İsim, tarih, gün, saat ile tek tek sorar
+                      </span>
+                    </div>
+                  </div>
+                  <span className="shrink-0 bg-amber-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl">
+                    {monthUnpaidSessions.length} Seans
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold text-emerald-950 truncate">
+                      ⚡ Sıralı İnceleme: {queueIndex + 1} / {queueSessionIds.length}
+                      {activeQueueSession ? ` • ${activeQueueSession.clientName}` : ''}
+                    </span>
+                    <span className="block text-[10px] text-emerald-800 truncate">
+                      İsim söylemeden doğrudan &quot;Ödendi, fiyatı...&quot; diyebilirsiniz
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage('Atla')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 cursor-pointer"
+                      title="Bu seansı değiştirmeden sıradakine geç"
+                    >
+                      <SkipForward className="w-3 h-3" />
+                      Atla
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStopQueue}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold bg-rose-100 text-rose-800 hover:bg-rose-200 cursor-pointer"
+                      title="Sıralı incelemeyi durdur"
+                    >
+                      <Square className="w-3 h-3" />
+                      Bitir
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Messages Container */}
-            <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-[#faf8f5] min-h-[260px] max-h-[48dvh]">
-              {messages.map(msg => (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-                >
-                  <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-[13px] leading-relaxed shadow-2xs ${
-                      msg.role === 'user'
-                        ? 'bg-[#6b705c] text-white rounded-br-xs'
-                        : 'bg-white text-slate-800 border border-[#e5e1d8] rounded-bl-xs'
-                    }`}
-                  >
-                    <div className="prose prose-xs max-w-none">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
+            <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-[#faf8f5] min-h-[250px] max-h-[46dvh]">
+              {messages.map(msg => {
+                const isCurrentQueueCard =
+                  isQueueActive &&
+                  activeQueueSession &&
+                  msg.queueSessionId === activeQueueSession.id;
 
-                    {msg.appliedChanges && (
-                      <div className="mt-2.5 pt-2.5 border-t border-slate-100 bg-emerald-50/70 rounded-xl p-2.5 border border-emerald-200/70">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            {msg.appliedChanges.undone
-                              ? 'İşlem Geri Alındı'
-                              : msg.appliedChanges.description}
-                          </span>
-                          {!msg.appliedChanges.undone && (
-                            <button
-                              type="button"
-                              onClick={() => handleUndoChanges(msg.id, msg.appliedChanges!)}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-2xs cursor-pointer"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Geri Al
-                            </button>
-                          )}
-                        </div>
-                        <ul className="space-y-1">
-                          {msg.appliedChanges.details.map((line, i) => (
-                            <li
-                              key={i}
-                              className={`text-[11px] font-medium ${
-                                msg.appliedChanges?.undone
-                                  ? 'line-through text-slate-400'
-                                  : 'text-emerald-900'
-                              }`}
-                            >
-                              • {line}
-                            </li>
-                          ))}
-                        </ul>
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                  >
+                    <div
+                      className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-[13px] leading-relaxed shadow-2xs ${
+                        msg.role === 'user'
+                          ? 'bg-[#6b705c] text-white rounded-br-xs'
+                          : 'bg-white text-slate-800 border border-[#e5e1d8] rounded-bl-xs'
+                      }`}
+                    >
+                      <div className="prose prose-xs max-w-none">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
                       </div>
-                    )}
+
+                      {/* Quick 1-Tap Action Buttons on Active Queue Prompt Card */}
+                      {isCurrentQueueCard && activeQueueSession && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                `Ödendi, fiyatı ${activeQueueSession.price || settings.defaultSessionPrice || 1200}`
+                              )
+                            }
+                            className="text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-xl cursor-pointer transition-colors"
+                          >
+                            ✓ Ödendi (₺
+                            {(
+                              activeQueueSession.price ||
+                              settings.defaultSessionPrice ||
+                              1200
+                            ).toLocaleString('tr-TR')}
+                            )
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                `Ödendi, fiyatı ${activeQueueSession.price || settings.defaultSessionPrice || 1200}, bakıcı parası var, ofis kirası yok`
+                              )
+                            }
+                            className="text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-xl cursor-pointer transition-colors"
+                          >
+                            + Bakıcı Var, Ofis Yok
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                `Ödendi, fiyatı ${activeQueueSession.price || settings.defaultSessionPrice || 1200}, bakıcı parası yok, ofis kirası var`
+                              )
+                            }
+                            className="text-[11px] font-semibold bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 px-2.5 py-1 rounded-xl cursor-pointer transition-colors"
+                          >
+                            + Ofis Var, Bakıcı Yok
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendMessage('Atla')}
+                            className="text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-xl cursor-pointer transition-colors"
+                          >
+                            ⏭️ Sıradakine Geç
+                          </button>
+                        </div>
+                      )}
+
+                      {msg.appliedChanges && (
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-100 bg-emerald-50/70 rounded-xl p-2.5 border border-emerald-200/70">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              {msg.appliedChanges.undone
+                                ? 'İşlem Geri Alındı'
+                                : msg.appliedChanges.description}
+                            </span>
+                            {!msg.appliedChanges.undone && (
+                              <button
+                                type="button"
+                                onClick={() => handleUndoChanges(msg.id, msg.appliedChanges!)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-2xs cursor-pointer"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                Geri Al
+                              </button>
+                            )}
+                          </div>
+                          <ul className="space-y-1">
+                            {msg.appliedChanges.details.map((line, i) => (
+                              <li
+                                key={i}
+                                className={`text-[11px] font-medium ${
+                                  msg.appliedChanges?.undone
+                                    ? 'line-through text-slate-400'
+                                    : 'text-emerald-900'
+                                }`}
+                              >
+                                • {line}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {isListening && (
                 <div className="flex items-center gap-2.5 bg-rose-50 border border-rose-200 text-rose-800 px-3.5 py-2.5 rounded-2xl text-xs">
@@ -1960,13 +2418,19 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
 
               <div className="relative flex-1 bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl px-3 pt-1 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-all">
                 <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                  SESLİ VEYA YAZILI KOMUT
+                  {isQueueActive && activeQueueSession
+                    ? `SIRADAKİ: ${activeQueueSession.clientName.toUpperCase()} İÇİN YANITINIZ`
+                    : 'SESLİ VEYA YAZILI KOMUT'}
                 </span>
                 <input
                   type="text"
                   value={input}
                   onChange={e => setInput(e.target.value)}
-                  placeholder={`7 Ekim ${exampleClientName} seans tamamlandı, ödendi...`}
+                  placeholder={
+                    isQueueActive && activeQueueSession
+                      ? 'Ödendi, fiyatı 1500, bakıcı var, ofis yok...'
+                      : `7 Ekim ${exampleClientName} seans tamamlandı, ödendi...`
+                  }
                   className="w-full text-xs sm:text-sm font-medium text-slate-800 bg-transparent focus:outline-none"
                 />
               </div>
