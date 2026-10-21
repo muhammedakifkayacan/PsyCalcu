@@ -91,6 +91,7 @@ import { validateSessionAction, incrementWeeklyManualActionCount } from './utils
 import { safeStorage, pruneStorage } from './utils/storage';
 import { DataBackupSnapshot } from './types';
 import { TrashBinModal } from './components/TrashBinModal';
+import { VoiceChatAssistant } from './components/VoiceChatAssistant';
 import { mutationQueue } from './utils/mutationQueue';
 import { idbGet, idbSet } from './utils/idbStorage';
 
@@ -8836,7 +8837,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 28, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 380, damping: 26 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 px-4 w-auto pointer-events-none"
+            className="fixed bottom-5 left-4 sm:left-1/2 sm:-translate-x-1/2 z-30 sm:px-4 w-auto pointer-events-none"
             id="floating-bottom-action-bar"
           >
             <motion.button
@@ -8846,7 +8847,7 @@ export default function App() {
                 setEditingSession(null);
                 setIsSessionModalOpen(true);
               }}
-              className="pointer-events-auto bg-[#cb997e] hover:bg-[#b58368] hover:shadow-lg text-white font-medium text-xs sm:text-sm px-6 py-3 rounded-full flex items-center gap-2 shadow-xl transition-all cursor-pointer whitespace-nowrap select-none touch-manipulation active:bg-[#b58368]"
+              className="pointer-events-auto bg-[#cb997e] hover:bg-[#b58368] hover:shadow-lg text-white font-medium text-xs sm:text-sm px-5 sm:px-6 py-3 rounded-full flex items-center gap-2 shadow-xl transition-all cursor-pointer whitespace-nowrap select-none touch-manipulation active:bg-[#b58368]"
             >
               <Plus className="w-4 h-4" />
               Yeni Seans Ekle
@@ -8854,6 +8855,33 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Global Page-Aware Chatbot & Voice Assistant */}
+      <VoiceChatAssistant
+        activeTab={activeTab}
+        agendaViewMode={agendaViewMode}
+        selectedDate={selectedDate}
+        calendarViewDate={calendarViewDate}
+        selectedClientName={selectedClientName}
+        sessions={sessions}
+        settings={settings}
+        onUpdateSessionsBulk={(updater, summaryToast) => {
+          setSessions(prev => updater(prev));
+          if (summaryToast) {
+            showToast(summaryToast, 'info');
+          }
+        }}
+        onSaveSession={handleSaveSession}
+        onMarkClientAllPaid={handleMarkAllClientSessionsAsPaid}
+        onAddExpense={handleAddExpense}
+        onNavigateTab={(tab, viewMode, date) => {
+          if (tab) setActiveTab(tab);
+          if (viewMode) setAgendaViewMode(viewMode);
+          if (date) setSelectedDate(date);
+        }}
+        onOpenClientProfile={handleOpenClientPage}
+        featuresAIAllowed={featuresAIAllowed}
+      />
       </div>
     </PullToRefresh>
   );

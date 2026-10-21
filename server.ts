@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import nodemailer from "nodemailer";
 import "dotenv/config";
 import { initializeApp as initializeAdminApp, getApps as getAdminApps } from "firebase-admin/app";
@@ -10,6 +10,327 @@ import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 
 let adminDb: any = null;
+
+function foldTurkishAscii(str: string): string {
+  if (!str) return "";
+  return str
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[\s\u00A0]+/g, " ")
+    .trim();
+}
+
+function processSmartLocalCommand(message: string, pageContext: any, sessions: any[]): { reply: string; actions: any[] } {
+  const rawMsg = (message || "").trim();
+  const lowerMsg = rawMsg.toLocaleLowerCase("tr-TR");
+  const asciiMsg = foldTurkishAscii(rawMsg);
+
+  const defaultPrice = Number(pageContext?.defaultSessionPrice) || 1200;
+  const defaultBabysitterFee = Number(pageContext?.defaultBabysitterFee) || 250;
+  const defaultOfficeRentFee = Number(pageContext?.defaultOfficeRentFee) || 200;
+  const selectedDate = pageContext?.selectedDate || new Date().toISOString().split("T")[0];
+  const visibleMonth = pageContext?.visibleMonth || selectedDate.slice(0, 7);
+
+  // 1. Check if user is asking a question / summary about current page or month
+  if (
+    (asciiMsg.includes("kac seans") || asciiMsg.includes("toplam gelir") || asciiMsg.includes("ozet") || asciiMsg.includes("durum ne") || asciiMsg.includes("ne kadar")) &&
+    !asciiMsg.includes("odendi") &&
+    !asciiMsg.includes("fiyat") &&
+    !asciiMsg.includes("ucret") &&
+    !asciiMsg.includes("tamamlandi") &&
+    !asciiMsg.includes("iptal")
+  ) {
+    const activeList = (sessions || []).filter((s: any) => s.type !== "cancelled" && s.type !== "non-session");
+    const paidList = activeList.filter((s: any) => s.paymentStatus === "paid");
+    const unpaidList = activeList.filter((s: any) => s.paymentStatus !== "paid");
+    const gross = activeList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
+    const unpaidTotal = unpaidList.reduce((acc: number, s: any) => acc + (Number(s.price) || 0), 0);
+    return {
+      reply: `Bu görünümde toplam **${activeList.length} aktif seans** bulunuyor (${paidList.length} ödendi, ${unpaidList.length} bekliyor). Toplam brüt tutar **₺${gross.toLocaleString("tr-TR")}**, tahsilat bekleyen tutar ise **₺${unpaidTotal.toLocaleString("tr-TR")}**.`,
+      actions: []
+    };
+  }
+
+  // 2. Try to match a client name from the provided sessions or active client profile
+  const uniqueClients = new Map<string, string>(); // asciiName -> original display name
+  (sessions || []).forEach((s: any) => {
+    if (s && s.clientName) {
+      const cleanName = String(s.clientName).trim();
+      const asciiName = foldTurkishAscii(cleanName);
+      if (asciiName && !uniqueClients.has(asciiName)) {
+        uniqueClients.set(asciiName, cleanName);
+      }
+    }
+  });
+
+  let matchedClientName = "";
+  let bestMatchLen = 0;
+
+  for (const [asciiClient, originalClient] of uniqueClients.entries()) {
+    if (asciiClient.length >= 3 && asciiMsg.includes(asciiClient)) {
+      if (asciiClient.length > bestMatchLen) {
+        bestMatchLen = asciiClient.length;
+        matchedClientName = originalClient;
+      }
+    } else {
+      // Check multi-token match
+      const tokens = asciiClient.split(" ").filter((t) => t.length >= 2);
+      if (tokens.length >= 2 && tokens.every((t) => asciiMsg.includes(t))) {
+        if (asciiClient.length > bestMatchLen) {
+          bestMatchLen = asciiClient.length;
+          matchedClientName = originalClient;
+        }
+      }
+    }
+  }
+
+  if (!matchedClientName && pageContext?.selectedClientName) {
+    matchedClientName = pageContext.selectedClientName;
+  }
+
+  // Parse explicit date in command if any (e.g., "15 ekim", "21 ekim", "bugün", "dün")
+  const turkishMonths: Record<string, string> = {
+    ocak: "01", subat: "02", mart: "03", nisan: "04", mayis: "05", haziran: "06",
+    temmuz: "07", agustos: "08", eylul: "09", ekim: "10", kasim: "11", aralik: "12"
+  };
+
+  let targetDate: string | undefined = undefined;
+  if (asciiMsg.includes("bugun")) {
+    targetDate = new Date().toISOString().split("T")[0];
+  } else if (asciiMsg.includes("dun")) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    targetDate = d.toISOString().split("T")[0];
+  } else {
+    for (const [mName, mNum] of Object.entries(turkishMonths)) {
+      const regex = new RegExp(`\\b(\\d{1,2})\\s*${mName}\\b`, "i");
+      const m = asciiMsg.match(regex);
+      if (m) {
+        const day = String(parseInt(m[1], 10)).padStart(2, "0");
+        const year = visibleMonth ? visibleMonth.slice(0, 4) : String(new Date().getFullYear());
+        targetDate = `${year}-${mNum}-${day}`;
+        break;
+      }
+    }
+  }
+
+  // Parse updates from Turkish command
+  const updates: any = {};
+
+  // Session type / status
+  if (asciiMsg.includes("iptal")) {
+    updates.type = "cancelled";
+    updates.price = 0;
+    updates.hasBabysitterFee = false;
+    updates.babysitterFeeAmount = 0;
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  } else if (asciiMsg.includes("yuz yuze") || asciiMsg.includes("yuzyuze")) {
+    updates.type = "face-to-face";
+  } else if (asciiMsg.includes("online") || asciiMsg.includes("goruntulu")) {
+    updates.type = "online";
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  }
+
+  // Payment status
+  if (
+    asciiMsg.includes("odendi") ||
+    asciiMsg.includes("odemesi alindi") ||
+    asciiMsg.includes("parasi alindi") ||
+    asciiMsg.includes("parasini verdi") ||
+    asciiMsg.includes("ucreti alindi") ||
+    asciiMsg.includes("tahsil edildi") ||
+    asciiMsg.includes("odedi")
+  ) {
+    updates.paymentStatus = "paid";
+  } else if (
+    asciiMsg.includes("odenmedi") ||
+    asciiMsg.includes("odemedi") ||
+    asciiMsg.includes("alinmadi") ||
+    asciiMsg.includes("borc olarak")
+  ) {
+    updates.paymentStatus = "unpaid";
+    updates.paidAmount = 0;
+  }
+
+  // Payment method
+  if (asciiMsg.includes("nakit")) {
+    updates.paymentMethod = "cash";
+  } else if (asciiMsg.includes("kredi kart") || asciiMsg.includes("kartla") || asciiMsg.includes("kart")) {
+    updates.paymentMethod = "card";
+  } else if (asciiMsg.includes("havale") || asciiMsg.includes("eft") || asciiMsg.includes("iban") || asciiMsg.includes("banka")) {
+    updates.paymentMethod = "transfer";
+  }
+
+  // Babysitter fee
+  if (
+    asciiMsg.includes("bakici parasi yok") ||
+    asciiMsg.includes("bakici yok") ||
+    asciiMsg.includes("bakici ucreti yok") ||
+    asciiMsg.includes("bakicisiz") ||
+    asciiMsg.includes("bakici olmasin")
+  ) {
+    updates.hasBabysitterFee = false;
+    updates.babysitterFeeAmount = 0;
+  } else if (
+    asciiMsg.includes("bakici parasi var") ||
+    asciiMsg.includes("bakici var") ||
+    asciiMsg.includes("bakici ucreti var") ||
+    asciiMsg.includes("bakici eklensin") ||
+    asciiMsg.includes("bakici parasi")
+  ) {
+    updates.hasBabysitterFee = true;
+    const babyNumMatch = asciiMsg.match(/bakici(?:\s+parasi|\s+ucreti)?\s*(?:var\s*)?(\d{2,5})/);
+    updates.babysitterFeeAmount = babyNumMatch ? parseInt(babyNumMatch[1], 10) : defaultBabysitterFee;
+  }
+
+  // Office rent fee
+  if (
+    asciiMsg.includes("ofis kirasi yok") ||
+    asciiMsg.includes("oda kirasi yok") ||
+    asciiMsg.includes("kira yok") ||
+    asciiMsg.includes("ofis ucreti yok") ||
+    asciiMsg.includes("ofis yok")
+  ) {
+    updates.hasOfficeRentFee = false;
+    updates.officeRentFeeAmount = 0;
+  } else if (
+    asciiMsg.includes("ofis kirasi var") ||
+    asciiMsg.includes("oda kirasi var") ||
+    asciiMsg.includes("kira var") ||
+    asciiMsg.includes("ofis ucreti var") ||
+    asciiMsg.includes("ofis kirasi")
+  ) {
+    updates.hasOfficeRentFee = true;
+    const rentNumMatch = asciiMsg.match(/(?:ofis|oda)\s*(?:kirasi|ucreti)?\s*(?:var\s*)?(\d{2,5})/);
+    updates.officeRentFeeAmount = rentNumMatch ? parseInt(rentNumMatch[1], 10) : defaultOfficeRentFee;
+    if (!updates.type) {
+      updates.type = "face-to-face";
+    }
+  }
+
+  // Price parsing (e.g. "fiyatı 1500", "ücreti 2000", "1500 tl", "1.500 lira")
+  const cleanedForPrice = asciiMsg.replace(/(\d)\.(\d{3})\b/g, "$1$2");
+  const pricePatterns = [
+    /(?:fiyati|fiyat|ucreti|ucret|seans ucreti|tutar|tutari)\s*(?:su kadar\s*)?(\d{3,5})/i,
+    /(\d{3,5})\s*(?:tl|lira|₺|türk lirasi)/i,
+    /(?:fiyati|ucreti|odendi|alindi)\s+(\d{3,5})\b/i
+  ];
+  for (const pat of pricePatterns) {
+    const pm = cleanedForPrice.match(pat);
+    if (pm && pm[1]) {
+      const val = parseInt(pm[1], 10);
+      if (val >= 100 && val <= 50000) {
+        updates.price = val;
+        break;
+      }
+    }
+  }
+
+  // Also check if user said "seans tamamlandı"
+  const mentionsCompleted =
+    asciiMsg.includes("tamamlandi") ||
+    asciiMsg.includes("yapildi") ||
+    asciiMsg.includes("gerceklesti") ||
+    asciiMsg.includes("bitti");
+
+  if (matchedClientName && (Object.keys(updates).length > 0 || mentionsCompleted)) {
+    // Find matching sessions for this client
+    const clientSessions = (sessions || []).filter(
+      (s: any) => s && s.clientName && foldTurkishAscii(s.clientName) === foldTurkishAscii(matchedClientName)
+    );
+
+    let targetSessions = clientSessions;
+    if (targetDate) {
+      const onDate = clientSessions.filter((s: any) => s.date === targetDate);
+      if (onDate.length > 0) targetSessions = onDate;
+    } else if (pageContext?.activeTab === "agenda" && pageContext?.agendaViewMode === "day" && selectedDate) {
+      const onSelected = clientSessions.filter((s: any) => s.date === selectedDate);
+      if (onSelected.length > 0) targetSessions = onSelected;
+    }
+
+    // If still multiple sessions and user didn't say "tüm" / "hepsi", pick the most recent or closest to selectedDate
+    const wantsAll = asciiMsg.includes("tum ") || asciiMsg.includes("hepsi") || asciiMsg.includes("butun ");
+    if (!wantsAll && targetSessions.length > 1) {
+      const sorted = [...targetSessions].sort((a: any, b: any) => {
+        const diffA = Math.abs(new Date(a.date).getTime() - new Date(selectedDate).getTime());
+        const diffB = Math.abs(new Date(b.date).getTime() - new Date(selectedDate).getTime());
+        return diffA - diffB;
+      });
+      targetSessions = [sorted[0]];
+    }
+
+    const sessionIds = targetSessions.map((s: any) => s.id).filter(Boolean);
+    const firstSession = targetSessions[0];
+
+    // If session was cancelled and user says "seans tamamlandı", restore it to online or face-to-face
+    if (mentionsCompleted && !updates.type && firstSession?.type === "cancelled") {
+      updates.type = updates.hasOfficeRentFee ? "face-to-face" : "online";
+    }
+
+    const summaryParts: string[] = [];
+    if (mentionsCompleted || updates.type) {
+      summaryParts.push(
+        updates.type === "cancelled"
+          ? "İptal Edildi"
+          : updates.type === "face-to-face"
+          ? "Yüz Yüze Seans (Tamamlandı)"
+          : updates.type === "online"
+          ? "Online Seans (Tamamlandı)"
+          : "Seans Tamamlandı"
+      );
+    }
+    if (typeof updates.price === "number") {
+      summaryParts.push(`Ücret: ₺${updates.price.toLocaleString("tr-TR")}`);
+    }
+    if (updates.paymentStatus === "paid") {
+      summaryParts.push("Ödeme: Ödendi");
+    } else if (updates.paymentStatus === "unpaid") {
+      summaryParts.push("Ödeme: Ödenmedi");
+    }
+    if (typeof updates.hasBabysitterFee === "boolean") {
+      summaryParts.push(
+        updates.hasBabysitterFee
+          ? `Bakıcı Ücreti: Var (₺${(updates.babysitterFeeAmount || defaultBabysitterFee).toLocaleString("tr-TR")})`
+          : "Bakıcı Ücreti: Yok (₺0)"
+      );
+    }
+    if (typeof updates.hasOfficeRentFee === "boolean") {
+      summaryParts.push(
+        updates.hasOfficeRentFee
+          ? `Ofis Kirası: Var (₺${(updates.officeRentFeeAmount || defaultOfficeRentFee).toLocaleString("tr-TR")})`
+          : "Ofis Kirası: Yok (₺0)"
+      );
+    }
+
+    const dateLabel = firstSession?.date || targetDate || selectedDate;
+    return {
+      reply: `**${matchedClientName}** (${dateLabel}) seansı komutunuza göre güncellendi: ${summaryParts.join(" • ")}.`,
+      actions: [
+        {
+          actionType: "UPDATE_SESSIONS",
+          sessionIds,
+          clientName: matchedClientName,
+          targetDate: dateLabel,
+          applyToScope: wantsAll ? "visible_period" : "single",
+          updates
+        }
+      ]
+    };
+  }
+
+  return {
+    reply:
+      "Komutunuzu aldım ancak hangi danışan veya işlem için uygulanacağını tam eşleştiremedim. Örneğin: *\"Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500 TL, bakıcı parası var, ofis kirası yok\"* şeklinde söyleyebilirsiniz.",
+    actions: []
+  };
+}
 
 function generateSmartFallbackSummary(date: string, sessions: any[], dailyMetrics: any, isKeyMissing: boolean): string {
   const activeSessions = sessions ? sessions.filter((s: any) => s.type !== 'cancelled') : [];
@@ -82,7 +403,260 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "15mb" }));
+
+  // API Route for Audio Transcription (Fallback when browser SpeechRecognition is unavailable)
+  app.post("/api/assistant/transcribe", async (req, res) => {
+    try {
+      const { audioBase64, mimeType } = req.body;
+      if (!audioBase64) {
+        return res.status(400).json({ error: "Ses verisi bulunamadı." });
+      }
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ error: "Ses çözümleme servisi için GEMINI_API_KEY tanımlanmamış." });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build"
+          }
+        }
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-transcribe",
+        contents: [
+          {
+            inlineData: {
+              mimeType: mimeType || "audio/webm",
+              data: audioBase64
+            }
+          },
+          "Bu Türkçe ses kaydını kelimesi kelimesine metne dönüştür. Sadece konuşulan metni döndür, başka hiçbir açıklama ekleme."
+        ]
+      });
+
+      return res.json({ text: (response.text || "").trim() });
+    } catch (err: any) {
+      console.error("Audio transcription error:", err);
+      return res.status(500).json({ error: "Ses metne dönüştürülemedi." });
+    }
+  });
+
+  // API Route for Page-Aware Voice & Chat Assistant
+  app.post("/api/assistant/chat", async (req, res) => {
+    try {
+      const { message, pageContext, sessions, history } = req.body;
+      if (!message || !String(message).trim()) {
+        return res.status(400).json({ error: "Mesaj boş olamaz." });
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        const fallbackResult = processSmartLocalCommand(message, pageContext, sessions || []);
+        return res.json(fallbackResult);
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build"
+          }
+        }
+      });
+
+      const compactSessions = (sessions || []).slice(0, 250).map((s: any) => ({
+        id: s.id,
+        clientName: s.clientName,
+        date: s.date,
+        time: s.time,
+        type: s.type,
+        price: s.price,
+        paymentStatus: s.paymentStatus || "unpaid",
+        paidAmount: s.paidAmount || 0,
+        paymentMethod: s.paymentMethod || null,
+        hasBabysitterFee: Boolean(s.hasBabysitterFee),
+        babysitterFeeAmount: s.babysitterFeeAmount || 0,
+        hasOfficeRentFee: Boolean(s.hasOfficeRentFee),
+        officeRentFeeAmount: s.officeRentFeeAmount || 0
+      }));
+
+      const recentHistory = Array.isArray(history)
+        ? history.slice(-6).map((h: any) => `${h.role === "user" ? "Kullanıcı" : "Asistan"}: ${h.content}`).join("\n")
+        : "";
+
+      const systemPrompt = `Sen PsyCalcu klinik yönetim ve muhasebe uygulamasının her sayfada çalışan akıllı Sesli ve Yazılı Asistanısın.
+Kullanıcı bir psikolog/klinisyendir. Bulunduğu sayfadaki verilere bakarak sana sesli veya yazılı komutlar verir.
+
+MEVCUT SAYFA VE AYAR BAĞLAMI:
+- Aktif Sekme (activeTab): ${pageContext?.activeTab || "agenda"} (${pageContext?.activeTabLabel || "Ajanda"})
+- Ajanda Görünüm Modu (agendaViewMode): ${pageContext?.agendaViewMode || "day"} (day=Günlük, week=Haftalık, month=Aylık)
+- Seçili Tarih (selectedDate): ${pageContext?.selectedDate || ""}
+- Görüntülenen Ay (visibleMonth): ${pageContext?.visibleMonth || ""}
+- Seçili Danışan Profili (selectedClientName): ${pageContext?.selectedClientName || "Yok"}
+- Varsayılan Seans Ücreti: ₺${pageContext?.defaultSessionPrice || 1200} (Online: ₺${pageContext?.defaultOnlinePrice || 1200}, Yüzyüze: ₺${pageContext?.defaultFaceToFacePrice || 1200})
+- Varsayılan Bakıcı Ücreti: ₺${pageContext?.defaultBabysitterFee || 250}
+- Varsayılan Ofis Kira Ücreti: ₺${pageContext?.defaultOfficeRentFee || 200}
+
+BU EKRANDA GÖRÜNEN / İLGİLİ SEANSLAR (${compactSessions.length} adet):
+${JSON.stringify(compactSessions)}
+
+${recentHistory ? `SON KONUŞMA GEÇMİŞİ:\n${recentHistory}\n` : ""}
+
+GÖREVİN:
+1. Kullanıcının Türkçe komutunu dikkatlice analiz et. Sesli konuşmadan kaynaklı ufak yazım/telaffuz hatalarını ("Öden parası alındı" -> "ödemesi alındı", "bakıcı parası var/yok", "ofis kirası var/yok", danışan isimlerindeki ufak harf farkları) akıllıca anla.
+2. Örneğin kullanıcı aylık ekranda veya ajandada: "Ahmet Yılmaz seans tamamlandı, ödemesi alındı, fiyatı 1500, bakıcı parası var, ofis kirası yok" dediğinde:
+   - Listeden Ahmet Yılmaz'ın ilgili seansını (eğer tarih belirtildiyse o tarihteki, belirtilmediyse mevcut sayfadaki/gündeki/aydaki ilgili seansını) bul ve 'sessionIds' dizisine o seansın 'id' değerini ekle.
+   - 'updates' içinde:
+     * Fiyat belirtildiyse: price = belirtilen tutar (örn. 1500).
+     * "ödemesi alındı / ödendi / parası alındı" dendiyse: paymentStatus = "paid". "ödenmedi" dendiyse: paymentStatus = "unpaid".
+     * Ödeme yöntemi belirtildiyse ("nakit" -> "cash", "kart/kredi kartı" -> "card", "havale/eft/banka" -> "transfer") paymentMethod alanını ayarla.
+     * "bakıcı parası var / bakıcı var" dendiyse: hasBabysitterFee = true, babysitterFeeAmount = (belirtildiyse tutar, yoksa varsayılan ${pageContext?.defaultBabysitterFee || 250}).
+     * "bakıcı parası yok / bakıcı yok" dendiyse: hasBabysitterFee = false, babysitterFeeAmount = 0.
+     * "ofis kirası var / kira var / yüzyüze" dendiyse: hasOfficeRentFee = true, officeRentFeeAmount = (belirtildiyse tutar, yoksa varsayılan ${pageContext?.defaultOfficeRentFee || 200}).
+     * "ofis kirası yok / kira yok / online" dendiyse: hasOfficeRentFee = false, officeRentFeeAmount = 0.
+     * "seans iptal / gelmedi" dendiyse: type = "cancelled", price = 0, hasBabysitterFee = false, hasOfficeRentFee = false.
+     * "seans tamamlandı" dendiyse ve mevcut seans "cancelled" ise type = "online" veya "face-to-face" yap.
+3. Eğer kullanıcı yeni bir seans eklemek istiyorsa ("Yarın saat 14:00'e Ayşe Yılmaz için online seans ekle"), actionType = "CREATE_SESSION" kullan.
+4. Eğer kullanıcı bir danışanın tüm borçlarını kapatmak istiyorsa ("Ahmet Yılmaz'ın tüm borçlarını ödendi yap"), actionType = "MARK_CLIENT_ALL_PAID" kullan.
+5. Eğer kullanıcı klinik gideri eklemek istiyorsa ("Elektrik faturası 850 TL gider ekle"), actionType = "ADD_EXPENSE" kullan.
+6. Eğer kullanıcı başka bir sayfaya geçmek istiyorsa ("Borç sayfasına git", "Aylık görünüme geç"), actionType = "NAVIGATE_TAB" kullan.
+7. Eğer kullanıcı sadece sayfadaki verilerle ilgili soru soruyorsa ("Bu ay kaç seans var?", "Ahmet Yılmaz'ın borcu ne kadar?"), actions dizisini boş bırak ve 'reply' içinde net, doğru, Türkçe yanıt ver.
+
+KULLANICI KOMUTU: "${message}"`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          reply: {
+            type: Type.STRING,
+            description: "Psikoloğa gösterilecek ve sesli okunacak kısa, net, nazik Türkçe yanıt ve yapılan işlemin özeti."
+          },
+          actions: {
+            type: Type.ARRAY,
+            description: "Uygulanacak işlemlerin listesi.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                actionType: {
+                  type: Type.STRING,
+                  description: "UPDATE_SESSIONS | CREATE_SESSION | DELETE_SESSION | MARK_CLIENT_ALL_PAID | ADD_EXPENSE | NAVIGATE_TAB | OPEN_CLIENT_PROFILE"
+                },
+                sessionIds: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "Güncellenecek veya silinecek seansların tam ID listesi."
+                },
+                clientName: {
+                  type: Type.STRING,
+                  description: "İlgili danışanın adı."
+                },
+                targetDate: {
+                  type: Type.STRING,
+                  description: "YYYY-MM-DD formatında hedef tarih."
+                },
+                applyToScope: {
+                  type: Type.STRING,
+                  description: "single | date | visible_period | all_unpaid | all"
+                },
+                updates: {
+                  type: Type.OBJECT,
+                  properties: {
+                    price: { type: Type.NUMBER },
+                    paymentStatus: { type: Type.STRING, description: "paid | unpaid | partial" },
+                    paidAmount: { type: Type.NUMBER },
+                    paymentMethod: { type: Type.STRING, description: "card | cash | transfer" },
+                    type: { type: Type.STRING, description: "online | face-to-face | cancelled" },
+                    hasBabysitterFee: { type: Type.BOOLEAN },
+                    babysitterFeeAmount: { type: Type.NUMBER },
+                    hasOfficeRentFee: { type: Type.BOOLEAN },
+                    officeRentFeeAmount: { type: Type.NUMBER },
+                    notes: { type: Type.STRING },
+                    date: { type: Type.STRING },
+                    time: { type: Type.STRING }
+                  }
+                },
+                newSession: {
+                  type: Type.OBJECT,
+                  properties: {
+                    clientName: { type: Type.STRING },
+                    date: { type: Type.STRING },
+                    time: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    price: { type: Type.NUMBER },
+                    paymentStatus: { type: Type.STRING },
+                    hasBabysitterFee: { type: Type.BOOLEAN },
+                    babysitterFeeAmount: { type: Type.NUMBER },
+                    hasOfficeRentFee: { type: Type.BOOLEAN },
+                    officeRentFeeAmount: { type: Type.NUMBER },
+                    notes: { type: Type.STRING }
+                  }
+                },
+                newExpense: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    amount: { type: Type.NUMBER },
+                    category: { type: Type.STRING },
+                    date: { type: Type.STRING }
+                  }
+                },
+                tab: {
+                  type: Type.STRING,
+                  description: "agenda | stats | debts | clients | audit | search | sync | backup | rooms"
+                },
+                viewMode: {
+                  type: Type.STRING,
+                  description: "day | week | month"
+                },
+                date: {
+                  type: Type.STRING
+                }
+              },
+              required: ["actionType"]
+            }
+          }
+        },
+        required: ["reply", "actions"]
+      };
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: systemPrompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
+      } catch (err1: any) {
+        console.warn("gemini-3.8-flash failed for assistant, trying gemini-3.5-flash:", err1?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: systemPrompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
+      }
+
+      const rawText = response.text || "{}";
+      const parsed = JSON.parse(rawText);
+      return res.json({
+        reply: parsed.reply || "İşleminiz tamamlandı.",
+        actions: Array.isArray(parsed.actions) ? parsed.actions : []
+      });
+    } catch (error: any) {
+      console.error("Assistant API error, falling back to local Turkish command parser:", error);
+      const { message, pageContext, sessions } = req.body;
+      const fallbackResult = processSmartLocalCommand(message, pageContext, sessions || []);
+      return res.json(fallbackResult);
+    }
+  });
 
   // API Route for Gemini Summary
   app.post("/api/gemini/summarize", async (req, res) => {
