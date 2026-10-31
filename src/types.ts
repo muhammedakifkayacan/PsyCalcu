@@ -136,6 +136,7 @@ export interface AppSettings {
   clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule };
   hasSeenTour?: boolean; // whether user has completed or dismissed the onboarding tour
   closedMonths?: Record<string, ClosedMonthRecord>; // e.g. { "2026-08": ClosedMonthRecord }
+  reopenedMonths?: Record<string, number>; // e.g. { "2026-08": 1730000000000 } explicit unlock timestamps
   hasCompletedInitialCalendarSync?: boolean; // whether initial full calendar sync has been completed once
 }
 
@@ -562,7 +563,8 @@ export function autoHealSmartClientPrices(
   accountingStartDate?: string | null,
   defaultOnlinePrice?: number,
   defaultFaceToFacePrice?: number,
-  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule }
+  clientCustomPrices?: { [normalizedClientName: string]: ClientPricingRule },
+  closedMonths?: Record<string, ClosedMonthRecord>
 ): Session[] {
   if (!Array.isArray(sessionList)) return [];
 
@@ -616,6 +618,10 @@ export function autoHealSmartClientPrices(
   // Pass 2: If a session in active accounting period has price === 0, heal it taking session type into account!
   return sessionList.map(s => {
     if (!s) return s;
+    // Never modify sessions in a closed / locked month!
+    if (closedMonths && s.date && closedMonths[s.date.slice(0, 7)]) {
+      return s;
+    }
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
     if (isWithinAccounting && s.type !== 'cancelled' && s.type !== 'non-session') {
       if ((s.price === 0 || !s.price) && !s.isManuallyEdited) {

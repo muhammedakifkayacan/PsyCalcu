@@ -2,6 +2,7 @@ import { db } from './firebase';
 import { doc, setDoc, getDoc, deleteField } from 'firebase/firestore';
 import { Session, AppSettings, Expense, DataBackupSnapshot, getNormalizedClientName, toTurkishAscii } from '../types';
 import { idbSet, idbGet } from '../utils/idbStorage';
+import { mergeClosedMonths } from '../utils/monthCloseUtils';
 
 export interface AccountingLedgerEntry {
   id: string;
@@ -260,6 +261,16 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
         settings.therapistName = calendarBackup.therapistName;
       }
 
+      // Reconcile closedMonths & reopenedMonths with local storage so closed months never revert to open
+      const mergedMonthState = mergeClosedMonths(
+        undefined,
+        settings.closedMonths || data.closedMonths,
+        userId,
+        settings.reopenedMonths || data.reopenedMonths
+      );
+      settings.closedMonths = mergedMonthState.closedMonths;
+      settings.reopenedMonths = mergedMonthState.reopenedMonths;
+
       const rawSessions = (data.sessions as Session[]) || [];
       const remoteLedger = (data.accountingLedger as Record<string, AccountingLedgerEntry>) || undefined;
       const mergedLedger = updateLocalAccountingLedger(userId, rawSessions, remoteLedger);
@@ -327,7 +338,16 @@ export async function saveUserData(
   expenses?: Expense[],
   snapshotReason?: string
 ): Promise<void> {
-  const cleanedSettings = JSON.parse(JSON.stringify(settings));
+  const cleanedSettings = JSON.parse(JSON.stringify(settings)) as AppSettings;
+  const mergedMonthState = mergeClosedMonths(
+    cleanedSettings.closedMonths,
+    undefined,
+    userId,
+    undefined,
+    cleanedSettings.reopenedMonths
+  );
+  cleanedSettings.closedMonths = mergedMonthState.closedMonths;
+  cleanedSettings.reopenedMonths = mergedMonthState.reopenedMonths;
   // 1. Auto-prune soft-deleted sessions older than 30 days (TTL cleanup to ensure zero data bloat)
   const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
   const cleanedSessions = (JSON.parse(JSON.stringify(sessions)) as Session[]).filter(s => {
@@ -406,7 +426,9 @@ export async function saveUserData(
     }));
 
     const payload: any = { 
-      settings: cleanedSettings, 
+      settings: cleanedSettings,
+      closedMonths: cleanedSettings.closedMonths || {},
+      reopenedMonths: cleanedSettings.reopenedMonths || {},
       sessions: cleanedSessions, 
       expenses: cleanedExpenses,
       accountingLedger,
@@ -429,10 +451,11 @@ export async function saveUserData(
       };
     }
 
-    // Safety check: if serialized payload is over 700KB, omit backupSnapshots and trim ledger to stay well under 1MB
+    // Safety check: if serialized payload is over 650KB, omit backupSnapshots & calendarHistory to stay well under 1MB
     const serializedSize = JSON.stringify(payload).length;
-    if (serializedSize > 700000) {
+    if (serializedSize > 650000) {
       payload.backupSnapshots = deleteField();
+      payload.calendarHistory = deleteField();
     }
 
     try {
@@ -440,9 +463,22 @@ export async function saveUserData(
     } catch (writeErr: any) {
       const msg = (writeErr?.message || String(writeErr)).toLowerCase();
       if (msg.includes('size') || msg.includes('1048576') || msg.includes('longer than') || writeErr?.code === 'invalid-argument') {
-        // Document exceeded 1MB due to legacy backupSnapshots field in Firestore — purge backupSnapshots and retry immediately!
+        // Document exceeded 1MB due to legacy fields in Firestore — purge heavy fields and retry immediately!
         payload.backupSnapshots = deleteField();
-        await setDoc(docRef, payload, { merge: true });
+        payload.calendarHistory = deleteField();
+        try {
+          await setDoc(docRef, payload, { merge: true });
+        } catch (retryErr) {
+          // Ensure settings and closedMonths are ALWAYS persisted even if sessions/ledger are huge
+          await setDoc(docRef, {
+            settings: cleanedSettings,
+            closedMonths: cleanedSettings.closedMonths || {},
+            reopenedMonths: cleanedSettings.reopenedMonths || {},
+            backupSnapshots: deleteField(),
+            calendarHistory: deleteField(),
+            lastUpdatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
       } else {
         throw writeErr;
       }

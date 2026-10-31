@@ -1,7 +1,251 @@
 import { Session, AppSettings, Expense, ClosedMonthRecord } from '../types';
 import { formatLocalDate } from './dateUtils';
+import { idbSet } from './idbStorage';
 
 export type { ClosedMonthRecord };
+
+let activeClosedMonthsCache: Record<string, ClosedMonthRecord> | null = null;
+let activeReopenedMonthsCache: Record<string, number> | null = null;
+
+function parseClosedAtMs(closedAt?: string): number {
+  if (!closedAt) return 0;
+  const t = new Date(closedAt).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+/**
+ * Reads explicitly reopened (unlocked) month timestamps from localStorage
+ */
+export function getStoredReopenedMonths(userId?: string): Record<string, number> {
+  if (typeof window === 'undefined') return activeReopenedMonthsCache || {};
+  const merged: Record<string, number> = { ...(activeReopenedMonthsCache || {}) };
+  const keysToCheck = [
+    userId ? `psycalcu_reopened_months_${userId}` : '',
+    'psycalcu_reopened_months',
+  ].filter(Boolean);
+
+  try {
+    for (const k of keysToCheck) {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          for (const [mKey, ts] of Object.entries(parsed)) {
+            const numTs = Number(ts) || 0;
+            if (numTs > (merged[mKey] || 0)) {
+              merged[mKey] = numTs;
+            }
+          }
+        }
+      }
+    }
+    // Also check settings in localStorage for reopenedMonths
+    const settingsKeys = [
+      userId ? `psycalcu_settings_${userId}` : '',
+      'psycalcu_settings'
+    ].filter(Boolean);
+    for (const sk of settingsKeys) {
+      const raw = localStorage.getItem(sk);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.reopenedMonths && typeof parsed.reopenedMonths === 'object') {
+          for (const [mKey, ts] of Object.entries(parsed.reopenedMonths)) {
+            const numTs = Number(ts) || 0;
+            if (numTs > (merged[mKey] || 0)) {
+              merged[mKey] = numTs;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  activeReopenedMonthsCache = merged;
+  return merged;
+}
+
+/**
+ * Reads and merges closed months from all local persistence keys, respecting reopened months
+ */
+export function getStoredClosedMonths(userId?: string): Record<string, ClosedMonthRecord> {
+  if (typeof window === 'undefined') return activeClosedMonthsCache || {};
+  const reopened = getStoredReopenedMonths(userId);
+  const merged: Record<string, ClosedMonthRecord> = { ...(activeClosedMonthsCache || {}) };
+
+  const mergeSource = (src?: Record<string, ClosedMonthRecord>) => {
+    if (!src || typeof src !== 'object') return;
+    for (const [mKey, rec] of Object.entries(src)) {
+      if (!rec || !/^\d{4}-\d{2}$/.test(mKey)) continue;
+      const existing = merged[mKey];
+      const recTime = parseClosedAtMs(rec.closedAt);
+      const exTime = existing ? parseClosedAtMs(existing.closedAt) : -1;
+      if (!existing || recTime >= exTime) {
+        merged[mKey] = rec;
+      }
+    }
+  };
+
+  try {
+    const directKeys = [
+      userId ? `psycalcu_closed_months_${userId}` : '',
+      'psycalcu_closed_months'
+    ].filter(Boolean);
+
+    for (const dk of directKeys) {
+      const raw = localStorage.getItem(dk);
+      if (raw) {
+        mergeSource(JSON.parse(raw));
+      }
+    }
+
+    const settingsKeys = [
+      userId ? `psycalcu_settings_${userId}` : '',
+      'psycalcu_settings'
+    ].filter(Boolean);
+
+    for (const sk of settingsKeys) {
+      const raw = localStorage.getItem(sk);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.closedMonths) {
+          mergeSource(parsed.closedMonths);
+        }
+      }
+    }
+  } catch (e) {}
+
+  // Filter out any month that was explicitly reopened after it was closed
+  const finalClosed: Record<string, ClosedMonthRecord> = {};
+  for (const [mKey, rec] of Object.entries(merged)) {
+    const closedMs = parseClosedAtMs(rec.closedAt);
+    const reopenedMs = reopened[mKey] || 0;
+    if (reopenedMs > 0 && reopenedMs > closedMs) {
+      continue;
+    }
+    finalClosed[mKey] = rec;
+  }
+
+  activeClosedMonthsCache = finalClosed;
+  return finalClosed;
+}
+
+/**
+ * Persists closed months and optional reopened month timestamp to localStorage and IndexedDB
+ */
+export function saveStoredClosedMonths(
+  userId: string | undefined,
+  closedMonths: Record<string, ClosedMonthRecord>,
+  reopenedMonthKey?: string,
+  extraReopenedMonths?: Record<string, number>
+): { closedMonths: Record<string, ClosedMonthRecord>; reopenedMonths: Record<string, number> } {
+  const reopened: Record<string, number> = {
+    ...getStoredReopenedMonths(userId),
+    ...(extraReopenedMonths || {})
+  };
+
+  if (reopenedMonthKey) {
+    reopened[reopenedMonthKey] = Date.now();
+  }
+
+  const finalClosed: Record<string, ClosedMonthRecord> = {};
+  for (const [mKey, rec] of Object.entries(closedMonths || {})) {
+    if (!rec || !/^\d{4}-\d{2}$/.test(mKey)) continue;
+    if (mKey === reopenedMonthKey) continue;
+    const closedMs = parseClosedAtMs(rec.closedAt);
+    const reopenedMs = reopened[mKey] || 0;
+    if (reopenedMs > 0 && closedMs >= reopenedMs) {
+      delete reopened[mKey];
+    } else if (reopenedMs > 0 && reopenedMs > closedMs) {
+      continue;
+    }
+    finalClosed[mKey] = rec;
+  }
+
+  activeClosedMonthsCache = finalClosed;
+  activeReopenedMonthsCache = reopened;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const closedStr = JSON.stringify(finalClosed);
+      const reopenedStr = JSON.stringify(reopened);
+      localStorage.setItem('psycalcu_closed_months', closedStr);
+      localStorage.setItem('psycalcu_reopened_months', reopenedStr);
+      if (userId) {
+        localStorage.setItem(`psycalcu_closed_months_${userId}`, closedStr);
+        localStorage.setItem(`psycalcu_reopened_months_${userId}`, reopenedStr);
+        idbSet(`psycalcu_closed_months_${userId}`, finalClosed).catch(() => {});
+        idbSet(`psycalcu_reopened_months_${userId}`, reopened).catch(() => {});
+      }
+      idbSet('psycalcu_closed_months', finalClosed).catch(() => {});
+    } catch (e) {}
+  }
+
+  return { closedMonths: finalClosed, reopenedMonths: reopened };
+}
+
+/**
+ * Safely reconciles local, stored, and remote closedMonths so closed months never accidentally revert to open during sync
+ */
+export function mergeClosedMonths(
+  localClosed?: Record<string, ClosedMonthRecord>,
+  remoteClosed?: Record<string, ClosedMonthRecord>,
+  userId?: string,
+  remoteReopened?: Record<string, number>,
+  localReopened?: Record<string, number>
+): { closedMonths: Record<string, ClosedMonthRecord>; reopenedMonths: Record<string, number> } {
+  const storedClosed = getStoredClosedMonths(userId);
+  const storedReopened = getStoredReopenedMonths(userId);
+
+  const mergedReopened: Record<string, number> = { ...storedReopened };
+  for (const src of [localReopened, remoteReopened]) {
+    if (!src || typeof src !== 'object') continue;
+    for (const [mKey, ts] of Object.entries(src)) {
+      const numTs = Number(ts) || 0;
+      if (numTs > (mergedReopened[mKey] || 0)) {
+        mergedReopened[mKey] = numTs;
+      }
+    }
+  }
+
+  const combinedClosed: Record<string, ClosedMonthRecord> = {};
+  for (const src of [storedClosed, remoteClosed, localClosed]) {
+    if (!src || typeof src !== 'object') continue;
+    for (const [mKey, rec] of Object.entries(src)) {
+      if (!rec || !/^\d{4}-\d{2}$/.test(mKey)) continue;
+      const existing = combinedClosed[mKey];
+      const recMs = parseClosedAtMs(rec.closedAt);
+      const exMs = existing ? parseClosedAtMs(existing.closedAt) : -1;
+      if (!existing || recMs >= exMs) {
+        combinedClosed[mKey] = rec;
+      }
+    }
+  }
+
+  return saveStoredClosedMonths(userId, combinedClosed, undefined, mergedReopened);
+}
+
+/**
+ * Returns the effective closed months combining passed closedMonths and the persistent cache
+ */
+export function getEffectiveClosedMonths(
+  closedMonths?: Record<string, ClosedMonthRecord>,
+  userId?: string
+): Record<string, ClosedMonthRecord> {
+  const stored = activeClosedMonthsCache ?? getStoredClosedMonths(userId);
+  const reopened = activeReopenedMonthsCache ?? getStoredReopenedMonths(userId);
+  if (!closedMonths || Object.keys(closedMonths).length === 0) {
+    return stored;
+  }
+  const merged: Record<string, ClosedMonthRecord> = { ...stored };
+  for (const [k, rec] of Object.entries(closedMonths)) {
+    if (!rec) continue;
+    const closedMs = parseClosedAtMs(rec.closedAt);
+    const reopenedMs = reopened[k] || 0;
+    if (reopenedMs > 0 && reopenedMs > closedMs) continue;
+    merged[k] = rec;
+  }
+  return merged;
+}
 
 /**
  * Returns "YYYY-MM" from a date string (e.g. "2026-08-15" -> "2026-08")
@@ -31,9 +275,11 @@ export function isDateInClosedMonth(
   dateStr: string,
   closedMonths?: Record<string, ClosedMonthRecord>
 ): boolean {
-  if (!dateStr || !closedMonths) return false;
+  if (!dateStr) return false;
   const key = getMonthKey(dateStr);
-  return Boolean(closedMonths[key]);
+  if (!key) return false;
+  const effective = getEffectiveClosedMonths(closedMonths);
+  return Boolean(effective[key]);
 }
 
 /**
@@ -43,8 +289,9 @@ export function isMonthClosed(
   monthKey: string,
   closedMonths?: Record<string, ClosedMonthRecord>
 ): boolean {
-  if (!monthKey || !closedMonths) return false;
-  return Boolean(closedMonths[monthKey]);
+  if (!monthKey) return false;
+  const effective = getEffectiveClosedMonths(closedMonths);
+  return Boolean(effective[monthKey]);
 }
 
 /**
@@ -53,8 +300,8 @@ export function isMonthClosed(
 export function getLatestClosedMonthKey(
   closedMonths?: Record<string, ClosedMonthRecord>
 ): string | null {
-  if (!closedMonths) return null;
-  const keys = Object.keys(closedMonths).filter(k => /^\d{4}-\d{2}$/.test(k));
+  const effective = getEffectiveClosedMonths(closedMonths);
+  const keys = Object.keys(effective).filter(k => /^\d{4}-\d{2}$/.test(k));
   if (keys.length === 0) return null;
   keys.sort();
   return keys[keys.length - 1];

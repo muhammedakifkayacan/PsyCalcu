@@ -77,7 +77,7 @@ import AdminPanel from './components/AdminPanel';
 import { SessionAuditTable } from './components/SessionAuditTable';
 import MonthClosingModal from './components/MonthClosingModal';
 import MonthClosingBanner from './components/MonthClosingBanner';
-import { isDateInClosedMonth, getUnclosedPastMonths, ClosedMonthRecord, formatMonthKey } from './utils/monthCloseUtils';
+import { isDateInClosedMonth, getUnclosedPastMonths, ClosedMonthRecord, formatMonthKey, getStoredClosedMonths, saveStoredClosedMonths, mergeClosedMonths, getEffectiveClosedMonths } from './utils/monthCloseUtils';
 import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
@@ -151,6 +151,8 @@ const autoCorrectPastSessions = (
     ? effectiveStartDate.split('T')[0] 
     : '2026-07-01';
 
+  const effectiveClosedMonths = getEffectiveClosedMonths(closedMonths, auth.currentUser?.uid);
+
   const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
 
   const healedAndRestored = sessionList.map(s => {
@@ -166,7 +168,7 @@ const autoCorrectPastSessions = (
 
     // LOCKED / CLOSED MONTH PROTECTION:
     // If session belongs to a closed month, keep it completely locked and untouched!
-    if (closedMonths && isDateInClosedMonth(s.date, closedMonths)) {
+    if (isDateInClosedMonth(s.date, effectiveClosedMonths)) {
       return s;
     }
 
@@ -255,7 +257,7 @@ const autoCorrectPastSessions = (
   });
 
   const validList = healedAndRestored.filter(Boolean) as Session[];
-  const smartHealed = autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices);
+  const smartHealed = autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices, effectiveClosedMonths);
   const storedLedger = getStoredAccountingLedger(auth.currentUser?.uid);
   return applyAccountingLedgerToSessions(smartHealed, storedLedger, cutoffDate);
 };
@@ -329,11 +331,15 @@ export default function App() {
           rooms: parsed.rooms ?? DEFAULT_SETTINGS.rooms,
           clientCustomPrices: parsed.clientCustomPrices ?? DEFAULT_SETTINGS.clientCustomPrices,
           hasSeenTour: parsed.hasSeenTour ?? false,
-          closedMonths: parsed.closedMonths ?? DEFAULT_SETTINGS.closedMonths,
+          closedMonths: mergeClosedMonths(parsed.closedMonths, undefined, undefined, undefined, parsed.reopenedMonths).closedMonths,
+          reopenedMonths: parsed.reopenedMonths,
         };
       } catch (e) {}
     }
-    return DEFAULT_SETTINGS;
+    return {
+      ...DEFAULT_SETTINGS,
+      closedMonths: getStoredClosedMonths(),
+    };
   });
 
   // Global UX Listener: Automatically scroll focused inputs into view above the virtual keyboard on mobile
@@ -848,14 +854,22 @@ export default function App() {
         if (savedSettings) {
           try {
             const parsed = JSON.parse(savedSettings);
+            const mergedClosed = mergeClosedMonths(parsed.closedMonths, undefined, currentUser.uid, undefined, parsed.reopenedMonths);
             setSettings({
               ...DEFAULT_SETTINGS,
               ...parsed,
               ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
+              closedMonths: mergedClosed.closedMonths,
+              reopenedMonths: mergedClosed.reopenedMonths,
             });
           } catch (e) {}
         } else {
-          setSettings(DEFAULT_SETTINGS);
+          const mergedClosed = mergeClosedMonths(undefined, undefined, currentUser.uid);
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            closedMonths: mergedClosed.closedMonths,
+            reopenedMonths: mergedClosed.reopenedMonths,
+          });
         }
         
         // Also initialize lastSavedRef to prevent immediate auto-saving before sync
@@ -1074,6 +1088,26 @@ export default function App() {
             effectiveCutoff = cloudData.settings?.accountingStartDate || settings.accountingStartDate || (isBusra ? '2026-07-01T00:00:00.000Z' : (safeStorage.getItem('psycalcu_registration_created_at') || '2026-07-01T00:00:00.000Z'));
           }
 
+          // Reconcile closedMonths & reopenedMonths so local closed months are NEVER lost on cloud sync
+          const reconciledMonthState = mergeClosedMonths(
+            settingsRef.current?.closedMonths || settings.closedMonths,
+            cloudData.settings?.closedMonths,
+            user.uid,
+            cloudData.settings?.reopenedMonths,
+            settingsRef.current?.reopenedMonths || settings.reopenedMonths
+          );
+          const remoteClosedKeysCount = Object.keys(cloudData.settings?.closedMonths || {}).length;
+          const mergedClosedKeysCount = Object.keys(reconciledMonthState.closedMonths).length;
+          const hadLocalClosedMonthChanges = mergedClosedKeysCount !== remoteClosedKeysCount;
+
+          if (cloudData.settings) {
+            cloudData.settings = {
+              ...cloudData.settings,
+              closedMonths: reconciledMonthState.closedMonths,
+              reopenedMonths: reconciledMonthState.reopenedMonths,
+            };
+          }
+
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
           const cloudSessions = autoCorrectPastSessions(
             cloudData.sessions || [],
@@ -1083,7 +1117,8 @@ export default function App() {
             effectiveCutoff,
             cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
             cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
-            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
+            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
+            reconciledMonthState.closedMonths
           );
           
           if (shouldMigrate) {
@@ -1122,11 +1157,13 @@ export default function App() {
               effectiveCutoff,
               cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
               cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
-              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
+              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
+              reconciledMonthState.closedMonths
             );
             
             setSessions(finalSessions);
             setSettings(cloudData.settings);
+            settingsRef.current = cloudData.settings;
             // Save the merged data to the cloud
             await saveUserData(user.uid, cloudData.settings, finalSessions, cloudData.expenses || []);
             lastSavedRef.current = {
@@ -1245,11 +1282,13 @@ export default function App() {
               effectiveCutoff,
               cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
               cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
-              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
+              cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
+              reconciledMonthState.closedMonths
             );
 
             setSessions(finalSessions);
             setSettings(cloudData.settings);
+            settingsRef.current = cloudData.settings;
             if (cloudData.expenses) {
               setExpenses(cloudData.expenses);
             }
@@ -1301,8 +1340,8 @@ export default function App() {
               expenses: JSON.stringify(cloudData.expenses || [])
             };
 
-            // If local had newer changes not yet in cloud, save to cloud now
-            if (hasNewerLocalEdits) {
+            // If local had newer changes or closed months not yet in cloud, save to cloud now
+            if (hasNewerLocalEdits || hadLocalClosedMonthChanges) {
               saveUserData(user.uid, cloudData.settings, finalSessions, cloudData.expenses || [], 'Yerel Muhasebe Değişiklikleri Eşitlemesi').catch((e) => {
                 console.warn("Could not save reconciled data to cloud:", e);
               });
@@ -1548,15 +1587,33 @@ export default function App() {
             effectiveCutoff
           );
 
+          // Reconcile closedMonths & reopenedMonths so remote snapshot never wipes out locally closed months
+          const reconciledMonthState = mergeClosedMonths(
+            settingsRef.current?.closedMonths,
+            newSettings?.closedMonths || data.closedMonths,
+            user.uid,
+            newSettings?.reopenedMonths || data.reopenedMonths,
+            settingsRef.current?.reopenedMonths
+          );
+          const mergedSettings: AppSettings | undefined = newSettings ? {
+            ...newSettings,
+            closedMonths: reconciledMonthState.closedMonths,
+            reopenedMonths: reconciledMonthState.reopenedMonths,
+          } : undefined;
+          const mergedSettingsStr = mergedSettings ? JSON.stringify(mergedSettings) : newSettingsStr;
+
           isRemoteUpdatingRef.current = true;
-          if (newSettings) setSettings(newSettings);
+          if (mergedSettings) {
+            setSettings(mergedSettings);
+            settingsRef.current = mergedSettings;
+          }
           setSessions(finalSessions);
           setExpenses(newExpenses);
 
           const finalSessionsStr = JSON.stringify(finalSessions);
 
           lastSavedRef.current = {
-            settings: newSettingsStr,
+            settings: mergedSettingsStr,
             sessions: finalSessionsStr,
             expenses: newExpensesStr
           };
@@ -1565,9 +1622,16 @@ export default function App() {
           const userSessionsKey = `psycalcu_sessions_${user.uid}`;
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
           const userExpensesKey = `psycalcu_expenses_${user.uid}`;
-          if (newSettings) safeStorage.setItem(userSettingsKey, newSettingsStr, user.uid);
+          if (mergedSettings) safeStorage.setItem(userSettingsKey, mergedSettingsStr, user.uid);
           safeStorage.setItem(userSessionsKey, finalSessionsStr, user.uid);
           safeStorage.setItem(userExpensesKey, newExpensesStr, user.uid);
+
+          // If local had closed months that were missing from the remote document, sync them back to Firestore
+          const remoteClosedCount = Object.keys(newSettings?.closedMonths || {}).length;
+          const mergedClosedCount = Object.keys(reconciledMonthState.closedMonths).length;
+          if (mergedSettings && mergedClosedCount > remoteClosedCount && !isFirestoreQuotaExceeded && !isQuotaExceeded) {
+            saveUserData(user.uid, mergedSettings, finalSessions, newExpenses).catch(() => {});
+          }
 
           showToast('Diğer cihazınızdan yapılan değişiklikler canlı olarak güncellendi.', 'info');
         }
@@ -3505,10 +3569,11 @@ export default function App() {
   };
 
   const handleCloseMonth = (monthKey: string, summaryRecord: Partial<ClosedMonthRecord>) => {
+    const curSettings = settingsRef.current || settings;
     const updatedRecord: ClosedMonthRecord = {
       monthKey,
       closedAt: summaryRecord.closedAt || new Date().toISOString(),
-      closedBy: summaryRecord.closedBy || settings.therapistName || user?.displayName || user?.email || 'Terapist',
+      closedBy: summaryRecord.closedBy || curSettings.therapistName || user?.displayName || user?.email || 'Terapist',
       sessionCount: summaryRecord.sessionCount || 0,
       onlineCount: summaryRecord.onlineCount || 0,
       faceToFaceCount: summaryRecord.faceToFaceCount || 0,
@@ -3521,22 +3586,34 @@ export default function App() {
       notes: summaryRecord.notes,
     };
 
-    const newClosedMonths = {
-      ...(settings.closedMonths || {}),
+    const existingClosed = getEffectiveClosedMonths(curSettings.closedMonths, user?.uid);
+    const candidateClosedMonths = {
+      ...existingClosed,
       [monthKey]: updatedRecord
     };
 
+    const persistedMonthState = saveStoredClosedMonths(
+      user?.uid,
+      candidateClosedMonths,
+      undefined,
+      curSettings.reopenedMonths
+    );
+
     const newSettings: AppSettings = {
-      ...settings,
-      closedMonths: newClosedMonths
+      ...curSettings,
+      closedMonths: persistedMonthState.closedMonths,
+      reopenedMonths: persistedMonthState.reopenedMonths
     };
 
+    settingsRef.current = newSettings;
     setSettings(newSettings);
 
     try {
-      safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
+      const settingsStr = JSON.stringify(newSettings);
+      lastSavedRef.current.settings = settingsStr;
+      safeStorage.setItem('psycalcu_settings', settingsStr, user?.uid);
       if (user) {
-        safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(newSettings), user.uid);
+        safeStorage.setItem(`psycalcu_settings_${user.uid}`, settingsStr, user.uid);
         saveUserData(user.uid, newSettings, sessionsRef.current || [], expensesRef.current || []).catch(err => {
           console.error("Error saving closedMonths to Firestore:", err);
         });
@@ -3556,20 +3633,32 @@ export default function App() {
   };
 
   const handleReopenMonth = (monthKey: string) => {
-    const updatedClosedMonths = { ...(settings.closedMonths || {}) };
+    const curSettings = settingsRef.current || settings;
+    const updatedClosedMonths = { ...getEffectiveClosedMonths(curSettings.closedMonths, user?.uid) };
     delete updatedClosedMonths[monthKey];
 
+    const persistedMonthState = saveStoredClosedMonths(
+      user?.uid,
+      updatedClosedMonths,
+      monthKey,
+      curSettings.reopenedMonths
+    );
+
     const newSettings: AppSettings = {
-      ...settings,
-      closedMonths: updatedClosedMonths
+      ...curSettings,
+      closedMonths: persistedMonthState.closedMonths,
+      reopenedMonths: persistedMonthState.reopenedMonths
     };
 
+    settingsRef.current = newSettings;
     setSettings(newSettings);
 
     try {
-      safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
+      const settingsStr = JSON.stringify(newSettings);
+      lastSavedRef.current.settings = settingsStr;
+      safeStorage.setItem('psycalcu_settings', settingsStr, user?.uid);
       if (user) {
-        safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(newSettings), user.uid);
+        safeStorage.setItem(`psycalcu_settings_${user.uid}`, settingsStr, user.uid);
         saveUserData(user.uid, newSettings, sessionsRef.current || [], expensesRef.current || []).catch(err => {
           console.error("Error saving reopened month to Firestore:", err);
         });
@@ -3734,11 +3823,14 @@ export default function App() {
     newSessions: Session[],
     syncedTypesFetched?: 'online' | 'face-to-face' | 'rent-income' | ('online' | 'face-to-face' | 'rent-income')[]
   ) => {
+    const activeSettings = settingsRef.current || settings;
+    const activeClosedMonths = getEffectiveClosedMonths(activeSettings.closedMonths, user?.uid);
+
     // Helper to automatically match rooms based on keywords in the imported session's notes/description/location
     const findMatchedRoomId = (notesStr?: string) => {
-      if (!notesStr || !settings.rooms || settings.rooms.length === 0) return undefined;
+      if (!notesStr || !activeSettings.rooms || activeSettings.rooms.length === 0) return undefined;
       const upperNotes = toTurkishUpper(notesStr);
-      for (const rm of settings.rooms) {
+      for (const rm of activeSettings.rooms) {
         if (upperNotes.includes(toTurkishUpper(rm.name))) {
           return rm.id;
         }
@@ -3766,13 +3858,13 @@ export default function App() {
     }
 
     // Helper to determine effective accounting start date (YYYY-MM-DD)
-    const effectiveAccountingStartDate = settings.accountingStartDate
-      ? settings.accountingStartDate.split('T')[0]
+    const effectiveAccountingStartDate = activeSettings.accountingStartDate
+      ? activeSettings.accountingStartDate.split('T')[0]
       : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
 
     // Track if complete calendar sync has been performed at least once
     const isInitialCalendarSyncDone = Boolean(
-      settings.hasCompletedInitialCalendarSync ||
+      activeSettings.hasCompletedInitialCalendarSync ||
       safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true' ||
       effectiveSessions.length > 0
     );
@@ -3902,9 +3994,9 @@ export default function App() {
         date,
         effectiveSessions,
         defPrice,
-        settings.defaultBabysitterFee,
-        settings.defaultOfficeRentFee,
-        settings.clientCustomPrices,
+        activeSettings.defaultBabysitterFee,
+        activeSettings.defaultOfficeRentFee,
+        activeSettings.clientCustomPrices,
         type
       );
       clientCostsCache.set(cacheKey, costs);
@@ -3914,7 +4006,7 @@ export default function App() {
     newSessions.forEach(ns => {
       // 1. CLOSED / LOCKED MONTH PROTECTION:
       // Kitlenen ayın etkinliklerini kesinlikle kontrol etme / eşitleme!
-      if (isDateInClosedMonth(ns.date, settings.closedMonths)) {
+      if (isDateInClosedMonth(ns.date, activeClosedMonths)) {
         return;
       }
 
@@ -3952,7 +4044,7 @@ export default function App() {
             extractBaseUid(s.id) === nsBaseUid && 
             !matchedExistingIds.has(s.id) &&
             !preReservedExistingIds.has(s.id) &&
-            !isDateInClosedMonth(s.date, settings.closedMonths) &&
+            !isDateInClosedMonth(s.date, activeClosedMonths) &&
             Math.abs(new Date(s.date).getTime() - nsDateMs) <= MAX_RESCHEDULE_DIFF_MS
           );
           if (candidatesWithBaseUid.length === 1) {
@@ -3991,7 +4083,7 @@ export default function App() {
 
         // PERIOD LOCKING PROTECTION:
         // If the existing session belongs to a closed month, keep it completely locked and untouched.
-        if (isDateInClosedMonth(existing.date, settings.closedMonths)) {
+        if (isDateInClosedMonth(existing.date, activeClosedMonths)) {
           return;
         }
 
@@ -4168,7 +4260,7 @@ export default function App() {
 
     // Filter out synced sessions that are deleted/missing in the fetched feeds within our window
     const sessionsToKeep: Session[] = [];
-    const isSingleCalendarMode = !settings.faceToFaceCalendarWebcalUrl || !settings.onlineCalendarWebcalUrl;
+    const isSingleCalendarMode = !activeSettings.faceToFaceCalendarWebcalUrl || !activeSettings.onlineCalendarWebcalUrl;
 
     // EXTERNAL CALENDAR ZERO-DATA / OUTAGE SAFETY GUARD:
     // If incoming calendar feed returned 0 events while user had active calendar sessions,
@@ -4177,7 +4269,7 @@ export default function App() {
       !s.isDeleted &&
       (s.isSyncedFromCalendar || (s.id && s.id.startsWith('ics_'))) && 
       s.date >= cutOffDateStr && 
-      !isDateInClosedMonth(s.date, settings.closedMonths)
+      !isDateInClosedMonth(s.date, activeClosedMonths)
     ).length;
 
     const isSuspiciousZeroData = activeCalendarSyncedCount >= 3 && newSessions.length === 0;
@@ -4206,7 +4298,7 @@ export default function App() {
 
       // 3. PERIOD LOCKING PROTECTION:
       // Sessions belonging to a closed month must NEVER be deleted by calendar sync!
-      if (isDateInClosedMonth(s.date, settings.closedMonths)) {
+      if (isDateInClosedMonth(s.date, activeClosedMonths)) {
         sessionsToKeep.push(s);
         return;
       }
@@ -4344,7 +4436,8 @@ export default function App() {
           }
         });
 
-        const curSettings = settingsRef.current || settings;
+        const curSettings = settingsRef.current || activeSettings;
+        const latestClosedMonths = getEffectiveClosedMonths(curSettings.closedMonths, user?.uid);
         return autoCorrectPastSessions(
           Array.from(sessionsMap.values()),
           curSettings.defaultSessionPrice,
@@ -4354,20 +4447,27 @@ export default function App() {
           curSettings.defaultOnlinePrice,
           curSettings.defaultFaceToFacePrice,
           curSettings.clientCustomPrices,
-          curSettings.closedMonths
+          latestClosedMonths
         );
       });
     }
 
     // Mark initial full calendar sync as completed once
-    if (!settings.hasCompletedInitialCalendarSync && (addedCount > 0 || updatedCount > 0 || deletedCount > 0 || effectiveSessions.length > 0)) {
+    if (!activeSettings.hasCompletedInitialCalendarSync && (addedCount > 0 || updatedCount > 0 || deletedCount > 0 || effectiveSessions.length > 0)) {
       try {
         safeStorage.setItem('psycalcu_has_completed_initial_calendar_sync', 'true', user?.uid);
       } catch (e) {}
-      setSettings(prev => ({
-        ...prev,
-        hasCompletedInitialCalendarSync: true
-      }));
+      setSettings(prev => {
+        const mergedMonthState = mergeClosedMonths(prev.closedMonths, activeClosedMonths, user?.uid, undefined, prev.reopenedMonths);
+        const next: AppSettings = {
+          ...prev,
+          closedMonths: mergedMonthState.closedMonths,
+          reopenedMonths: mergedMonthState.reopenedMonths,
+          hasCompletedInitialCalendarSync: true
+        };
+        settingsRef.current = next;
+        return next;
+      });
     }
 
     return { 
@@ -4422,6 +4522,8 @@ export default function App() {
       (sessionsRef.current && sessionsRef.current.length > 0)
     );
 
+    const activeClosedMonths = getEffectiveClosedMonths(activeSettings.closedMonths, user?.uid);
+
     // Sync Online Calendar
     if (onlineCalendarWebcalUrl) {
       try {
@@ -4439,7 +4541,7 @@ export default function App() {
             registrationCreatedAt, 
             activeSettings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
-            activeSettings.closedMonths,
+            activeClosedMonths,
             isInitialCalendarSyncDone,
             onlineDefaultPrice,
             faceToFaceDefaultPrice
@@ -4483,7 +4585,7 @@ export default function App() {
             registrationCreatedAt, 
             activeSettings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
-            activeSettings.closedMonths,
+            activeClosedMonths,
             isInitialCalendarSyncDone,
             onlineDefaultPrice,
             faceToFaceDefaultPrice
@@ -4530,7 +4632,7 @@ export default function App() {
               registrationCreatedAt, 
               activeSettings.autoMarkShortEventsAsNonSession ?? true,
               effectiveAccountingStartDate,
-              activeSettings.closedMonths,
+              activeClosedMonths,
               isInitialCalendarSyncDone
             );
             const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
@@ -4593,6 +4695,9 @@ export default function App() {
     }
   };
 
+  const handleManualCalendarSyncRef = useRef(handleManualCalendarSync);
+  handleManualCalendarSyncRef.current = handleManualCalendarSync;
+
   // Automated background calendar sync orchestrator (non-intrusive, throttled)
   const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 15000) => {
     // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized!
@@ -4617,7 +4722,7 @@ export default function App() {
     lastSyncTimestampRef.current = now;
     setIsAutoSyncing(true);
     try {
-      await handleManualCalendarSync(false, true);
+      await handleManualCalendarSyncRef.current(false, true);
       setLastCalendarSyncTime(new Date());
     } catch (e) {
       console.warn("Background auto-sync error:", e);
@@ -4719,6 +4824,21 @@ export default function App() {
             return cs;
           });
 
+          const reconciledMonthState = mergeClosedMonths(
+            settingsRef.current?.closedMonths || settings.closedMonths,
+            cloudData.settings?.closedMonths,
+            user.uid,
+            cloudData.settings?.reopenedMonths,
+            settingsRef.current?.reopenedMonths || settings.reopenedMonths
+          );
+          if (cloudData.settings) {
+            cloudData.settings = {
+              ...cloudData.settings,
+              closedMonths: reconciledMonthState.closedMonths,
+              reopenedMonths: reconciledMonthState.reopenedMonths
+            };
+          }
+
           const cloudSessions = autoCorrectPastSessions(
             reconciledRaw,
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
@@ -4727,10 +4847,12 @@ export default function App() {
             effectiveCutoff,
             cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
             cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
-            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices
+            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
+            reconciledMonthState.closedMonths
           );
           setSessions(cloudSessions);
           setSettings(cloudData.settings);
+          settingsRef.current = cloudData.settings;
           
           const userSessionsKey = `psycalcu_sessions_${user.uid}`;
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
@@ -4738,7 +4860,7 @@ export default function App() {
           safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
         }
       }
-      await handleManualCalendarSync(false);
+      await handleManualCalendarSyncRef.current(false);
       showToast('Tüm verileriniz ve takviminiz güncellendi 🔄', 'success');
     } catch (err) {
       console.error("Page refresh error:", err);
@@ -7558,10 +7680,23 @@ export default function App() {
                   defaultOfficeRentFee={settings.defaultOfficeRentFee}
                   settings={settings}
                   onSaveSettings={(updated) => {
-                    setSettings(updated);
+                    const mergedMonthState = mergeClosedMonths(
+                      settingsRef.current?.closedMonths,
+                      updated.closedMonths,
+                      user?.uid,
+                      undefined,
+                      settingsRef.current?.reopenedMonths || updated.reopenedMonths
+                    );
+                    const finalUpdated: AppSettings = {
+                      ...updated,
+                      closedMonths: mergedMonthState.closedMonths,
+                      reopenedMonths: mergedMonthState.reopenedMonths
+                    };
+                    settingsRef.current = finalUpdated;
+                    setSettings(finalUpdated);
                     if (user) {
-                      safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
-                      saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+                      safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(finalUpdated), user.uid);
+                      saveUserData(user.uid, finalUpdated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
                         console.error("Error saving updated settings from CalendarSyncGuide:", err);
                       });
                     }
@@ -8347,10 +8482,23 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSave={async (updated) => {
-          setSettings(updated);
+          const mergedMonthState = mergeClosedMonths(
+            settingsRef.current?.closedMonths,
+            updated.closedMonths,
+            user?.uid,
+            undefined,
+            settingsRef.current?.reopenedMonths || updated.reopenedMonths
+          );
+          const finalUpdated: AppSettings = {
+            ...updated,
+            closedMonths: mergedMonthState.closedMonths,
+            reopenedMonths: mergedMonthState.reopenedMonths
+          };
+          settingsRef.current = finalUpdated;
+          setSettings(finalUpdated);
           if (user) {
-            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updated), user.uid);
-            saveUserData(user.uid, updated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(finalUpdated), user.uid);
+            saveUserData(user.uid, finalUpdated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
               console.error("Error saving updated settings from SettingsModal:", err);
             });
             if (updated.userRole !== settings.userRole) {

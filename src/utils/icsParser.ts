@@ -581,7 +581,7 @@ export function parseICS(
     if (isInitialCalendarSyncDone && effectiveAccountingStart && !raw.rruleRaw && startParsed.dateStr < effectiveAccountingStart) {
       continue;
     }
-    if (closedMonths && !raw.rruleRaw && isDateInClosedMonth(startParsed.dateStr, closedMonths)) {
+    if (!raw.rruleRaw && isDateInClosedMonth(startParsed.dateStr, closedMonths)) {
       continue;
     }
 
@@ -678,7 +678,7 @@ export function parseICS(
       }
 
       // 2. NEVER evaluate or import events in closed / locked months!
-      if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) {
+      if (isDateInClosedMonth(occ.dateStr, closedMonths)) {
         continue;
       }
 
