@@ -131,7 +131,7 @@ export default function SessionModal({
     if (isEditingClosedMonthSession) {
       return {
         title: 'Kapatılmış Ay (Dönem Koruması)',
-        text: `Bu seans kapatılmış (${formatMonthKey(closedMonthKey)}) dönemine aittir. Takvim eşitlemesinde kaybolmaması için tarih, saat ve ücret kilitlidir. Ancak geçmiş borç tahsilatı için ödeme durumu ve tahsilat alanları açıktır.`
+        text: `Bu seans kapatılmış (${formatMonthKey(closedMonthKey)}) dönemine aittir. Takvim eşitlemesinde kaybolmaması için tarih ve saat kilitlidir. Seans ücretini, ödeme durumunu, giderleri ve notları serbestçe güncelleyebilirsiniz.`
       };
     }
     if (isCreatingInClosedMonth) {
@@ -326,30 +326,8 @@ export default function SessionModal({
     if (isCreatingInClosedMonth) return;
     if (!clientName.trim()) return;
 
-    // If editing a session in a closed month, keep date, time, price, and type strictly frozen,
-    // while allowing payment settlement (debt clearance) and notes to update.
-    if (isEditingClosedMonthSession && sessionToEdit) {
-      const isCancelledOrNonSession = sessionToEdit.type === 'cancelled' || sessionToEdit.type === 'non-session';
-      const calcPaidAmount = isCancelledOrNonSession
-        ? 0
-        : (paymentStatus === 'paid' 
-            ? sessionToEdit.price 
-            : (paymentStatus === 'partial' ? Math.min(sessionToEdit.price, Math.max(0, Number(paidAmount) || 0)) : 0));
-
-      const updatedSessionData: Session = {
-        ...sessionToEdit,
-        paymentStatus: isCancelledOrNonSession ? 'unpaid' : paymentStatus,
-        paidAmount: calcPaidAmount,
-        paymentMethod: isCancelledOrNonSession ? undefined : (paymentMethod ? (paymentMethod as PaymentMethod) : undefined),
-        notes: notes.trim(),
-        updatedAt: Date.now(),
-        isManuallyEdited: true
-      };
-
-      onSave(updatedSessionData);
-      onClose();
-      return;
-    }
+    const effectiveDate = isEditingClosedMonthSession && sessionToEdit ? sessionToEdit.date : date;
+    const effectiveTime = isEditingClosedMonthSession && sessionToEdit ? sessionToEdit.time : time;
 
     const isNonSession = type === 'non-session';
     const isRentIncome = type === 'rent-income';
@@ -378,8 +356,8 @@ export default function SessionModal({
       id: sessionToEdit ? sessionToEdit.id : 'session_' + Math.random().toString(36).substr(2, 9),
       clientName: clientName.trim(),
       type,
-      date,
-      time,
+      date: effectiveDate,
+      time: effectiveTime,
       duration: Number(duration),
       price: sessionPrice,
       hasBabysitterFee: hasBaby,
@@ -455,7 +433,7 @@ export default function SessionModal({
                 <span>Kapatılmış Muhasebe Dönemi ({formatMonthKey(closedMonthKey)})</span>
               </div>
               <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
-                Bu seansın tarihi, saati ve seans ücreti takvim kaymalarını önlemek için kilitlidir. <strong>Danışanın geçmiş dönem borcunu kapatabilmeniz için</strong> aşağıdan Ödeme Durumu, Tahsil Edilen Tutar, Ödeme Yöntemi ve Seans Notlarını serbestçe güncelleyebilirsiniz.
+                Bu seansın tarihi ve saati takvim kaymalarını önlemek için kilitlidir. <strong>Seans Ücreti, Ödeme Durumu, Alınan Tutar, Giderler ve Seans Notlarını</strong> aşağıdan serbestçe güncelleyebilirsiniz.
               </p>
             </div>
           )}
@@ -474,7 +452,7 @@ export default function SessionModal({
 
           {/* Client Name (Inset Label inside Box) */}
           <div className={`relative rounded-xl border px-3 pt-1.5 pb-1.5 transition-colors focus-within:border-[#6b705c] focus-within:bg-white ${
-            isSessionInClosedMonth 
+            isCreatingInClosedMonth 
               ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
               : 'bg-[#fdfbf7] border-[#e5e1d8]'
           }`}>
@@ -504,11 +482,11 @@ export default function SessionModal({
             <input
               type="text"
               required
-              disabled={isSessionInClosedMonth}
+              disabled={isCreatingInClosedMonth}
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
               className={`w-full bg-transparent text-sm sm:text-xs font-semibold focus:outline-none ${
-                isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 placeholder:text-slate-400 placeholder:font-normal'
+                isCreatingInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 placeholder:text-slate-400 placeholder:font-normal'
               }`}
               placeholder={
                 type === 'rent-income' 
@@ -523,17 +501,17 @@ export default function SessionModal({
           {/* Session Type & Room Selector (Inset Labels) */}
           <div className={`grid grid-cols-1 ${(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 ? 'sm:grid-cols-2' : ''} gap-2.5`}>
             <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 transition-colors focus-within:border-[#6b705c] ${
-              isSessionInClosedMonth 
+              isCreatingInClosedMonth 
                 ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
                 : 'bg-[#fdfbf7] border-[#e5e1d8]'
             }`}>
               <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block">ETKİNLİK TİPİ</label>
               <select
                 value={type}
-                disabled={isSessionInClosedMonth}
+                disabled={isCreatingInClosedMonth}
                 onChange={(e) => handleTypeChange(e.target.value as SessionType)}
                 className={`w-full bg-transparent text-xs font-semibold focus:outline-none py-0.5 ${
-                  isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
+                  isCreatingInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                 }`}
               >
                 <option value="online">🌐 Online Seans</option>
@@ -549,7 +527,7 @@ export default function SessionModal({
             {(type === 'face-to-face' || type === 'rent-income') && rooms && rooms.length > 0 && (
               <div
                 className={`relative rounded-xl border px-3 pt-1.5 pb-1 transition-colors focus-within:border-[#6b705c] ${
-                  isSessionInClosedMonth 
+                  isCreatingInClosedMonth 
                     ? 'bg-slate-100 border-slate-200 cursor-not-allowed' 
                     : 'bg-[#fdfbf7] border-[#e5e1d8]'
                 }`}
@@ -561,10 +539,10 @@ export default function SessionModal({
                 </label>
                 <select
                   value={roomId}
-                  disabled={isSessionInClosedMonth}
+                  disabled={isCreatingInClosedMonth}
                   onChange={(e) => setRoomId(e.target.value)}
                   className={`w-full bg-transparent text-xs font-medium focus:outline-none py-0.5 ${
-                    isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
+                    isCreatingInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                   }`}
                 >
                   <option value="">-- Oda Atanmamış --</option>
@@ -695,17 +673,17 @@ export default function SessionModal({
             {/* Row 2, Col 1: Süre */}
             {type !== 'rent-income' && (
               <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
-                isSessionInClosedMonth
+                isCreatingInClosedMonth
                   ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
                   : 'bg-[#fdfbf7] border-[#e5e1d8]'
               }`}>
                 <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider block truncate">SÜRE</label>
                 <select
                   value={duration}
-                  disabled={isSessionInClosedMonth}
+                  disabled={isCreatingInClosedMonth}
                   onChange={(e) => setDuration(Number(e.target.value))}
                   className={`w-full max-w-full min-w-0 box-border block bg-transparent py-0.5 text-xs font-semibold focus:outline-none ${
-                    isSessionInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
+                    isCreatingInClosedMonth ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800 cursor-pointer'
                   }`}
                 >
                   <option value="30">30 Dakika</option>
@@ -720,7 +698,7 @@ export default function SessionModal({
             {/* Row 2, Col 2: Seans Ücreti */}
             <div className={`min-w-0 w-full max-w-full box-border ${type === 'rent-income' ? 'col-span-2' : ''}`}>
               <div className={`relative rounded-xl border px-3 pt-1.5 pb-1 min-w-0 w-full max-w-full box-border transition-colors focus-within:border-[#6b705c] ${
-                (isSessionInClosedMonth || type === 'cancelled' || type === 'non-session')
+                (isCreatingInClosedMonth || type === 'cancelled' || type === 'non-session')
                   ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
                   : 'bg-[#fdfbf7] border-[#e5e1d8]'
               }`}>
@@ -736,16 +714,20 @@ export default function SessionModal({
                     required
                     min="0"
                     placeholder="0"
-                    disabled={isSessionInClosedMonth || type === 'cancelled' || type === 'non-session'}
+                    disabled={isCreatingInClosedMonth || type === 'cancelled' || type === 'non-session'}
                     value={(type === 'cancelled' || type === 'non-session') ? 0 : (price === 0 ? '' : price)}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setPrice(val === '' ? '' : Number(val));
+                      const numVal = val === '' ? '' : Number(val);
+                      setPrice(numVal);
+                      if (paymentStatus === 'paid' && numVal !== '') {
+                        setPaidAmount(numVal);
+                      }
                       setIsPriceManuallyEdited(true);
                     }}
                     onFocus={(e) => e.target.select()}
                     className={`w-full max-w-full min-w-0 block box-border bg-transparent py-0.5 text-xs font-bold focus:outline-none ${
-                      (isSessionInClosedMonth || type === 'cancelled' || type === 'non-session')
+                      (isCreatingInClosedMonth || type === 'cancelled' || type === 'non-session')
                         ? 'text-slate-400 cursor-not-allowed'
                         : 'text-slate-800'
                     }`}
@@ -949,10 +931,10 @@ export default function SessionModal({
                 <div className="bg-[#f5f5f0] p-2.5 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] font-bold text-slate-700">Bakıcı Gideri?</span>
-                    <label className={`relative inline-flex items-center ${isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                    <label className={`relative inline-flex items-center ${isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
-                        disabled={isSessionInClosedMonth}
+                        disabled={isCreatingInClosedMonth}
                         checked={hasBabysitterFee}
                         onChange={(e) => setHasBabysitterFee(e.target.checked)}
                         className="sr-only peer"
@@ -970,7 +952,7 @@ export default function SessionModal({
                           inputMode="decimal"
                           pattern="[0-9]*"
                           min="0"
-                          disabled={isSessionInClosedMonth}
+                          disabled={isCreatingInClosedMonth}
                           value={babysitterFeeAmount === 0 ? '' : babysitterFeeAmount}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -979,7 +961,7 @@ export default function SessionModal({
                           }}
                           onFocus={(e) => e.target.select()}
                           className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
-                            isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                            isCreatingInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
                           }`}
                         />
                         <span className="text-[10px] font-bold text-slate-500 ml-1">₺</span>
@@ -1005,10 +987,10 @@ export default function SessionModal({
                   <div className="bg-[#f5f5f0] p-2.5 rounded-xl border border-[#e5e1d8]/60 flex flex-col justify-between animate-fade-in">
                     <div className="flex justify-between items-center">
                       <span className="text-[11px] font-bold text-slate-700">Ofis Kira Gideri?</span>
-                      <label className={`relative inline-flex items-center ${isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                      <label className={`relative inline-flex items-center ${isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                         <input
                           type="checkbox"
-                          disabled={isSessionInClosedMonth}
+                          disabled={isCreatingInClosedMonth}
                           checked={hasOfficeRentFee}
                           onChange={(e) => setHasOfficeRentFee(e.target.checked)}
                           className="sr-only peer"
@@ -1026,7 +1008,7 @@ export default function SessionModal({
                             inputMode="decimal"
                             pattern="[0-9]*"
                             min="0"
-                            disabled={isSessionInClosedMonth}
+                            disabled={isCreatingInClosedMonth}
                             value={officeRentFeeAmount === 0 ? '' : officeRentFeeAmount}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -1035,7 +1017,7 @@ export default function SessionModal({
                             }}
                             onFocus={(e) => e.target.select()}
                             className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
-                              isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                              isCreatingInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
                             }`}
                           />
                           <span className="text-[10px] font-bold text-slate-500 ml-1">₺</span>
@@ -1097,10 +1079,10 @@ export default function SessionModal({
                                 <Receipt className="w-3.5 h-3.5 text-[#6b705c]" />
                                 KDV Kesintisi / Fatura?
                               </span>
-                              <label className={`relative inline-flex items-center ${isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                              <label className={`relative inline-flex items-center ${isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                                 <input
                                   type="checkbox"
-                                  disabled={isSessionInClosedMonth}
+                                  disabled={isCreatingInClosedMonth}
                                   checked={hasKDV}
                                   onChange={(e) => setHasKDV(e.target.checked)}
                                   className="sr-only peer"
@@ -1114,10 +1096,10 @@ export default function SessionModal({
                                 <div className="grid grid-cols-2 gap-1 bg-white p-0.5 rounded-lg border border-[#e5e1d8]">
                                   <button
                                     type="button"
-                                    disabled={isSessionInClosedMonth}
+                                    disabled={isCreatingInClosedMonth}
                                     onClick={() => setIsKdvInclusive(true)}
                                     className={`py-1 px-1 text-[10px] font-bold rounded transition-all ${
-                                      isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                                      isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                                     } ${
                                       isKdvInclusive
                                         ? 'bg-[#6b705c] text-white shadow-xs'
@@ -1128,10 +1110,10 @@ export default function SessionModal({
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={isSessionInClosedMonth}
+                                    disabled={isCreatingInClosedMonth}
                                     onClick={() => setIsKdvInclusive(false)}
                                     className={`py-1 px-1 text-[10px] font-bold rounded transition-all ${
-                                      isSessionInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                                      isCreatingInClosedMonth ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
                                     } ${
                                       !isKdvInclusive
                                         ? 'bg-[#6b705c] text-white shadow-xs'
@@ -1150,7 +1132,7 @@ export default function SessionModal({
                                     pattern="[0-9]*"
                                     min="0"
                                     max="100"
-                                    disabled={isSessionInClosedMonth}
+                                    disabled={isCreatingInClosedMonth}
                                     value={kdvRate === 0 ? '' : kdvRate}
                                     onChange={(e) => {
                                       const val = e.target.value;
@@ -1158,7 +1140,7 @@ export default function SessionModal({
                                     }}
                                     onFocus={(e) => e.target.select()}
                                     className={`w-full text-xs font-bold focus:outline-none bg-transparent ${
-                                      isSessionInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
+                                      isCreatingInClosedMonth ? 'text-slate-400 cursor-not-allowed' : 'text-slate-800'
                                     }`}
                                   />
                                 </div>
@@ -1347,7 +1329,7 @@ export default function SessionModal({
                 ) : isEditingClosedMonthSession ? (
                   <>
                     <CheckCircle className="w-3.5 h-3.5" />
-                    <span>Tahsilatı Kaydet</span>
+                    <span>Değişiklikleri Kaydet</span>
                   </>
                 ) : (
                   <span>Kaydet</span>

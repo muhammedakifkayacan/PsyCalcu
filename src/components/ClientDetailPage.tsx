@@ -35,10 +35,12 @@ import {
   X,
   RotateCcw,
   LayoutGrid,
-  List
+  List,
+  Share2
 } from 'lucide-react';
 import { Session, AppSettings, SessionType, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
+import { ClientPdfReportModal, resolveLiveSessionNote } from './ClientPdfReportModal';
 
 interface ClientDetailPageProps {
   clientName: string;
@@ -52,6 +54,9 @@ interface ClientDetailPageProps {
   onAddNewSession: (clientName: string) => void;
   onJumpToDate?: (date: string) => void;
   onMarkAllPaid?: (clientName: string) => void;
+  tempNotesCache?: Record<string, string>;
+  onFetchLiveCalendarNotes?: (silent?: boolean) => Promise<Record<string, string> | void>;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const TURKISH_MONTHS_FULL = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -70,7 +75,10 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   onOpenEditModal,
   onAddNewSession,
   onJumpToDate,
-  onMarkAllPaid
+  onMarkAllPaid,
+  tempNotesCache = {},
+  onFetchLiveCalendarNotes,
+  showToast
 }) => {
   const { formatMoney, formatClientName } = usePrivacy();
 
@@ -81,6 +89,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   const [copiedText, setCopiedText] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isPdfReportModalOpen, setIsPdfReportModalOpen] = useState(false);
   const [viewLayout, setViewLayout] = useState<'cards' | 'list'>(() => {
     try {
       const saved = localStorage.getItem('psycalcu_client_detail_layout');
@@ -217,7 +226,8 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
         if (searchQuery.trim()) {
           const query = searchQuery.toLocaleLowerCase('tr-TR');
-          const matchNotes = (s.notes || '').toLocaleLowerCase('tr-TR').includes(query);
+          const resolvedNote = resolveLiveSessionNote(s, tempNotesCache).rawNote;
+          const matchNotes = (resolvedNote || s.notes || '').toLocaleLowerCase('tr-TR').includes(query);
           const matchDate = (s.date || '').includes(query);
           return matchNotes || matchDate;
         }
@@ -333,6 +343,18 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsPdfReportModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl text-white text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            style={{ background: 'linear-gradient(90deg, #3c766b 0%, #4e9284 55%, #b48964 100%)' }}
+            title="Takvim etkinlik ID notlarını anlık çekerek yapay zeka destekli zaman çizelgesi PDF raporu oluştur ve paylaş"
+            id="client-detail-pdf-report-btn"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>PDF Rapor Paylaş</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onAddNewSession(clientName)}
@@ -887,12 +909,15 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                   </div>
                 </div>
 
-                {/* 3. NOTES (If present, subtle and calm) */}
-                {session.notes && (
-                  <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
-                    "{session.notes}"
-                  </p>
-                )}
+                {/* 3. NOTES (If present in session or live calendar cache, subtle and calm) */}
+                {(() => {
+                  const liveNote = resolveLiveSessionNote(session, tempNotesCache).rawNote;
+                  return liveNote ? (
+                    <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
+                      "{liveNote}"
+                    </p>
+                  ) : null;
+                })()}
 
                 {/* 4. HAIRLINE FOOTER: QUIET ACTION CONTROLS */}
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-100/80 text-xs">
@@ -1063,11 +1088,14 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                     </div>
 
                     {/* Session Notes snippet */}
-                    {session.notes ? (
-                      <p className="text-xs text-slate-600 italic bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xl">
-                        "{session.notes}"
-                      </p>
-                    ) : null}
+                    {(() => {
+                      const liveNote = resolveLiveSessionNote(session, tempNotesCache).rawNote;
+                      return liveNote ? (
+                        <p className="text-xs text-slate-600 italic bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xl">
+                          "{liveNote}"
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
 
@@ -1158,6 +1186,19 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
           })}
         </div>
       )}
+
+      {/* AI-Powered PDF Timeline Progress Report Modal */}
+      <ClientPdfReportModal
+        isOpen={isPdfReportModalOpen}
+        onClose={() => setIsPdfReportModalOpen(false)}
+        clientName={clientName}
+        displayTitle={displayTitle}
+        clientSessions={clientSessions}
+        settings={settings}
+        tempNotesCache={tempNotesCache}
+        onFetchLiveCalendarNotes={onFetchLiveCalendarNotes}
+        showToast={showToast}
+      />
     </div>
   );
 };

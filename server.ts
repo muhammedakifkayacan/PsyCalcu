@@ -957,9 +957,9 @@ KULLANICI KOMUTU: "${message}"`;
           }
         });
       } catch (err1: any) {
-        console.warn("gemini-3.8-flash failed for assistant, trying gemini-3.5-flash:", err1?.message);
+        console.warn("gemini-3.8-flash failed for assistant, trying gemini-3.1-flash-lite:", err1?.message);
         response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.1-flash-lite",
           contents: systemPrompt,
           config: {
             responseMimeType: "application/json",
@@ -1034,11 +1034,11 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.8-flash",
           contents: prompt,
         });
       } catch (firstErr: any) {
-        console.warn("Primary model (gemini-3.5-flash) failed, trying fallback model (gemini-3.1-flash-lite):", firstErr);
+        console.warn("Primary model (gemini-3.8-flash) failed, trying fallback model (gemini-3.1-flash-lite):", firstErr);
         try {
           response = await ai.models.generateContent({
             model: "gemini-3.1-flash-lite",
@@ -1056,6 +1056,230 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       const { date, sessions, dailyMetrics } = req.body;
       const fallbackText = generateSmartFallbackSummary(date, sessions, dailyMetrics, false);
       res.json({ text: fallbackText });
+    }
+  });
+
+  // API Route for Client Timeline & Progress Report Generation (PDF Export)
+  app.post("/api/gemini/client-progress-report", async (req, res) => {
+    const { clientName, therapistName, sessions = [], stats = {} } = req.body || {};
+
+    const buildFallbackReport = () => {
+      const total = Array.isArray(sessions) ? sessions.length : 0;
+      const completed = (sessions || []).filter((s: any) => s.type !== "cancelled").length;
+      const notesWithContent = (sessions || []).filter((s: any) => s.rawNote && String(s.rawNote).trim().length > 0);
+      const firstDateStr = stats?.firstDate || (sessions[0]?.formattedDate) || "Başlangıç";
+      const lastDateStr = stats?.lastDate || (sessions[sessions.length - 1]?.formattedDate) || "Güncel";
+
+      const executiveSummary = `${clientName} ile yürütülen psikolojik danışmanlık ve terapi süreci, ${firstDateStr} – ${lastDateStr} tarihleri arasında toplam ${completed} aktif seans (${stats?.onlineCount || 0} Online, ${stats?.faceToFaceCount || 0} Yüz Yüze) üzerinden düzenli bir zaman çizelgesiyle takip edilmiştir. ${
+        notesWithContent.length > 0
+          ? `Takvim etkinlik kayıtlarından ve seans notlarından elde edilen ${notesWithContent.length} adet klinik gözlem verisi doğrultusunda; danışanın içgörü kapasitesinin güçlendiği, duygusal regülasyon ve baş etme becerilerinde aşamalı bir ilerleme kaydedildiği gözlemlenmiştir.`
+          : `Seans katılım istikrarı ve terapötik iş birliği çerçevesinde danışanın süreç hedeflerine yönelik farkındalık ve uyum becerilerinin düzenli olarak desteklendiği görülmektedir.`
+      }`;
+
+      const keyThemes = [
+        "Terapötik İş Birliği ve Süreç İstikrarı",
+        "Duygusal Farkındalık ve Öz-Değerlendirme",
+        "Stres Yönetimi ve İşlevsel Baş Etme Stratejileri",
+        "İlişkisel Dinamikler ve Sınır Koyma Becerileri"
+      ];
+
+      const timelineItems = (sessions || []).map((s: any, idx: number) => {
+        const raw = (s.rawNote || "").trim();
+        const isFirst = idx === 0;
+        const isLast = idx === total - 1 && total > 1;
+        const isCancelled = s.type === "cancelled";
+
+        let phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Süreç Takibi ve Değerlendirme`;
+        let progressBadge = "Süreç & İçgörü Çalışması";
+
+        if (isCancelled) {
+          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Planlama Değişikliği / İptal`;
+          progressBadge = "İptal / Ertelendi";
+        } else if (isFirst) {
+          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • İlk Görüşme, Anamnez ve Çerçeveleme`;
+          progressBadge = "İlk Değerlendirme";
+        } else if (idx === 1) {
+          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Hedef Belirleme ve Kavramsallaştırma`;
+          progressBadge = "Formülasyon";
+        } else if (isLast) {
+          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Güncel İlerleme ve Pekiştirme`;
+          progressBadge = "Güncel Kazanımlar";
+        } else if (idx % 3 === 0) {
+          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Bilişsel ve Duygusal Derinleşme`;
+          progressBadge = "Derinleşme & Müdahale";
+        }
+
+        let formattedReportNote = "";
+        let keyTakeaway = "";
+
+        if (isCancelled) {
+          formattedReportNote = raw
+            ? `Bu tarihteki seans iptal edilmiş veya ileri bir tarihe ertelenmiştir. Takvim/Etkinlik Notu: "${raw}"`
+            : "Planlanan bu görüşme danışan/klinik planlama doğrultusunda iptal edilmiş olup süreç bir sonraki seansta devam etmiştir.";
+          keyTakeaway = "Görüşme ertelendi / sonraki seansta telafi planlandı.";
+        } else if (raw) {
+          formattedReportNote = `Takvim etkinlik kaydı (${s.id || "Seans Notu"}) verilerine göre bu oturumda; "${raw}" odağında çalışılmıştır. Danışanın paylaşımları terapötik çerçevede ele alınarak bilişsel ve duygusal farkındalık adımları desteklenmiştir.`;
+          keyTakeaway = raw.length > 95 ? `${raw.slice(0, 92)}...` : raw;
+        } else if (isFirst) {
+          formattedReportNote = `Danışan ile ilk değerlendirme görüşmesi (${s.type === "face-to-face" ? "Yüz Yüze" : "Online"}) gerçekleştirilmiştir. Başvuru nedenleri, mevcut yaşam dinamikleri ve terapi sürecinden beklentiler ele alınarak terapötik çerçeve oluşturulmuştur.`;
+          keyTakeaway = "Terapötik ittifak kuruldu ve süreç hedefleri çerçevelendi.";
+        } else if (isLast) {
+          formattedReportNote = `Sürecin güncel oturumunda önceki seanslarda kazanılan içgörüler değerlendirilmiş, günlük yaşam içerisindeki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirilmiştir.`;
+          keyTakeaway = "Süreç kazanımları değerlendirildi ve ilerleme pekiştirildi.";
+        } else {
+          formattedReportNote = `Rutin terapi oturumu (${s.type === "face-to-face" ? "Yüz Yüze" : "Online"}, ${s.duration || 50} dk) kapsamında bir önceki görüşmeden bu yana yaşanan gelişmeler değerlendirilmiş, danışanın öz-gözlem ve farkındalık becerileri üzerinde çalışılmıştır.`;
+          keyTakeaway = `${s.sessionNumber || idx + 1}. seans düzenli katılım ile tamamlandı.`;
+        }
+
+        return {
+          sessionId: s.id,
+          phaseTitle,
+          progressBadge,
+          formattedReportNote,
+          keyTakeaway
+        };
+      });
+
+      const recommendations = `Danışanın seans sürekliliğinin korunması, görüşmeler arasında önerilen farkındalık ve öz-gözlem egzersizlerinin sürdürülmesi ve belirlenen gelişim hedeflerinin periyodik olarak yeniden değerlendirilmesi önerilmektedir.`;
+
+      return {
+        reportTitle: `${clientName} — Terapi Süreci ve İlerleme Zaman Çizelgesi Raporu`,
+        executiveSummary,
+        keyThemes,
+        timelineItems,
+        recommendations
+      };
+    };
+
+    try {
+      if (!clientName || !Array.isArray(sessions) || sessions.length === 0) {
+        return res.json(buildFallbackReport());
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.json(buildFallbackReport());
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build"
+          }
+        }
+      });
+
+      const sessionDataForPrompt = sessions.map((s: any, idx: number) => ({
+        sessionId: s.id,
+        sessionNumber: s.sessionNumber || idx + 1,
+        date: s.date,
+        formattedDate: s.formattedDate,
+        dayName: s.dayName,
+        time: s.time,
+        duration: s.duration || 50,
+        type: s.type === "face-to-face" ? "Yüz Yüze" : s.type === "cancelled" ? "İptal" : "Online",
+        isSyncedFromCalendar: Boolean(s.isSyncedFromCalendar),
+        calendarEventNote: s.rawNote || ""
+      }));
+
+      const prompt = `Sen Uzman Psikolog & Aile Danışmanı Büşra Bakır Kayacan (busrabakir.com) kliniği için çalışan kıdemli bir klinik psikoloji raporlama asistanısın.
+Aşağıda "${clientName}" adlı danışanın kronolojik (eskiden yeniye) seans kayıtları ve takvim etkinlik ID'lerinden anlık çekilen ham seans notları ("calendarEventNote") yer almaktadır.
+
+GÖREVİN:
+1. Bu ham takvim/etkinlik notlarını ve seans geçmişini analiz ederek profesyonel, özenli, anlaşılır ve etik dile uygun bir "Terapi Süreci ve İlerleme Zaman Çizelgesi Raporu" oluştur.
+2. Eğer bir seansın "calendarEventNote" alanında takvimden çekilmiş bir not varsa (kısa anahtar kelimeler, maddeler veya cümleler halinde olabilir), bu nottaki TÜM önemli detayları koruyarak rapora uygun, akıcı, profesyonel bir klinik ilerleme metnine ("formattedReportNote") dönüştür. Kesinlikle uydurma tıbbi tanı koyma; nottaki gerçek gözlem, konu, duygu, ödev veya temaları profesyonelce ifade et.
+3. Eğer bir seansın "calendarEventNote" alanı boşsa, o seansın kaçıncı seans olduğuna (örn. 1. seans ilk değerlendirme, ara seanslar süreç takibi, son seans güncel değerlendirme) ve seans türüne (Online/Yüz Yüze/İptal) uygun, nötr ve profesyonel bir süreç devamlılığı açıklaması yaz.
+4. Zaman çizelgesinde ("timelineItems") listedeki HER BİR SEANS için ("sessionId" birebir eşleşecek şekilde) kronolojik ilerlemeyi gösteren bir aşama başlığı ("phaseTitle"), kısa ilerleme rozeti ("progressBadge"), detaylı rapor metni ("formattedReportNote") ve 1 cümlelik ana kazanım/özet ("keyTakeaway") üret.
+
+DANIŞAN BİLGİLERİ:
+- Danışan Adı: ${clientName}
+- Uzman / Danışman: ${therapistName || "Uzm. Psk. Büşra Bakır Kayacan"}
+- Toplam Seans: ${sessions.length} (Online: ${stats?.onlineCount || 0}, Yüz Yüze: ${stats?.faceToFaceCount || 0}, İptal: ${stats?.cancelledCount || 0})
+- Tarih Aralığı: ${stats?.firstDate || ""} - ${stats?.lastDate || ""}
+
+KRONOLOJİK SEANS VE TAKVİM ETKİNLİK ID NOTLARI:
+${JSON.stringify(sessionDataForPrompt, null, 2)}`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          reportTitle: {
+            type: Type.STRING,
+            description: "Raporun ana başlığı"
+          },
+          executiveSummary: {
+            type: Type.STRING,
+            description: "Danışanın genel gelişim sürecini, seans devamlılığını ve çalışılan temaları özetleyen 2 paragraflık profesyonel klinik değerlendirme yazısı."
+          },
+          keyThemes: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Süreç boyunca öne çıkan 3 ila 5 temel odak alanı / tema."
+          },
+          timelineItems: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                sessionId: { type: Type.STRING },
+                phaseTitle: {
+                  type: Type.STRING,
+                  description: "Örn: '1. Seans • İlk Görüşme ve Terapötik Çerçeve' veya notun içeriğine uygun başlık"
+                },
+                progressBadge: {
+                  type: Type.STRING,
+                  description: "2-3 kelimelik aşama etiketi (Örn: 'İlk Değerlendirme', 'Farkındalık & İçgörü', 'Bilişsel Çalışma', 'İlerleme & Pekiştirme')"
+                },
+                formattedReportNote: {
+                  type: Type.STRING,
+                  description: "Takvim etkinlik notunun rapora uygun, profesyonel ve akıcı Türkçe ile yazılmış 2-4 cümlelik klinik süreç açıklaması."
+                },
+                keyTakeaway: {
+                  type: Type.STRING,
+                  description: "O seanstan öne çıkan tek cümlelik özet veya kazanım."
+                }
+              },
+              required: ["sessionId", "phaseTitle", "progressBadge", "formattedReportNote", "keyTakeaway"]
+            }
+          },
+          recommendations: {
+            type: Type.STRING,
+            description: "Gelecek seanslar ve sürecin devamı için 2-3 cümlelik yapıcı klinik öneri ve süreç planı."
+          }
+        },
+        required: ["reportTitle", "executiveSummary", "keyThemes", "timelineItems", "recommendations"]
+      };
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
+      } catch (err1: any) {
+        console.warn("gemini-3.8-flash failed for client-progress-report, trying gemini-3.1-flash-lite:", err1?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
+      }
+
+      const parsed = JSON.parse(response.text || "{}");
+      if (!parsed || !Array.isArray(parsed.timelineItems) || parsed.timelineItems.length === 0) {
+        return res.json(buildFallbackReport());
+      }
+      return res.json(parsed);
+    } catch (error: any) {
+      console.error("Client progress report AI error, using fallback:", error);
+      return res.json(buildFallbackReport());
     }
   });
 

@@ -258,7 +258,7 @@ const autoCorrectPastSessions = (
 
   const validList = healedAndRestored.filter(Boolean) as Session[];
   const smartHealed = autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices, effectiveClosedMonths);
-  const storedLedger = getStoredAccountingLedger(auth.currentUser?.uid);
+  const storedLedger = updateLocalAccountingLedger(auth.currentUser?.uid, smartHealed);
   return applyAccountingLedgerToSessions(smartHealed, storedLedger, cutoffDate);
 };
 
@@ -2292,18 +2292,18 @@ export default function App() {
     }
   });
 
-  const fetchInstantCalendarNotes = async (silent = false) => {
+  const fetchInstantCalendarNotes = async (silent = false): Promise<Record<string, string>> => {
     const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = settings;
     if (!calendarSyncEnabled) {
       if (!silent) showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
-      return;
+      return tempNotesCache;
     }
     const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
     if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
       if (!silent) {
         showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
       }
-      return;
+      return tempNotesCache;
     }
 
     if (!silent) {
@@ -2329,10 +2329,7 @@ export default function App() {
           const effectiveAccountingStartDate = settings.accountingStartDate
             ? settings.accountingStartDate.split('T')[0]
             : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
-          const isInitialDone = Boolean(
-            settings.hasCompletedInitialCalendarSync ||
-            safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true'
-          );
+          // Parse without closedMonths / cutoff filtering so read-only live notes for ALL past/closed sessions can be retrieved by Event ID
           const parsed = parseICS(
             icsText, 
             settings.defaultSessionPrice, 
@@ -2342,15 +2339,24 @@ export default function App() {
             registrationCreatedAt, 
             settings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
-            settings.closedMonths,
-            isInitialDone
+            undefined,
+            false
           );
 
           parsed.forEach(ev => {
             if (ev.id && ev.notes) {
-              if (isDateInClosedMonth(ev.date, settings.closedMonths)) return;
-              if (isInitialDone && effectiveAccountingStartDate && ev.date < effectiveAccountingStartDate) return;
               newCache[ev.id] = ev.notes;
+              const baseUid = extractBaseCalendarUid(ev.id);
+              if (baseUid && ev.date) {
+                newCache[`uid:${baseUid}_${ev.date}`] = ev.notes;
+              }
+              if (baseUid && !newCache[`uid:${baseUid}`]) {
+                newCache[`uid:${baseUid}`] = ev.notes;
+              }
+              if (ev.clientName && ev.date) {
+                const normKey = `client_date:${toTurkishAscii(getNormalizedClientName(ev.clientName)).toLowerCase()}_${ev.date}`;
+                newCache[normKey] = ev.notes;
+              }
               fetchedAny = true;
             }
           });
@@ -2380,6 +2386,8 @@ export default function App() {
         showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
       }
     }
+
+    return newCache;
   };
 
   const [showNotes, setShowNotes] = useState<boolean>(() => {
@@ -2999,13 +3007,9 @@ export default function App() {
     }
 
     if (existing && isDateInClosedMonth(existing.date, settings.closedMonths)) {
-      // Historical appointments in closed months: protect date, time and type from shifting
+      // Historical appointments in closed months: protect date and time from shifting
       if (savedSession.date !== existing.date || savedSession.time !== existing.time) {
         showToast('Kapatılmış aylardaki seansların tarihi ve saati değiştirilemez! Bu koruma seansların takvimde kaymasını ve silinmesini önler.', 'error');
-        return;
-      }
-      if (savedSession.type !== existing.type) {
-        showToast('Kapatılmış aylardaki seansların türü değiştirilemez!', 'error');
         return;
       }
     }
@@ -3054,10 +3058,11 @@ export default function App() {
       if (withTimestamp.price > 0 && withTimestamp.type !== 'cancelled' && withTimestamp.type !== 'non-session') {
         const targetNorm = getNormalizedClientName(withTimestamp.clientName).toLocaleLowerCase('tr-TR');
         const cutoffDate = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
+        const effectiveClosed = getEffectiveClosedMonths(settingsRef.current?.closedMonths || settings.closedMonths, user?.uid);
         updatedList = updatedList.map(s => {
           const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
-          // Only propagate to future sessions of the EXACT SAME session type (online -> online, face-to-face -> face-to-face)
-          if (s.id !== withTimestamp.id && s.date >= withTimestamp.date && isWithinAccounting && s.type === withTimestamp.type) {
+          // Only propagate to future sessions of the EXACT SAME session type in open months
+          if (s.id !== withTimestamp.id && s.date > withTimestamp.date && isWithinAccounting && s.type === withTimestamp.type && !isDateInClosedMonth(s.date, effectiveClosed)) {
             if (areClientNamesEquivalent(s.clientName, withTimestamp.clientName) && s.paymentStatus !== 'paid') {
               return {
                 ...s,
@@ -3106,7 +3111,9 @@ export default function App() {
         settings.defaultOfficeRentFee,
         registrationCreatedAt,
         settings.defaultOnlinePrice,
-        settings.defaultFaceToFacePrice
+        settings.defaultFaceToFacePrice,
+        settings.clientCustomPrices,
+        settings.closedMonths
       );
     });
   };
@@ -3261,15 +3268,6 @@ export default function App() {
   };
 
   const handleToggleBabysitter = (id: string) => {
-    const session = sessions.find(s => s.id === id);
-    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların giderleri değiştirilemez!', 'error');
-      return;
-    }
-    if (session && isOlderThan7Days(session.date)) {
-      showToast('7 günden eski seansların bakıcı ücreti değiştirilemez! Muhasebesi kilitlenmiştir.', 'error');
-      return;
-    }
     setSessions(prev => prev.map(s => {
       if (s.id === id) {
         const hasFee = !s.hasBabysitterFee;
@@ -3678,11 +3676,20 @@ export default function App() {
 
   const handleUpdateSingleSessionPrice = (sessionId: string, newPrice: number) => {
     const session = sessions.find(s => s.id === sessionId);
-    if (session && isDateInClosedMonth(session.date, settings.closedMonths)) {
-      showToast('Bu seans kapatılmış bir aya aittir. Kapatılan aylardaki seansların ücreti değiştirilemez!', 'error');
-      return;
+    setSessions(prev => prev.map(s => {
+      if (s.id !== sessionId) return s;
+      const shouldUpdatePaidAmount = s.paymentStatus === 'paid' && (!s.paidAmount || s.paidAmount === s.price);
+      return {
+        ...s,
+        price: newPrice,
+        paidAmount: shouldUpdatePaidAmount ? newPrice : s.paidAmount,
+        isManuallyEdited: true,
+        updatedAt: Date.now()
+      };
+    }));
+    if (session) {
+      showToast(`${session.clientName} seans ücreti ${formatMoney(newPrice)} olarak güncellendi.`, 'success');
     }
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, price: newPrice, isManuallyEdited: true, updatedAt: Date.now() } : s));
   };
 
   const handleUpdateSingleSessionPaymentStatus = (sessionId: string, newStatus: 'paid' | 'unpaid' | 'partial') => {
@@ -8470,6 +8477,9 @@ export default function App() {
                     totalAmount: unpaidAmount
                   });
                 }}
+                tempNotesCache={tempNotesCache}
+                onFetchLiveCalendarNotes={fetchInstantCalendarNotes}
+                showToast={showToast}
               />
             </motion.div>
           )}
