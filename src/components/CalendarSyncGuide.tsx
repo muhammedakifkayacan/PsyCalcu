@@ -443,6 +443,13 @@ export default function CalendarSyncGuide({
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
+        if (onlineUrl.trim() && settings.onlineCalendarWebcalUrl !== onlineUrl.trim()) {
+          onUpdateSettings({
+            ...settings,
+            calendarSyncEnabled: true,
+            onlineCalendarWebcalUrl: onlineUrl.trim()
+          });
+        }
         const stats = onImportSessions(parsed, 'online');
         if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
           let msg = `Online Seanslar Takvimi eşitlendi: `;
@@ -499,6 +506,13 @@ export default function CalendarSyncGuide({
       const isValidIcs = icsText.toUpperCase().includes('BEGIN:VCALENDAR') || icsText.toUpperCase().includes('BEGIN:VEVENT');
       
       if (isValidIcs) {
+        if (faceToFaceUrl.trim() && settings.faceToFaceCalendarWebcalUrl !== faceToFaceUrl.trim()) {
+          onUpdateSettings({
+            ...settings,
+            calendarSyncEnabled: true,
+            faceToFaceCalendarWebcalUrl: faceToFaceUrl.trim()
+          });
+        }
         const stats = onImportSessions(parsed, 'face-to-face');
         if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
           let msg = `Yüzyüze Seanslar Takvimi eşitlendi: `;

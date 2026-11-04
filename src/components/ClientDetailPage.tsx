@@ -1188,6 +1188,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         displayTitle={displayTitle}
         clientSessions={clientSessions}
         settings={settings}
+        tempNotesCache={tempNotesCache}
         showToast={showToast}
       />
     </div>

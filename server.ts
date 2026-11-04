@@ -1843,14 +1843,21 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
     }
   });
 
-  // Targeted endpoint: Queries ONLY the requested Calendar Event IDs (UIDs) for a single client
-  // so no other events in the calendar are parsed or returned to the browser.
+  // Targeted endpoint: Queries ONLY the requested single client's Calendar Event IDs (UIDs) and client name
+  // so no other clients' events in the calendar are parsed or returned to the browser.
   app.post("/api/calendar-notes-by-event-ids", async (req, res) => {
     try {
-      const { urls, targetBaseUids, targetEventIds } = req.body || {};
+      const {
+        urls,
+        targetBaseUids,
+        targetEventIds,
+        targetClientName,
+        targetDisplayTitle,
+        targetSessionNames
+      } = req.body || {};
 
       const validUrls: string[] = Array.isArray(urls)
-        ? urls.filter((u: any) => typeof u === "string" && u.trim().length > 0)
+        ? Array.from(new Set(urls.filter((u: any) => typeof u === "string" && u.trim().length > 0).map((u: string) => u.trim())))
         : [];
       const rawBaseUids: string[] = Array.isArray(targetBaseUids)
         ? targetBaseUids.filter((u: any) => typeof u === "string" && u.trim().length > 0)
@@ -1859,24 +1866,97 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         ? targetEventIds.filter((u: any) => typeof u === "string" && u.trim().length > 0)
         : [];
 
-      // Normalize requested UIDs using the exact same sanitization as icsParser.ts
+      // Server-side Turkish client name normalization (mirrors src/types.ts getNormalizedClientName & areClientNamesEquivalent)
+      const toServerTurkishAscii = (str: string): string => {
+        if (!str) return "";
+        return str
+          .replace(/Ğ/g, "g").replace(/ğ/g, "g")
+          .replace(/Ü/g, "u").replace(/ü/g, "u")
+          .replace(/Ş/g, "s").replace(/ş/g, "s")
+          .replace(/İ/g, "i").replace(/ı/g, "i").replace(/I/g, "i")
+          .replace(/Ö/g, "o").replace(/ö/g, "o")
+          .replace(/Ç/g, "c").replace(/ç/g, "c")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+      };
+
+      const getServerNormalizedClientName = (rawName: string): string => {
+        if (!rawName) return "";
+        let cleaned = rawName.trim().toLocaleLowerCase("tr-TR");
+        cleaned = cleaned.normalize("NFC");
+        cleaned = cleaned.replace(/\([^)]*\)/g, " ");
+        cleaned = cleaned.replace(/\[[^\]]*\]/g, " ");
+        const noisePattern = /\b(iptal|iptali|cancel|cancelled|canceled|erteleme|ertelendi|online|yüzyüze|yuzyuze|yüz yüze|yuz yuze|seans|seansı|seansi|terapi|terapisi|görüşme|gorusme|görüşmesi|gorusmesi|danışmanlık|danismanlik|randevu|randevusu|ilk|ön|on|değerlendirme|degerlendirme|ücretsiz|ucretsiz|tanışma|tanisma|çift|cift|aile|bireysel|ergen|çocuk|cocuk|test|kontrol|takip|telafi|ek|ücretli|ucretli|ödendi|odendi|ödenmedi|odenmedi|bekliyor|onaylandı|onaylandi|ok|tamam)\b/gi;
+        cleaned = cleaned.replace(noisePattern, " ");
+        cleaned = cleaned.replace(/[-–—/\\|:;,.+*?!@#%^&~`"']/g, " ");
+        cleaned = cleaned.replace(/\s+/g, " ").trim();
+        return cleaned || rawName.trim().toLocaleLowerCase("tr-TR");
+      };
+
+      const areServerClientNamesEquivalent = (nameA: string, nameB: string): boolean => {
+        if (!nameA || !nameB) return false;
+        const normA = getServerNormalizedClientName(nameA);
+        const normB = getServerNormalizedClientName(nameB);
+        if (normA === normB) return true;
+        const asciiA = toServerTurkishAscii(normA).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+        const asciiB = toServerTurkishAscii(normB).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+        if (!asciiA || !asciiB) return false;
+        if (asciiA === asciiB) return true;
+        const tokensA = asciiA.split(" ").filter(Boolean);
+        const tokensB = asciiB.split(" ").filter(Boolean);
+        if (tokensA.length === 0 || tokensB.length === 0) return false;
+        const [shorter, longer] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
+        if (shorter.length === 1 && longer.length > 1) {
+          return longer[0] === shorter[0] && shorter[0].length >= 3;
+        }
+        return shorter.every(t => longer.includes(t));
+      };
+
+      const candidateClientNames = new Set<string>();
+      if (typeof targetClientName === "string" && targetClientName.trim()) {
+        candidateClientNames.add(targetClientName.trim());
+      }
+      if (typeof targetDisplayTitle === "string" && targetDisplayTitle.trim()) {
+        candidateClientNames.add(targetDisplayTitle.trim());
+      }
+      if (Array.isArray(targetSessionNames)) {
+        for (const n of targetSessionNames) {
+          if (typeof n === "string" && n.trim()) candidateClientNames.add(n.trim());
+        }
+      }
+
+      const matchesTargetClientSummary = (rawSummary: string): boolean => {
+        if (!rawSummary || candidateClientNames.size === 0) return false;
+        for (const targetName of candidateClientNames) {
+          if (areServerClientNamesEquivalent(rawSummary, targetName)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Normalize requested UIDs using both full sanitized ID and base UID (without trailing _YYYYMMDD)
       const targetUidSet = new Set<string>();
       for (const u of rawBaseUids) {
-        const cleaned = u.replace(/^ics_/, "").replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
-        if (cleaned) targetUidSet.add(cleaned);
+        const withoutPrefix = u.replace(/^ics_/, "");
+        const fullClean = withoutPrefix.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+        if (fullClean) targetUidSet.add(fullClean);
       }
       for (const eid of rawEventIds) {
         const withoutPrefix = eid.replace(/^ics_/, "");
+        const fullClean = withoutPrefix.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+        if (fullClean) targetUidSet.add(fullClean);
+
         const lastUnderscore = withoutPrefix.lastIndexOf("_");
-        const base =
-          lastUnderscore !== -1 && /^\d{8}$/.test(withoutPrefix.slice(lastUnderscore + 1))
-            ? withoutPrefix.slice(0, lastUnderscore)
-            : withoutPrefix;
-        const cleaned = base.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
-        if (cleaned) targetUidSet.add(cleaned);
+        if (lastUnderscore !== -1 && /^\d{8}$/.test(withoutPrefix.slice(lastUnderscore + 1))) {
+          const base = withoutPrefix.slice(0, lastUnderscore);
+          const cleanedBase = base.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+          if (cleanedBase) targetUidSet.add(cleanedBase);
+        }
       }
 
-      if (validUrls.length === 0 || targetUidSet.size === 0) {
+      if (validUrls.length === 0 || (targetUidSet.size === 0 && candidateClientNames.size === 0)) {
         return res.json({
           notesByEventId: {},
           queriedUidCount: targetUidSet.size,
@@ -1884,12 +1964,22 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         });
       }
 
-      const parseIcsDateOnly = (rawLine: string, targetTimezone = "Europe/Istanbul"): string | null => {
+      const parseIcsDateTime = (
+        rawLine: string,
+        defaultTimezone = "Europe/Istanbul"
+      ): { dateStr: string; timeStr: string } | null => {
         if (!rawLine) return null;
         const colonIdx = rawLine.indexOf(":");
+        const keyPart = colonIdx !== -1 ? rawLine.substring(0, colonIdx) : "";
         const rawValue = colonIdx !== -1 ? rawLine.substring(colonIdx + 1).trim() : rawLine.trim();
         const cleanValue = rawValue.replace(/[-:]/g, "").trim();
         if (cleanValue.length < 8) return null;
+
+        let lineTz = defaultTimezone || "Europe/Istanbul";
+        const tzMatch = keyPart.match(/TZID=([^;:]+)/i);
+        if (tzMatch && tzMatch[1]) {
+          lineTz = tzMatch[1].trim().replace(/^["']|["']$/g, "");
+        }
 
         const isUtc = cleanValue.toUpperCase().endsWith("Z") || rawValue.toUpperCase().endsWith("Z");
         const year = parseInt(cleanValue.substring(0, 4), 10);
@@ -1913,24 +2003,121 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           try {
             const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
             const formatter = new Intl.DateTimeFormat("en-CA", {
-              timeZone: targetTimezone || "Europe/Istanbul",
+              timeZone: "Europe/Istanbul",
               year: "numeric",
               month: "2-digit",
-              day: "2-digit"
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false
             });
             const parts = formatter.formatToParts(new Date(utcMs));
             const partMap: Record<string, string> = {};
             for (const p of parts) partMap[p.type] = p.value;
             if (partMap.year && partMap.month && partMap.day) {
-              return `${partMap.year}-${partMap.month}-${partMap.day}`;
+              const h = partMap.hour === "24" ? "00" : (partMap.hour || "00").padStart(2, "0");
+              const m = (partMap.minute || "00").padStart(2, "0");
+              return {
+                dateStr: `${partMap.year}-${partMap.month}-${partMap.day}`,
+                timeStr: `${h}:${m}`
+              };
+            }
+          } catch (e) {}
+        } else if (lineTz && lineTz !== "Europe/Istanbul" && !lineTz.toLowerCase().includes("istanbul") && !lineTz.toLowerCase().includes("turkey")) {
+          // Keep local calendar time or convert if valid IANA timezone
+          try {
+            const approxUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+            const tzDateStr = approxUtc.toLocaleString("en-US", { timeZone: lineTz });
+            const tzDate = new Date(tzDateStr);
+            const offsetMs = approxUtc.getTime() - tzDate.getTime();
+            const actualUtcMs = approxUtc.getTime() + offsetMs;
+            const formatter = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Europe/Istanbul",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false
+            });
+            const parts = formatter.formatToParts(new Date(actualUtcMs));
+            const partMap: Record<string, string> = {};
+            for (const p of parts) partMap[p.type] = p.value;
+            if (partMap.year && partMap.month && partMap.day) {
+              const h = partMap.hour === "24" ? "00" : (partMap.hour || "00").padStart(2, "0");
+              const m = (partMap.minute || "00").padStart(2, "0");
+              return {
+                dateStr: `${partMap.year}-${partMap.month}-${partMap.day}`,
+                timeStr: `${h}:${m}`
+              };
             }
           } catch (e) {}
         }
 
-        return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        return {
+          dateStr: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+          timeStr: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+        };
       };
 
-      const normalizeCalUrl = (rawUrl: string): string => {
+      const cleanIcsNoteText = (rawVal: string, keyPart = ""): string => {
+        if (!rawVal) return "";
+        let text = rawVal;
+
+        // Decode Quoted-Printable if present
+        if (/ENCODING=QUOTED-PRINTABLE/i.test(keyPart)) {
+          try {
+            const softBreakRemoved = text.replace(/=\r?\n/g, "");
+            const bytes: number[] = [];
+            for (let i = 0; i < softBreakRemoved.length; i++) {
+              if (softBreakRemoved[i] === "=" && /^[0-9A-Fa-f]{2}$/.test(softBreakRemoved.slice(i + 1, i + 3))) {
+                bytes.push(parseInt(softBreakRemoved.slice(i + 1, i + 3), 16));
+                i += 2;
+              } else {
+                const code = softBreakRemoved.charCodeAt(i);
+                bytes.push(code);
+              }
+            }
+            text = Buffer.from(bytes).toString("utf-8");
+          } catch (e) {}
+        }
+
+        // Unescape standard iCal sequences
+        text = text
+          .replace(/\\n/gi, "\n")
+          .replace(/\\r/gi, "")
+          .replace(/\\,/g, ",")
+          .replace(/\\;/g, ";")
+          .replace(/\\\\/g, "\\");
+
+        // Strip Google Meet / Zoom auto-generated conference blocks if present
+        text = text.replace(/-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-([\s\S]*?)-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-/g, "");
+
+        // Convert common HTML tags if calendar clients saved HTML inside DESCRIPTION or X-ALT-DESC
+        if (/<[a-z][\s\S]*>/i.test(text)) {
+          text = text
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<\/div>/gi, "\n")
+            .replace(/<\/li>/gi, "\n")
+            .replace(/<li[^>]*>/gi, "• ")
+            .replace(/<[^>]+>/g, "");
+        }
+
+        // Decode common HTML entities
+        text = text
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<")
+          .replace(/&gt;/gi, ">")
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)));
+
+        return text.replace(/\n{3,}/g, "\n\n").trim();
+      };
+
+      const normalizeCalUrl = (rawUrl: string, withCacheBuster = true): string => {
         let normalizedUrl = rawUrl.trim();
         if (normalizedUrl.startsWith("webcal://")) {
           normalizedUrl = "https://" + normalizedUrl.substring(9);
@@ -1949,8 +2136,45 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
             normalizedUrl = encodeURI(normalizedUrl);
           } catch (e) {}
         }
+        if (!withCacheBuster) return normalizedUrl;
         const separator = normalizedUrl.includes("?") ? "&" : "?";
         return `${normalizedUrl}${separator}_cb=${Date.now()}`;
+      };
+
+      const fetchIcsFromUrl = async (rawUrl: string): Promise<string | null> => {
+        const headers = {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
+          "Accept": "text/calendar, text/plain, application/octet-stream, */*",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        };
+        try {
+          const urlWithCb = normalizeCalUrl(rawUrl, true);
+          const res1 = await fetch(urlWithCb, {
+            headers,
+            cache: "no-store",
+            signal: AbortSignal.timeout(12000)
+          });
+          if (res1.ok) {
+            const text1 = await res1.text();
+            if (text1 && text1.includes("BEGIN:VEVENT")) return text1;
+          }
+        } catch (e) {}
+
+        try {
+          const urlPlain = normalizeCalUrl(rawUrl, false);
+          const res2 = await fetch(urlPlain, {
+            headers,
+            cache: "no-store",
+            signal: AbortSignal.timeout(12000)
+          });
+          if (res2.ok) {
+            const text2 = await res2.text();
+            if (text2 && text2.includes("BEGIN:VEVENT")) return text2;
+          }
+        } catch (e) {}
+
+        return null;
       };
 
       const notesByEventId: Record<string, string> = {};
@@ -1958,21 +2182,8 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
 
       for (const rawUrl of validUrls) {
         try {
-          const fetchUrl = normalizeCalUrl(rawUrl);
-          const fetchResponse = await fetch(fetchUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
-              "Accept": "text/calendar, text/plain, application/octet-stream, */*",
-              "Cache-Control": "no-cache, no-store, must-revalidate",
-              "Pragma": "no-cache"
-            },
-            cache: "no-store",
-            signal: AbortSignal.timeout(12000)
-          });
-
-          if (!fetchResponse.ok) continue;
-          const icsText = await fetchResponse.text();
-          if (!icsText || !icsText.includes("BEGIN:VEVENT")) continue;
+          const icsText = await fetchIcsFromUrl(rawUrl);
+          if (!icsText) continue;
 
           const cleanText = icsText.replace(/^\uFEFF/, "").replace(/^\uFFFE/, "");
           const normalizedText = cleanText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -1990,10 +2201,12 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
 
           let inEvent = false;
           let currentUid = "";
-          let isTargetUid = false;
+          let summaryRaw = "";
           let dtStartRaw = "";
           let recurrenceIdRaw = "";
+          let hasRrule = false;
           let descriptionRaw = "";
+          let altDescRaw = "";
           let noteRaw = "";
 
           for (let i = 0; i < lines.length; i++) {
@@ -2004,36 +2217,62 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
             if (upperLine === "BEGIN:VEVENT" || upperLine.startsWith("BEGIN:VEVENT")) {
               inEvent = true;
               currentUid = "";
-              isTargetUid = false;
+              summaryRaw = "";
               dtStartRaw = "";
               recurrenceIdRaw = "";
+              hasRrule = false;
               descriptionRaw = "";
+              altDescRaw = "";
               noteRaw = "";
             } else if ((upperLine === "END:VEVENT" || upperLine.startsWith("END:VEVENT")) && inEvent) {
-              // Strictly process ONLY if this VEVENT's UID is in the client's targetUidSet
-              if (currentUid && isTargetUid) {
+              const isTargetByUid = Boolean(currentUid && targetUidSet.has(currentUid));
+              const isTargetByName = matchesTargetClientSummary(summaryRaw);
+
+              // Strictly process ONLY if this VEVENT belongs to the requested client (by UID or client name)
+              if (isTargetByUid || isTargetByName) {
+                const effectiveDescription = descriptionRaw || altDescRaw;
                 const notesParts: string[] = [];
-                if (descriptionRaw) notesParts.push(descriptionRaw);
-                if (noteRaw) notesParts.push(noteRaw);
+                if (effectiveDescription) notesParts.push(effectiveDescription);
+                if (noteRaw && noteRaw !== effectiveDescription) notesParts.push(noteRaw);
                 const finalNote = notesParts.join("\n").trim();
 
                 if (finalNote) {
                   matchedEventCount++;
-                  const dtDate = parseIcsDateOnly(dtStartRaw, calTimezone);
-                  const recDate = parseIcsDateOnly(recurrenceIdRaw, calTimezone);
+                  const dtParsed = parseIcsDateTime(dtStartRaw, calTimezone);
+                  const recParsed = parseIcsDateTime(recurrenceIdRaw, calTimezone);
+                  const dtDate = dtParsed?.dateStr || null;
+                  const dtTime = dtParsed?.timeStr || null;
+                  const recDate = recParsed?.dateStr || null;
 
-                  // Store under exact event IDs for this UID
-                  notesByEventId[`ics_${currentUid}`] = finalNote;
-                  if (!notesByEventId[`uid:${currentUid}`]) {
-                    notesByEventId[`uid:${currentUid}`] = finalNote;
-                  }
+                  // 1. Date & time keys for this client's session (works even if event UID changed on closed months)
                   if (dtDate) {
-                    notesByEventId[`ics_${currentUid}_${dtDate.replace(/-/g, "")}`] = finalNote;
-                    notesByEventId[`uid:${currentUid}_${dtDate}`] = finalNote;
+                    notesByEventId[`date:${dtDate}`] = finalNote;
+                    if (dtTime) {
+                      notesByEventId[`date_time:${dtDate}_${dtTime}`] = finalNote;
+                    }
                   }
                   if (recDate) {
-                    notesByEventId[`ics_${currentUid}_${recDate.replace(/-/g, "")}`] = finalNote;
-                    notesByEventId[`uid:${currentUid}_${recDate}`] = finalNote;
+                    notesByEventId[`date:${recDate}`] = finalNote;
+                    if (dtTime) {
+                      notesByEventId[`date_time:${recDate}_${dtTime}`] = finalNote;
+                    }
+                  }
+
+                  // 2. UID-based keys
+                  if (currentUid) {
+                    if (dtDate) {
+                      notesByEventId[`ics_${currentUid}_${dtDate.replace(/-/g, "")}`] = finalNote;
+                      notesByEventId[`uid:${currentUid}_${dtDate}`] = finalNote;
+                    }
+                    if (recDate) {
+                      notesByEventId[`ics_${currentUid}_${recDate.replace(/-/g, "")}`] = finalNote;
+                      notesByEventId[`uid:${currentUid}_${recDate}`] = finalNote;
+                    }
+                    // Only store bare UID note when the event is a single non-recurring event (not a recurring exception)
+                    if (!recurrenceIdRaw && !hasRrule) {
+                      notesByEventId[`ics_${currentUid}`] = finalNote;
+                      notesByEventId[`uid:${currentUid}`] = finalNote;
+                    }
                   }
                 }
               }
@@ -2043,27 +2282,31 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
               if (colonIndex === -1) continue;
               const keyPart = line.substring(0, colonIndex);
               const key = keyPart.split(";")[0].toUpperCase();
+              const valPart = line.substring(colonIndex + 1).trim();
 
               if (key === "UID") {
-                const valPart = line.substring(colonIndex + 1).trim();
                 currentUid = valPart.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
-                isTargetUid = Boolean(currentUid && targetUidSet.has(currentUid));
+              } else if (key === "SUMMARY") {
+                summaryRaw = cleanIcsNoteText(valPart, keyPart);
               } else if (key === "DTSTART") {
                 dtStartRaw = line;
               } else if (key === "RECURRENCE-ID") {
                 recurrenceIdRaw = line;
+              } else if (key === "RRULE") {
+                hasRrule = true;
               } else if (key === "DESCRIPTION") {
-                const valPart = line.substring(colonIndex + 1).trim();
-                descriptionRaw = valPart
-                  .replace(/\\,/g, ",")
-                  .replace(/\\;/g, ";")
-                  .replace(/\\n/gi, "\n");
-              } else if (key === "NOTE" || key === "COMMENT") {
-                const valPart = line.substring(colonIndex + 1).trim();
-                noteRaw = valPart
-                  .replace(/\\,/g, ",")
-                  .replace(/\\;/g, ";")
-                  .replace(/\\n/gi, "\n");
+                const cleaned = cleanIcsNoteText(valPart, keyPart);
+                if (cleaned) descriptionRaw = cleaned;
+              } else if (key === "X-ALT-DESC") {
+                const cleaned = cleanIcsNoteText(valPart, keyPart);
+                if (cleaned) altDescRaw = cleaned;
+              } else if (key === "NOTE" || key === "COMMENT" || key === "X-APPLE-STRUCTURED-LOCATION") {
+                if (key === "NOTE" || key === "COMMENT") {
+                  const cleaned = cleanIcsNoteText(valPart, keyPart);
+                  if (cleaned) {
+                    noteRaw = noteRaw ? `${noteRaw}\n${cleaned}` : cleaned;
+                  }
+                }
               }
             }
           }

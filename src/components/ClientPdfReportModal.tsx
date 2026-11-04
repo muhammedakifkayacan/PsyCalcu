@@ -92,27 +92,49 @@ function formatSessionTurkishDate(dateStr: string): { formattedDate: string; day
 
 export function resolveLiveSessionNote(
   session: Session,
-  notesMap: Record<string, string>
+  notesMap: Record<string, string>,
+  tempNotesCache: Record<string, string> = {}
 ): { rawNote: string; source: 'calendar-id' | 'manual' | 'none' } {
   if (!session) return { rawNote: '', source: 'none' };
 
   // 1. Direct event ID lookup from targeted Event ID response
-  if (session.id && notesMap[session.id]) {
+  if (session.id && notesMap[session.id]?.trim()) {
     return { rawNote: notesMap[session.id].trim(), source: 'calendar-id' };
   }
 
   // 2. Base Calendar UID + Date lookup (handles recurring or rescheduled event IDs for this specific UID)
   if (session.id && session.id.startsWith('ics_')) {
     const baseUid = extractBaseCalendarUid(session.id);
-    if (baseUid && session.date && notesMap[`uid:${baseUid}_${session.date}`]) {
+    const compactDate = (session.date || '').replace(/-/g, '');
+    if (baseUid && compactDate && notesMap[`ics_${baseUid}_${compactDate}`]?.trim()) {
+      return { rawNote: notesMap[`ics_${baseUid}_${compactDate}`].trim(), source: 'calendar-id' };
+    }
+    if (baseUid && session.date && notesMap[`uid:${baseUid}_${session.date}`]?.trim()) {
       return { rawNote: notesMap[`uid:${baseUid}_${session.date}`].trim(), source: 'calendar-id' };
     }
-    if (baseUid && notesMap[`uid:${baseUid}`]) {
+    if (baseUid && notesMap[`ics_${baseUid}`]?.trim()) {
+      return { rawNote: notesMap[`ics_${baseUid}`].trim(), source: 'calendar-id' };
+    }
+    if (baseUid && notesMap[`uid:${baseUid}`]?.trim()) {
       return { rawNote: notesMap[`uid:${baseUid}`].trim(), source: 'calendar-id' };
     }
   }
 
-  // 3. Stored session.notes (if manually entered)
+  // 3. Client-scoped date+time or date lookup from /api/calendar-notes-by-event-ids
+  // (Handles closed months, paid sessions, or split recurring calendar events where UID changed)
+  if (session.date && session.time && notesMap[`date_time:${session.date}_${session.time}`]?.trim()) {
+    return { rawNote: notesMap[`date_time:${session.date}_${session.time}`].trim(), source: 'calendar-id' };
+  }
+  if (session.date && notesMap[`date:${session.date}`]?.trim()) {
+    return { rawNote: notesMap[`date:${session.date}`].trim(), source: 'calendar-id' };
+  }
+
+  // 4. In-memory tempNotesCache for this session ID (if previously synced in current session)
+  if (session.id && tempNotesCache[session.id]?.trim()) {
+    return { rawNote: tempNotesCache[session.id].trim(), source: 'calendar-id' };
+  }
+
+  // 5. Stored session.notes (if manually entered)
   if (session.notes && session.notes.trim()) {
     return {
       rawNote: session.notes.trim(),
@@ -146,6 +168,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   displayTitle,
   clientSessions,
   settings,
+  tempNotesCache = {},
   showToast
 }) => {
   const [isFetchingCalendar, setIsFetchingCalendar] = useState(false);
@@ -162,18 +185,25 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Extract ONLY this client's calendar Event IDs (never query other clients' events)
+  // Extract ONLY this client's calendar Event IDs and session names (never query other clients' events)
   const targetClientEventIdsInfo = useMemo(() => {
-    const syncedSessions = clientSessions.filter(
-      s => s && !s.isDeleted && s.type !== 'non-session' && s.id && s.id.startsWith('ics_')
+    const validSessions = clientSessions.filter(
+      s => s && !s.isDeleted && s.type !== 'non-session'
     );
-    const targetEventIds = Array.from(new Set(syncedSessions.map(s => s.id)));
+    const syncedSessions = validSessions.filter(
+      s => s.id && (s.id.startsWith('ics_') || s.isSyncedFromCalendar)
+    );
+    const targetEventIds = Array.from(new Set(syncedSessions.map(s => s.id).filter(Boolean)));
     const targetBaseUids = Array.from(
       new Set(syncedSessions.map(s => extractBaseCalendarUid(s.id)).filter(Boolean))
     );
+    const targetSessionNames = Array.from(
+      new Set(validSessions.map(s => s.clientName?.trim()).filter((n): n is string => Boolean(n)))
+    );
     return {
       targetEventIds,
-      targetBaseUids
+      targetBaseUids,
+      targetSessionNames
     };
   }, [clientSessions]);
 
@@ -236,23 +266,53 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     };
   }, [clientSessions]);
 
-  // Generate AI Report (queries ONLY this client's Event IDs via /api/calendar-notes-by-event-ids)
+  // Gather all configured calendar URLs (from settings + any local backup in localStorage)
+  const getConfiguredCalendarUrls = (): string[] => {
+    const urlSet = new Set<string>();
+    const addUrl = (u?: string | null) => {
+      if (typeof u === 'string' && u.trim().length > 0) {
+        urlSet.add(u.trim());
+      }
+    };
+
+    addUrl(settings.onlineCalendarWebcalUrl);
+    addUrl(settings.faceToFaceCalendarWebcalUrl);
+    if (Array.isArray(settings.ownerCalendars)) {
+      settings.ownerCalendars.forEach(c => addUrl(c?.url));
+    }
+
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('psycalcu_settings')) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            addUrl(parsed?.onlineCalendarWebcalUrl);
+            addUrl(parsed?.faceToFaceCalendarWebcalUrl);
+            if (Array.isArray(parsed?.ownerCalendars)) {
+              parsed.ownerCalendars.forEach((c: any) => addUrl(c?.url));
+            }
+          }
+        }
+      }
+    } catch (e) {}
+
+    return Array.from(urlSet);
+  };
+
+  // Generate AI Report (queries ONLY this client's events via /api/calendar-notes-by-event-ids)
   const handleGenerateReport = async (forceRefreshCalendar = false) => {
     let activeMap: Record<string, string> = { ...liveNotesMap };
 
-    const { targetEventIds, targetBaseUids } = targetClientEventIdsInfo;
-    const calendarUrls: string[] = [];
-    if (settings.calendarSyncEnabled !== false) {
-      if (settings.onlineCalendarWebcalUrl) calendarUrls.push(settings.onlineCalendarWebcalUrl);
-      if (settings.faceToFaceCalendarWebcalUrl) calendarUrls.push(settings.faceToFaceCalendarWebcalUrl);
-      if (settings.userRole === 'owner' && Array.isArray(settings.ownerCalendars)) {
-        settings.ownerCalendars.forEach(c => {
-          if (c && c.url) calendarUrls.push(c.url);
-        });
-      }
-    }
+    const { targetEventIds, targetBaseUids, targetSessionNames } = targetClientEventIdsInfo;
+    const calendarUrls = getConfiguredCalendarUrls();
 
-    if (targetBaseUids.length > 0 && calendarUrls.length > 0 && (forceRefreshCalendar || Object.keys(activeMap).length === 0)) {
+    if (
+      calendarUrls.length > 0 &&
+      clientSessions.length > 0 &&
+      (forceRefreshCalendar || Object.keys(activeMap).length === 0)
+    ) {
       setIsFetchingCalendar(true);
       try {
         const res = await fetch('/api/calendar-notes-by-event-ids', {
@@ -261,7 +321,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           body: JSON.stringify({
             urls: calendarUrls,
             targetEventIds,
-            targetBaseUids
+            targetBaseUids,
+            targetClientName: clientName,
+            targetDisplayTitle: displayTitle,
+            targetSessionNames
           })
         });
         if (res.ok) {
@@ -284,7 +347,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       const payloadSessions = chronologicalSessions.map((s, idx) => {
         if (s.type !== 'cancelled') activeCounter++;
         const { formattedDate, dayName } = formatSessionTurkishDate(s.date);
-        const { rawNote } = resolveLiveSessionNote(s, activeMap);
+        const { rawNote } = resolveLiveSessionNote(s, activeMap, tempNotesCache);
         return {
           id: s.id,
           sessionNumber: s.type === 'cancelled' ? idx + 1 : activeCounter,
@@ -342,7 +405,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       if (s.type !== 'cancelled') activeNum++;
       const sessionNumber = s.type === 'cancelled' ? idx + 1 : activeNum;
       const { formattedDate, dayName } = formatSessionTurkishDate(s.date);
-      const { rawNote, source } = resolveLiveSessionNote(s, liveNotesMap);
+      const { rawNote, source } = resolveLiveSessionNote(s, liveNotesMap, tempNotesCache);
 
       const hasManualOverride = customNotesById[s.id] !== undefined;
       const effectiveRawNote = hasManualOverride ? customNotesById[s.id].trim() : rawNote.trim();
@@ -378,7 +441,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         }
       };
     });
-  }, [chronologicalSessions, liveNotesMap, aiReport, customNotesById, customTitlesById]);
+  }, [chronologicalSessions, liveNotesMap, tempNotesCache, aiReport, customNotesById, customTitlesById]);
 
   const hasAnyRecommendations = Boolean(
     (aiReport?.recommendations && aiReport.recommendations.trim().length > 0) || isEditMode
