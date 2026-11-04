@@ -96,12 +96,12 @@ export function resolveLiveSessionNote(
 ): { rawNote: string; source: 'calendar-id' | 'manual' | 'none' } {
   if (!session) return { rawNote: '', source: 'none' };
 
-  // 1. Direct event ID lookup from live calendar cache
+  // 1. Direct event ID lookup from targeted Event ID response
   if (session.id && notesMap[session.id]) {
     return { rawNote: notesMap[session.id].trim(), source: 'calendar-id' };
   }
 
-  // 2. Base Calendar UID + Date lookup (handles recurring or rescheduled event IDs)
+  // 2. Base Calendar UID + Date lookup (handles recurring or rescheduled event IDs for this specific UID)
   if (session.id && session.id.startsWith('ics_')) {
     const baseUid = extractBaseCalendarUid(session.id);
     if (baseUid && session.date && notesMap[`uid:${baseUid}_${session.date}`]) {
@@ -112,15 +112,7 @@ export function resolveLiveSessionNote(
     }
   }
 
-  // 3. Normalized Client Name + Date lookup from calendar
-  if (session.clientName && session.date) {
-    const normKey = `client_date:${toTurkishAscii(getNormalizedClientName(session.clientName)).toLowerCase()}_${session.date}`;
-    if (notesMap[normKey]) {
-      return { rawNote: notesMap[normKey].trim(), source: 'calendar-id' };
-    }
-  }
-
-  // 4. Stored session.notes (either manual or from initial parse)
+  // 3. Stored session.notes (if manually entered)
   if (session.notes && session.notes.trim()) {
     return {
       rawNote: session.notes.trim(),
@@ -131,6 +123,22 @@ export function resolveLiveSessionNote(
   return { rawNote: '', source: 'none' };
 }
 
+function cleanPhaseTitle(rawTitle: string): string {
+  if (!rawTitle) return 'Süreç Değerlendirmesi';
+  // Remove leading "1. Seans • ", "Seans 2 - ", "1. Oturum: " etc.
+  return rawTitle
+    .replace(/^\s*(?:seans|oturum)?\s*\d+\s*\.?\s*(?:seans|oturum)?\s*[•·\-–—:]\s*/i, '')
+    .trim() || rawTitle.trim();
+}
+
+function cleanReportNote(rawText: string): string {
+  if (!rawText) return '';
+  return rawText
+    .replace(/^Takvim etkinlik kaydı\s*\([^)]*\)\s*verilerine göre bu oturumda;\s*/i, '')
+    .replace(/^Takvim\/Etkinlik Notu:\s*/i, '')
+    .trim();
+}
+
 export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   isOpen,
   onClose,
@@ -138,8 +146,6 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   displayTitle,
   clientSessions,
   settings,
-  tempNotesCache = {},
-  onFetchLiveCalendarNotes,
   showToast
 }) => {
   const [isFetchingCalendar, setIsFetchingCalendar] = useState(false);
@@ -148,14 +154,32 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [includeFinancials, setIncludeFinancials] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [liveNotesMap, setLiveNotesMap] = useState<Record<string, string>>(tempNotesCache);
+  const [liveNotesMap, setLiveNotesMap] = useState<Record<string, string>>({});
   const [aiReport, setAiReport] = useState<AiProgressReport | null>(null);
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  // Extract ONLY this client's calendar Event IDs (never query other clients' events)
+  const targetClientEventIdsInfo = useMemo(() => {
+    const syncedSessions = clientSessions.filter(
+      s => s && !s.isDeleted && s.type !== 'non-session' && s.id && s.id.startsWith('ics_')
+    );
+    const targetEventIds = Array.from(new Set(syncedSessions.map(s => s.id)));
+    const targetBaseUids = Array.from(
+      new Set(syncedSessions.map(s => extractBaseCalendarUid(s.id)).filter(Boolean))
+    );
+    return {
+      targetEventIds,
+      targetBaseUids
+    };
+  }, [clientSessions]);
+
+  // Clear local note state when modal closes so no notes linger in memory
   useEffect(() => {
-    setLiveNotesMap(prev => ({ ...prev, ...tempNotesCache }));
-  }, [tempNotesCache]);
+    if (!isOpen) {
+      setLiveNotesMap({});
+    }
+  }, [isOpen]);
 
   // Chronological sessions (oldest to newest for timeline progression)
   const chronologicalSessions = useMemo(() => {
@@ -206,24 +230,43 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     };
   }, [clientSessions]);
 
-  // Generate AI Report (first fetches live calendar notes by Event ID if synced)
+  // Generate AI Report (queries ONLY this client's Event IDs via /api/calendar-notes-by-event-ids)
   const handleGenerateReport = async (forceRefreshCalendar = false) => {
-    let activeMap: Record<string, string> = { ...liveNotesMap, ...tempNotesCache };
+    let activeMap: Record<string, string> = { ...liveNotesMap };
 
-    const hasCalendarSyncedSessions = clientSessions.some(
-      s => s.isSyncedFromCalendar || (s.id && s.id.startsWith('ics_'))
-    );
+    const { targetEventIds, targetBaseUids } = targetClientEventIdsInfo;
+    const calendarUrls: string[] = [];
+    if (settings.calendarSyncEnabled !== false) {
+      if (settings.onlineCalendarWebcalUrl) calendarUrls.push(settings.onlineCalendarWebcalUrl);
+      if (settings.faceToFaceCalendarWebcalUrl) calendarUrls.push(settings.faceToFaceCalendarWebcalUrl);
+      if (settings.userRole === 'owner' && Array.isArray(settings.ownerCalendars)) {
+        settings.ownerCalendars.forEach(c => {
+          if (c && c.url) calendarUrls.push(c.url);
+        });
+      }
+    }
 
-    if (onFetchLiveCalendarNotes && (forceRefreshCalendar || hasCalendarSyncedSessions)) {
+    if (targetBaseUids.length > 0 && calendarUrls.length > 0 && (forceRefreshCalendar || Object.keys(activeMap).length === 0)) {
       setIsFetchingCalendar(true);
       try {
-        const fetched = await onFetchLiveCalendarNotes(true);
-        if (fetched && typeof fetched === 'object') {
-          activeMap = { ...activeMap, ...fetched };
-          setLiveNotesMap(activeMap);
+        const res = await fetch('/api/calendar-notes-by-event-ids', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls: calendarUrls,
+            targetEventIds,
+            targetBaseUids
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.notesByEventId && typeof data.notesByEventId === 'object') {
+            activeMap = data.notesByEventId;
+            setLiveNotesMap(activeMap);
+          }
         }
       } catch (err) {
-        console.warn('Could not refresh live calendar notes:', err);
+        console.warn('Could not query targeted client calendar event IDs:', err);
       } finally {
         setIsFetchingCalendar(false);
       }
@@ -267,7 +310,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         const data = await response.json();
         setAiReport(data);
         if (forceRefreshCalendar && showToast) {
-          showToast('Takvim etkinlik notları anlık çekildi ve yapay zeka raporu güncellendi.', 'success');
+          showToast('Süreç raporu güncellendi.', 'success');
         }
       }
     } catch (error) {
@@ -289,6 +332,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   // Combine chronological sessions with AI timeline output
   const enrichedTimeline: EnrichedTimelineSession[] = useMemo(() => {
     let activeNum = 0;
+    const total = chronologicalSessions.length;
     return chronologicalSessions.map((s, idx) => {
       if (s.type !== 'cancelled') activeNum++;
       const sessionNumber = s.type === 'cancelled' ? idx + 1 : activeNum;
@@ -296,28 +340,35 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       const { rawNote, source } = resolveLiveSessionNote(s, liveNotesMap);
 
       const matchedAi = aiReport?.timelineItems?.find(item => item.sessionId === s.id);
+      const isFirst = idx === 0;
+      const isLast = idx === total - 1 && total > 1;
+
       const fallbackAi: TimelineAiItem = {
         sessionId: s.id,
         phaseTitle:
           s.type === 'cancelled'
-            ? `Planlama Değişikliği / İptal`
-            : sessionNumber === 1
-            ? `1. Seans • İlk Görüşme ve Terapötik Çerçeve`
-            : `${sessionNumber}. Seans • Süreç Takibi ve Değerlendirme`,
+            ? 'Planlama Değişikliği'
+            : isFirst
+            ? 'İlk Görüşme ve Terapötik Çerçeve'
+            : isLast
+            ? 'Güncel İlerleme ve Pekiştirme'
+            : 'Süreç Takibi ve Değerlendirme',
         progressBadge:
           s.type === 'cancelled'
-            ? 'İptal Edildi'
-            : sessionNumber === 1
+            ? 'Ertelendi'
+            : isFirst
             ? 'İlk Değerlendirme'
-            : 'Süreç & İçgörü',
+            : 'Süreç Çalışması',
         formattedReportNote: rawNote
           ? rawNote
           : s.type === 'cancelled'
-          ? 'Planlanan bu görüşme gerçekleştirilememiş olup bir sonraki seansta süreç devam etmiştir.'
-          : `${formattedDate} tarihli (${s.type === 'face-to-face' ? 'Yüz Yüze' : 'Online'}) terapi oturumu kapsamında danışanın süreç hedefleri ve duygusal farkındalık adımları üzerinde çalışılmıştır.`,
-        keyTakeaway: rawNote
-          ? rawNote.slice(0, 95)
-          : `${sessionNumber}. seans tamamlandı.`
+          ? 'Planlanan görüşme ileri bir tarihe ertelendi; süreç bir sonraki oturumda devam etti.'
+          : isFirst
+          ? 'Başvuru nedenleri, güncel yaşam dinamikleri ve süreçten beklentiler ele alınarak terapötik çalışma çerçevesi oluşturuldu.'
+          : isLast
+          ? 'Önceki görüşmelerde kazanılan içgörüler değerlendirildi; günlük yaşamdaki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirildi.'
+          : 'Önceki görüşmeden bu yana yaşanan gelişmeler ele alındı; öz-gözlem ve duygusal farkındalık odaklı çalışmaya devam edildi.',
+        keyTakeaway: ''
       };
 
       return {
@@ -332,9 +383,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     });
   }, [chronologicalSessions, liveNotesMap, aiReport]);
 
-  // Dynamic Multi-Page Pagination so content is NEVER cramped into 1 page
-  // Page 1: Header + Client Summary + Executive Summary + Key Themes + First 2 Timeline items
-  // Subsequent Pages: 3 to 4 Timeline items per page depending on note length, plus Final Recommendations on the last page
+  // Dynamic Multi-Page Pagination with balanced whitespace
   const paginatedPages = useMemo(() => {
     const pages: {
       pageIndex: number;
@@ -355,23 +404,51 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       return pages;
     }
 
-    // Determine how many items fit comfortably on Page 1 based on note length
-    const firstTwoChars = enrichedTimeline
-      .slice(0, 2)
-      .reduce((acc, it) => acc + (it.aiItem.formattedReportNote?.length || 0), 0);
-    const page1Capacity = firstTwoChars > 480 ? 1 : 2;
+    // Page 1 has Header + Unified Summary Bar + Executive Evaluation + Timeline start
+    let page1Cursor = 0;
+    let page1Weight = 0;
+    const maxPage1Weight = 620;
 
-    const firstPageItems = enrichedTimeline.slice(0, page1Capacity);
-    const remaining = enrichedTimeline.slice(page1Capacity);
+    while (page1Cursor < enrichedTimeline.length && page1Cursor < 4) {
+      const candidate = enrichedTimeline[page1Cursor];
+      const noteLen = (candidate.aiItem.formattedReportNote || '').length;
+      const itemWeight = 110 + noteLen;
+      if (page1Cursor > 0 && page1Weight + itemWeight > maxPage1Weight) {
+        break;
+      }
+      page1Weight += itemWeight;
+      page1Cursor++;
+    }
+
+    const firstPageItems = enrichedTimeline.slice(0, page1Cursor);
+    const remaining = enrichedTimeline.slice(page1Cursor);
 
     if (remaining.length === 0) {
-      pages.push({
-        pageIndex: 0,
-        isFirstPage: true,
-        isLastPage: true,
-        items: firstPageItems,
-        includeRecommendations: true
-      });
+      const canFitRecsOnPage1 = firstPageItems.length <= 3 && page1Weight <= 460;
+      if (canFitRecsOnPage1) {
+        pages.push({
+          pageIndex: 0,
+          isFirstPage: true,
+          isLastPage: true,
+          items: firstPageItems,
+          includeRecommendations: true
+        });
+      } else {
+        pages.push({
+          pageIndex: 0,
+          isFirstPage: true,
+          isLastPage: false,
+          items: firstPageItems,
+          includeRecommendations: false
+        });
+        pages.push({
+          pageIndex: 1,
+          isFirstPage: false,
+          isLastPage: true,
+          items: [],
+          includeRecommendations: true
+        });
+      }
       return pages;
     }
 
@@ -383,17 +460,17 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       includeRecommendations: false
     });
 
-    // Chunk remaining timeline items dynamically so each page has generous breathing room
+    // Subsequent pages: up to 6 clean rows per page depending on text length
     let cursor = 0;
     while (cursor < remaining.length) {
       const chunk: EnrichedTimelineSession[] = [];
       let currentWeight = 0;
-      const maxWeightPerPage = 1050; // comfortable A4 height budget in character weight
+      const maxWeightPerPage = 1200;
 
-      while (cursor < remaining.length && chunk.length < 4) {
+      while (cursor < remaining.length && chunk.length < 6) {
         const candidate = remaining[cursor];
         const noteLen = (candidate.aiItem.formattedReportNote || '').length;
-        const itemWeight = 220 + noteLen;
+        const itemWeight = 130 + noteLen;
 
         if (chunk.length > 0 && currentWeight + itemWeight > maxWeightPerPage) {
           break;
@@ -404,8 +481,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       }
 
       const isEnd = cursor >= remaining.length;
-      // If the last page has 4 items or very heavy notes, put recommendations on a fresh final page if needed
-      const canFitRecsOnSamePage = isEnd && chunk.length <= 3 && currentWeight <= 820;
+      const canFitRecsOnSamePage = isEnd && chunk.length <= 5 && currentWeight <= 940;
 
       pages.push({
         pageIndex: pages.length,
@@ -427,10 +503,6 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
 
     return pages;
-  }, [enrichedTimeline]);
-
-  const syncedNoteCount = useMemo(() => {
-    return enrichedTimeline.filter(it => it.noteSource === 'calendar-id' && it.rawNote.length > 0).length;
   }, [enrichedTimeline]);
 
   // Build multi-page PDF Blob using html-to-image + jsPDF
@@ -464,7 +536,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       .replace(/[^a-zA-Z0-9]+/g, '_')
       .replace(/^_|_$/g, '');
     const todayStr = new Date().toISOString().split('T')[0];
-    const filename = `${safeClientSlug || 'Danisan'}_Gelisim_Raporu_${todayStr}.pdf`;
+    const filename = `${safeClientSlug || 'Danisan'}_Surec_Raporu_${todayStr}.pdf`;
 
     return {
       blob: pdf.output('blob'),
@@ -485,7 +557,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
       if (showToast) {
-        showToast(`PDF raporu (${paginatedPages.length} sayfa) başarıyla indirildi.`, 'success');
+        showToast(`PDF raporu (${paginatedPages.length} sayfa) indirildi.`, 'success');
       }
     } catch (error) {
       console.error('PDF download error:', error);
@@ -509,15 +581,14 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         (!navigator.canShare || navigator.canShare({ files: [file] }))
       ) {
         await navigator.share({
-          title: `${displayTitle} - Terapi Süreci ve İlerleme Raporu`,
-          text: `${displayTitle} danışanına ait ${paginatedPages.length} sayfalık süreç ve ilerleme zaman çizelgesi raporu (busrabakir.com).`,
+          title: `${displayTitle} — Süreç ve İlerleme Raporu`,
+          text: `${displayTitle} danışanına ait süreç ve ilerleme raporu.`,
           files: [file]
         });
         if (showToast) {
-          showToast('PDF raporu başarıyla paylaşıldı.', 'success');
+          showToast('PDF raporu paylaşıldı.', 'success');
         }
       } else {
-        // Fallback: Download directly if browser doesn't support native file sharing
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -527,15 +598,12 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 5000);
         if (showToast) {
-          showToast('Cihazınızda doğrudan dosya paylaşımı desteklenmediği için PDF raporu indirildi.', 'info');
+          showToast('Cihazınızda doğrudan paylaşım desteklenmediği için PDF indirildi.', 'info');
         }
       }
     } catch (error: any) {
       if (error?.name === 'AbortError') return;
       console.error('PDF share error:', error);
-      if (showToast) {
-        showToast('Paylaşım sırasında hata oluştu, PDF indiriliyor...', 'info');
-      }
       await handleDownloadPdf();
     } finally {
       setIsExportingPdf(false);
@@ -557,699 +625,979 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   if (!isOpen) return null;
 
   const therapistDisplay = settings.therapistName?.trim() || 'Uzm. Psk. Büşra Bakır Kayacan';
+  const reportDomain = (settings.therapistWebsite || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
   const reportDateFormatted = formatSessionTurkishDate(new Date().toISOString().split('T')[0]).formattedDate;
+  const appleFontStack =
+    '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", "Inter", sans-serif';
+
+  // Ensure AI-generated text never duplicates the psychologist's name or title inside body paragraphs
+  const sanitizeBodyText = (text: string): string => {
+    if (!text) return '';
+    return text
+      .replace(/Uzman Psikolog\s*(?:&|ve)?\s*Aile Danışmanı\s*/gi, '')
+      .replace(/Uzm\.\s*Psk\.\s*/gi, '')
+      .replace(/Büşra Bakır Kayacan\s*(?:kliniği|eşliğinde|tarafından)?\s*/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  };
+
+  const escapeHtml = (str: string): string =>
+    String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const handleDownloadWord = () => {
+    try {
+      const safeClientSlug = toTurkishAscii(displayTitle)
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+      const todayStr = new Date().toISOString().split('T')[0];
+      const filename = `${safeClientSlug || 'Danisan'}_Surec_Raporu_${todayStr}.doc`;
+
+      const execSummaryText = sanitizeBodyText(
+        aiReport?.executiveSummary ||
+          `${displayTitle} ile yürütülen danışmanlık süreci kapsamında gerçekleştirilen görüşmeler kronolojik olarak değerlendirilmiştir.`
+      );
+      const recsText = sanitizeBodyText(
+        aiReport?.recommendations ||
+          'Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.'
+      );
+      const themes = aiReport?.keyThemes || [];
+      const firstSessionDate = enrichedTimeline[0]?.formattedDate || reportStats.firstDate;
+      const lastSessionDate =
+        enrichedTimeline[enrichedTimeline.length - 1]?.formattedDate || reportStats.lastDate;
+
+      const timelineRowsHtml = enrichedTimeline
+        .map((item, idx) => {
+          const { session, sessionNumber, formattedDate, aiItem } = item;
+          const isCancelled = session.type === 'cancelled';
+          const isFaceToFace = session.type === 'face-to-face';
+          const displayPhaseTitle = cleanPhaseTitle(aiItem.phaseTitle);
+          const displayNote = sanitizeBodyText(cleanReportNote(aiItem.formattedReportNote));
+          const isLastRow = idx === enrichedTimeline.length - 1;
+          const borderBottom = isLastRow ? 'none' : '1px solid #E5E5EA';
+
+          const financialHtml =
+            includeFinancials && !isCancelled
+              ? `<div style="font-size:8.5pt; color:#6E6E73; margin-top:3pt;">₺${(
+                  session.price || 0
+                ).toLocaleString('tr-TR')} · <span style="color:${
+                  session.paymentStatus === 'paid' ? '#3C766B' : '#B45309'
+                };">${session.paymentStatus === 'paid' ? 'Ödendi' : 'Bekliyor'}</span></div>`
+              : '';
+
+          return `
+            <tr>
+              <td valign="top" style="width:26%; padding:11pt 12pt 11pt 0; border-bottom:${borderBottom};">
+                <div style="font-size:8.5pt; font-weight:600; color:${
+                  isCancelled ? '#86868B' : '#3C766B'
+                }; margin-bottom:2pt;">
+                  ${isCancelled ? 'İptal / Erteleme' : `${sessionNumber}. Seans`}
+                </div>
+                <div style="font-size:10pt; font-weight:600; color:#1D1D1F; margin-bottom:2pt;">
+                  ${escapeHtml(formattedDate)}
+                </div>
+                <div style="font-size:8.5pt; color:#86868B;">
+                  ${
+                    isCancelled
+                      ? escapeHtml(session.time || '00:00')
+                      : `${isFaceToFace ? 'Yüz Yüze' : 'Online'} · ${escapeHtml(
+                          session.time || '00:00'
+                        )}`
+                  }
+                </div>
+                ${financialHtml}
+              </td>
+              <td valign="top" style="width:74%; padding:11pt 0 11pt 12pt; border-bottom:${borderBottom};">
+                <div style="font-size:10.5pt; font-weight:600; color:#1D1D1F; margin-bottom:3pt;">
+                  ${escapeHtml(displayPhaseTitle)}
+                </div>
+                <div style="font-size:9.5pt; line-height:1.55; color:#3A3A3C;">
+                  ${escapeHtml(displayNote).replace(/\n/g, '<br/>')}
+                </div>
+              </td>
+            </tr>
+          `;
+        })
+        .join('');
+
+      const financialSummaryCellHtml = includeFinancials
+        ? `
+          <td valign="top" style="width:25%; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
+            <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">FİNANSAL ÖZET</div>
+            <div style="font-size:12pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">₺${reportStats.totalPaid.toLocaleString(
+              'tr-TR'
+            )}</div>
+            <div style="font-size:8.5pt; color:${
+              reportStats.totalUnpaid > 0 ? '#B45309' : '#3C766B'
+            }; margin-top:2pt;">
+              ${
+                reportStats.totalUnpaid > 0
+                  ? `Bekleyen: ₺${reportStats.totalUnpaid.toLocaleString('tr-TR')}`
+                  : 'Tamamlandı'
+              }
+            </div>
+          </td>
+        `
+        : '';
+
+      const themesHtml =
+        themes.length > 0
+          ? `
+            <div style="margin-top:10pt; padding-top:8pt; border-top:1px solid #F0F0F2; font-size:9pt;">
+              <span style="color:#86868B; font-weight:500;">Odak Alanları:&nbsp;&nbsp;</span>
+              <span style="color:#3C766B; font-weight:600;">${themes
+                .map(t => escapeHtml(t))
+                .join(' &nbsp;·&nbsp; ')}</span>
+            </div>
+          `
+          : '';
+
+      const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:w="urn:schemas-microsoft-com:office:word"
+        xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(displayTitle)} - Süreç ve İlerleme Raporu</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          @page WordSection1 {
+            size: 595.3pt 841.9pt;
+            margin: 42pt 45pt 42pt 45pt;
+          }
+          div.WordSection1 {
+            page: WordSection1;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            color: #1D1D1F;
+            background-color: #FFFFFF;
+            margin: 0;
+            padding: 0;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="WordSection1">
+          <!-- GROUP 1: HEADER -->
+          <table style="width:100%; border-bottom:1px solid #E5E5EA; margin-bottom:18pt;">
+            <tr>
+              <td valign="bottom" style="padding-bottom:14pt;">
+                <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:1.2pt; color:#3C766B; margin-bottom:4pt;">
+                  SÜREÇ VE İLERLEME RAPORU
+                </div>
+                <div style="font-size:21pt; font-weight:600; color:#1D1D1F; letter-spacing:-0.4pt;">
+                  ${escapeHtml(displayTitle)}
+                </div>
+              </td>
+              <td valign="bottom" align="right" style="padding-bottom:14pt; text-align:right;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B; margin-bottom:2pt;">
+                  RAPOR TARİHİ
+                </div>
+                <div style="font-size:10pt; font-weight:500; color:#1D1D1F;">
+                  ${escapeHtml(reportDateFormatted)}
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- GROUP 2: UNIFIED SUMMARY BAR -->
+          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:20pt;">
+            <tr>
+              <td valign="top" style="width:${includeFinancials ? '25%' : '34%'}; padding:12pt 14pt;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">TOPLAM GÖRÜŞME</div>
+                <div style="font-size:14pt; font-weight:600; color:#1D1D1F; margin-top:3pt;">${
+                  reportStats.completedCount
+                } Seans</div>
+                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">${
+                  reportStats.onlineCount
+                } Online · ${reportStats.faceToFaceCount} Yüz Yüze</div>
+              </td>
+              <td valign="top" style="width:${
+                includeFinancials ? '25%' : '33%'
+              }; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">BAŞLANGIÇ TARİHİ</div>
+                <div style="font-size:11.5pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">${escapeHtml(
+                  reportStats.firstDate
+                )}</div>
+                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">İlk Oturum</div>
+              </td>
+              <td valign="top" style="width:${
+                includeFinancials ? '25%' : '33%'
+              }; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">SON GÖRÜŞME</div>
+                <div style="font-size:11.5pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">${escapeHtml(
+                  reportStats.lastDate
+                )}</div>
+                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">Güncel Oturum</div>
+              </td>
+              ${financialSummaryCellHtml}
+            </tr>
+          </table>
+
+          <!-- GROUP 3: EXECUTIVE CLINICAL EVALUATION -->
+          <div style="margin-bottom:22pt;">
+            <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B; margin-bottom:6pt;">
+              GENEL DEĞERLENDİRME
+            </div>
+            <div style="font-size:10pt; line-height:1.65; color:#1D1D1F;">
+              ${escapeHtml(execSummaryText).replace(/\n/g, '<br/>')}
+            </div>
+            ${themesHtml}
+          </div>
+
+          <!-- GROUP 4: SESSION TIMELINE -->
+          ${
+            enrichedTimeline.length > 0
+              ? `
+                <table style="width:100%; border-bottom:1px solid #D2D2D7; margin-bottom:2pt;">
+                  <tr>
+                    <td style="padding-bottom:6pt; font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B;">
+                      SEANS SÜRECİ
+                    </td>
+                    <td align="right" style="padding-bottom:6pt; font-size:8.5pt; color:#86868B; text-align:right;">
+                      ${escapeHtml(firstSessionDate)} – ${escapeHtml(lastSessionDate)}
+                    </td>
+                  </tr>
+                </table>
+                <table style="width:100%; margin-bottom:20pt;">
+                  ${timelineRowsHtml}
+                </table>
+              `
+              : ''
+          }
+
+          <!-- GROUP 5: RECOMMENDATIONS -->
+          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:24pt;">
+            <tr>
+              <td style="padding:14pt 16pt;">
+                <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#3C766B; margin-bottom:5pt;">
+                  SÜREÇ PLANI VE ÖNERİLER
+                </div>
+                <div style="font-size:9.5pt; line-height:1.6; color:#1D1D1F;">
+                  ${escapeHtml(recsText).replace(/\n/g, '<br/>')}
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- FOOTER: DOMAIN BOTTOM-LEFT, PSYCHOLOGIST ONCE AT BOTTOM-RIGHT -->
+          <table style="width:100%; border-top:1px solid #E5E5EA; padding-top:12pt;">
+            <tr>
+              <td valign="bottom" style="padding-top:12pt;">
+                ${
+                  reportDomain
+                    ? `<span style="color:#3C766B; font-size:10pt;">&#9679;</span>&nbsp;<span style="font-size:9.5pt; font-weight:500; color:#6E6E73;">${escapeHtml(
+                        reportDomain
+                      )}</span>`
+                    : ''
+                }
+              </td>
+              <td valign="bottom" align="right" style="padding-top:12pt; text-align:right;">
+                <div style="font-size:10pt; font-weight:600; color:#1D1D1F;">
+                  ${escapeHtml(therapistDisplay)}
+                </div>
+                <div style="font-size:8.5pt; color:#86868B; margin-top:1.5pt;">
+                  Uzman Psikolog &amp; Aile Danışmanı
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </body>
+      </html>`;
+
+      const blob = new Blob(['\ufeff', wordHtml], {
+        type: 'application/msword;charset=utf-8'
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      if (showToast) {
+        showToast('Word raporu (.doc) indirildi.', 'success');
+      }
+    } catch (err) {
+      console.error('Word export error:', err);
+      if (showToast) {
+        showToast('Word dosyası oluşturulurken bir hata oluştu.', 'error');
+      }
+    }
+  };
 
   return (
     <AnimatePresence>
       <div
-        className="fixed inset-0 z-[180] flex items-center justify-center bg-[#112220]/75 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
+        className="fixed inset-0 z-[180] flex items-center justify-center bg-black/50 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 16 }}
+          initial={{ opacity: 0, scale: 0.98, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 16 }}
-          transition={{ duration: 0.22 }}
-          className="bg-[#f7faf9] w-full max-w-5xl h-[94dvh] rounded-3xl border border-[#3c766b]/25 shadow-2xl flex flex-col overflow-hidden"
+          exit={{ opacity: 0, scale: 0.98, y: 10 }}
+          transition={{ duration: 0.2 }}
+          className="bg-[#F5F5F7] w-full max-w-5xl h-[94dvh] rounded-3xl border border-black/10 shadow-2xl flex flex-col overflow-hidden"
+          style={{ fontFamily: appleFontStack }}
         >
-          {/* Top Signature Gradient Bar from busrabakir.com */}
-          <div
-            className="h-1.5 w-full shrink-0"
-            style={{ background: 'linear-gradient(90deg, #3c766b 0%, #4e9284 55%, #b48964 100%)' }}
-          />
-
-          {/* Modal Control Header */}
-          <div className="bg-white px-4 sm:px-6 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+          {/* Minimal Apple-Style Modal Header */}
+          <div className="bg-white/90 backdrop-blur-xl px-5 sm:px-7 py-3.5 border-b border-[#E5E5EA] flex flex-wrap items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-xs"
-                style={{ backgroundColor: '#3c766b' }}
-              >
-                <FileText className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-center text-[#1D1D1F] shrink-0">
+                <FileText className="w-4 h-4 text-[#3C766B]" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-sm sm:text-base font-extrabold text-[#112220] truncate">
-                    {displayTitle} — Yapay Zeka Destekli PDF Süreç Raporu
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-sm sm:text-[15px] font-semibold text-[#1D1D1F] tracking-tight truncate">
+                    {displayTitle}
                   </h2>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#3c766b]/10 text-[#26423d] border border-[#3c766b]/20">
-                    {paginatedPages.length} Sayfa (A4)
+                  <span className="text-xs text-[#86868B] font-normal tabular-nums">
+                    · {paginatedPages.length} Sayfa
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span>
-                    Takvim Etkinlik ID Notu Eşleşen: <strong className="text-[#3c766b]">{syncedNoteCount} seans</strong>
-                  </span>
-                  <span>•</span>
-                  <span className="text-[#b48964] font-semibold">busrabakir.com Kurumsal Şablonu</span>
+                <p className="text-[11px] text-[#86868B] truncate">
+                  Danışan Süreç ve İlerleme Raporu
                 </p>
               </div>
             </div>
 
-            {/* Action Toolbar */}
+            {/* Clean Action Controls */}
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => handleGenerateReport(true)}
                 disabled={isFetchingCalendar || isGeneratingAi}
-                className="px-3 py-2 rounded-xl border border-[#3c766b]/25 bg-[#f7faf9] hover:bg-[#3c766b]/10 text-[#26423d] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                title="Takvimden etkinlik ID notlarını anlık çek ve raporu yeniden oluştur"
+                className="px-3 py-1.5 rounded-lg border border-[#D2D2D7] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                title="Rapor içeriğini yenile"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${(isFetchingCalendar || isGeneratingAi) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 text-[#3C766B] ${(isFetchingCalendar || isGeneratingAi) ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">
-                  {isFetchingCalendar
-                    ? 'Takvim Notları Çekiliyor...'
-                    : isGeneratingAi
-                    ? 'YZ Raporu Yazıyor...'
-                    : 'Anlık Takvim Notlarını Çek & Yenile'}
+                  {isFetchingCalendar || isGeneratingAi ? 'Güncelleniyor...' : 'Yenile'}
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsEditMode(prev => !prev)}
-                className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                   isEditMode
-                    ? 'bg-[#b48964] text-white border-[#b48964]'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    ? 'bg-[#1D1D1F] text-white border-[#1D1D1F]'
+                    : 'bg-white border-[#D2D2D7] text-[#1D1D1F] hover:bg-[#F5F5F7]'
                 }`}
-                title="PDF metinlerini indirmeden önce düzenle"
               >
                 {isEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
-                <span>{isEditMode ? 'Düzenlemeyi Bitir' : 'Metinleri Düzenle'}</span>
+                <span>{isEditMode ? 'Tamamla' : 'Metinleri Düzenle'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIncludeFinancials(prev => !prev)}
-                className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                   includeFinancials
-                    ? 'bg-[#3c766b]/10 border-[#3c766b]/30 text-[#26423d]'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-[#3C766B]/10 border-[#3C766B]/30 text-[#26423D]'
+                    : 'bg-white border-[#D2D2D7] text-[#6E6E73] hover:bg-[#F5F5F7]'
                 }`}
-                title="Finansal / ödeme bilgilerini raporda göster veya gizle"
               >
                 {includeFinancials ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                <span className="hidden md:inline">{includeFinancials ? 'Finansal Bilgi: Açık' : 'Finansal Bilgi: Gizli'}</span>
+                <span className="hidden md:inline">Finansal Özet</span>
               </button>
 
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] text-[#6E6E73] hover:text-[#1D1D1F] transition-colors cursor-pointer"
                 title="Kapat"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Loading Banner when AI or Calendar Sync is active */}
+          {/* Subtle Loading Strip */}
           {(isFetchingCalendar || isGeneratingAi) && (
-            <div
-              className="px-6 py-2.5 text-white text-xs font-semibold flex items-center justify-center gap-2.5 shrink-0"
-              style={{ background: 'linear-gradient(90deg, #3c766b 0%, #4e9284 55%, #b48964 100%)' }}
-            >
-              <Sparkles className="w-4 h-4 animate-pulse" />
+            <div className="px-6 py-2 bg-[#1D1D1F] text-white text-xs font-medium flex items-center justify-center gap-2 shrink-0">
+              <Sparkles className="w-3.5 h-3.5 text-[#3C766B] animate-pulse" />
               <span>
                 {isFetchingCalendar
-                  ? 'Takvim etkinlik ID kayıtlarından danışanın güncel seans notları anlık olarak çekiliyor...'
-                  : 'Yapay zeka, danışanın seans notlarını analiz ederek zaman çizelgesi ilerleme raporunu hazırlıyor...'}
+                  ? 'Danışanın görüşme notları alınıyor...'
+                  : 'Süreç ve ilerleme raporu düzenleniyor...'}
               </span>
             </div>
           )}
 
           {/* Scrollable Multi-Page A4 Preview Area */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-8 bg-[#eef3f1]">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 bg-[#E8E8ED]">
             {paginatedPages.map((page, pIdx) => (
               <div key={pIdx} className="mx-auto" style={{ width: '794px', maxWidth: '100%' }}>
-                {/* Page Indicator Pill outside the A4 canvas */}
-                <div className="flex items-center justify-between mb-2 px-1 text-xs text-slate-500 font-semibold">
+                {/* Subtle Page Label outside A4 */}
+                <div className="flex items-center justify-between mb-2 px-1 text-[11px] text-[#6E6E73] font-medium tabular-nums">
                   <span>
-                    📄 Sayfa {pIdx + 1} / {paginatedPages.length}
-                    {page.isFirstPage ? ' • Kapak & Süreç Özeti' : ' • Zaman Çizelgesi Devamı'}
+                    Sayfa {pIdx + 1} / {paginatedPages.length}
                   </span>
-                  <span className="text-[11px] text-[#3c766b]">A4 Standart Boyut (Sıkıştırmasız Çoklu Sayfa)</span>
+                  <span>A4</span>
                 </div>
 
-                {/* Actual A4 Page Sheet Rendered to PDF */}
+                {/* ======================================================== */}
+                {/* A4 SHEET — APPLE DESIGN SYSTEM EDITORIAL HIERARCHY       */}
+                {/* ======================================================== */}
                 <div
                   ref={el => {
                     pageRefs.current[pIdx] = el;
                   }}
-                  className="bg-white rounded-none shadow-xl border border-slate-200/90 flex flex-col justify-between relative overflow-hidden mx-auto"
+                  className="bg-white shadow-sm flex flex-col justify-between relative overflow-hidden mx-auto"
                   style={{
                     width: '794px',
                     minHeight: '1123px',
-                    padding: '0',
-                    color: '#112220',
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+                    padding: '52px 56px 40px 56px',
+                    color: '#1D1D1F',
+                    fontFamily: appleFontStack,
+                    WebkitFontSmoothing: 'antialiased'
                   }}
                 >
-                  {/* Top Signature Gradient Accent Strip */}
-                  <div>
-                    <div
-                      style={{
-                        height: '8px',
-                        width: '100%',
-                        background: 'linear-gradient(90deg, #3c766b 0%, #4e9284 55%, #b48964 100%)'
-                      }}
-                    />
-
-                    <div className="px-10 pt-8 pb-6 space-y-6">
-                      {/* ======================================================== */}
-                      {/* HEADER (Full on Page 1, Compact Running Header on Page 2+) */}
-                      {/* ======================================================== */}
-                      {page.isFirstPage ? (
-                        <div
-                          className="pb-5 flex items-start justify-between gap-6"
-                          style={{ borderBottom: '1px solid rgba(60, 118, 107, 0.16)' }}
-                        >
-                          <div className="space-y-1.5">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest"
-                              style={{ backgroundColor: '#f7faf9', color: '#3c766b', border: '1px solid rgba(60, 118, 107, 0.22)' }}
-                            >
-                              <Compass className="w-3 h-3" style={{ color: '#b48964' }} />
-                              <span>PSİKOLOJİK DANIŞMANLIK & SÜREÇ İLERLEME RAPORU</span>
-                            </div>
-                            <h1
-                              className="text-2xl font-bold tracking-tight"
-                              style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#112220' }}
-                            >
-                              {displayTitle}
-                            </h1>
-                            <p className="text-xs font-medium" style={{ color: '#6e6e73' }}>
-                              Terapi Zaman Çizelgesi ve Seans İlerleme Değerlendirmesi
-                            </p>
+                  <div className="space-y-8">
+                    {/* ======================================================== */}
+                    {/* GROUP 1: DOCUMENT HEADER (NO DUPLICATE PSYCHOLOGIST NAME)*/}
+                    {/* ======================================================== */}
+                    {page.isFirstPage ? (
+                      <header
+                        className="pb-6 flex items-end justify-between gap-8"
+                        style={{ borderBottom: '1px solid #E5E5EA' }}
+                      >
+                        <div className="space-y-1.5">
+                          <div
+                            className="text-[10px] font-semibold uppercase"
+                            style={{ letterSpacing: '0.14em', color: '#3C766B' }}
+                          >
+                            SÜREÇ VE İLERLEME RAPORU
                           </div>
+                          <h1
+                            className="text-[28px] font-semibold leading-tight"
+                            style={{ letterSpacing: '-0.025em', color: '#1D1D1F' }}
+                          >
+                            {displayTitle}
+                          </h1>
+                        </div>
 
-                          {/* Right Clinician & Subtle busrabakir.com Branding */}
-                          <div className="text-right space-y-1 shrink-0">
-                            <div
-                              className="text-sm font-bold"
-                              style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#26423d' }}
-                            >
-                              {therapistDisplay}
-                            </div>
-                            <div className="text-[11px] font-medium" style={{ color: '#6e6e73' }}>
-                              Uzman Psikolog & Aile Danışmanı
-                            </div>
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-semibold"
-                              style={{ backgroundColor: '#f7faf9', color: '#3c766b', border: '1px solid rgba(60, 118, 107, 0.15)' }}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#b48964' }} />
-                              <span>busrabakir.com</span>
-                            </div>
-                            <div className="text-[10px]" style={{ color: '#6e6e73' }}>
-                              Rapor Tarihi: {reportDateFormatted}
-                            </div>
+                        <div className="text-right space-y-0.5 shrink-0">
+                          <div
+                            className="text-[10px] font-semibold uppercase"
+                            style={{ letterSpacing: '0.08em', color: '#86868B' }}
+                          >
+                            RAPOR TARİHİ
+                          </div>
+                          <div
+                            className="text-[12.5px] font-medium tabular-nums"
+                            style={{ color: '#1D1D1F' }}
+                          >
+                            {reportDateFormatted}
                           </div>
                         </div>
-                      ) : (
-                        /* Compact Running Header on Page 2+ */
+                      </header>
+                    ) : (
+                      <header
+                        className="pb-4 flex items-center justify-between gap-4"
+                        style={{ borderBottom: '1px solid #E5E5EA' }}
+                      >
                         <div
-                          className="pb-3.5 flex items-center justify-between gap-4"
-                          style={{ borderBottom: '1px solid rgba(60, 118, 107, 0.14)' }}
+                          className="text-[13px] font-semibold"
+                          style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full"
-                              style={{ backgroundColor: '#3c766b' }}
-                            />
-                            <span
-                              className="text-sm font-bold"
-                              style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#112220' }}
-                            >
-                              {displayTitle} — Seans İlerleme Zaman Çizelgesi
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-[10px] font-semibold" style={{ color: '#6e6e73' }}>
-                            <span>{therapistDisplay}</span>
-                            <span>•</span>
-                            <span style={{ color: '#3c766b' }}>busrabakir.com</span>
-                          </div>
+                          {displayTitle}
                         </div>
-                      )}
+                        <div className="text-[11px] tabular-nums" style={{ color: '#86868B' }}>
+                          Süreç ve İlerleme Raporu · {reportDateFormatted}
+                        </div>
+                      </header>
+                    )}
 
-                      {/* ======================================================== */}
-                      {/* PAGE 1 EXCLUSIVE: SUMMARY METRICS + AI OVERVIEW + THEMES */}
-                      {/* ======================================================== */}
-                      {page.isFirstPage && (
-                        <div className="space-y-5">
-                          {/* Client Process Metrics Grid */}
-                          <div className={`grid ${includeFinancials ? 'grid-cols-4' : 'grid-cols-3'} gap-3`}>
-                            <div
-                              className="p-3.5 rounded-2xl"
-                              style={{ backgroundColor: '#f7faf9', border: '1px solid rgba(60, 118, 107, 0.14)' }}
-                            >
-                              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#6e6e73' }}>
-                                TOPLAM AKTİF SEANS
+                    {/* ======================================================== */}
+                    {/* GROUP 2 & 3 (PAGE 1): UNIFIED SUMMARY & EVALUATION       */}
+                    {/* ======================================================== */}
+                    {page.isFirstPage && (
+                      <div className="space-y-7">
+                        {/* GROUP 2: Unified Apple-Style Grouped Summary Strip */}
+                        <section
+                          className="rounded-2xl px-6 py-4"
+                          style={{ backgroundColor: '#F5F5F7' }}
+                        >
+                          <div
+                            className={`grid ${
+                              includeFinancials ? 'grid-cols-4' : 'grid-cols-3'
+                            } gap-6`}
+                          >
+                            <div>
+                              <div
+                                className="text-[10px] font-semibold uppercase"
+                                style={{ letterSpacing: '0.08em', color: '#86868B' }}
+                              >
+                                TOPLAM GÖRÜŞME
                               </div>
-                              <div className="mt-1 flex items-baseline gap-1.5">
-                                <span className="text-xl font-extrabold" style={{ color: '#112220' }}>
-                                  {reportStats.completedCount}
-                                </span>
-                                <span className="text-[11px] font-semibold" style={{ color: '#3c766b' }}>
-                                  Oturum
-                                </span>
+                              <div
+                                className="mt-1 text-[20px] font-semibold tabular-nums"
+                                style={{ letterSpacing: '-0.02em', color: '#1D1D1F' }}
+                              >
+                                {reportStats.completedCount} Seans
                               </div>
-                              <div className="text-[10px] mt-0.5" style={{ color: '#6e6e73' }}>
-                                {reportStats.onlineCount} Online • {reportStats.faceToFaceCount} Yüz Yüze
+                              <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: '#6E6E73' }}>
+                                {reportStats.onlineCount} Online · {reportStats.faceToFaceCount} Yüz Yüze
                               </div>
                             </div>
 
                             <div
-                              className="p-3.5 rounded-2xl"
-                              style={{ backgroundColor: '#f7faf9', border: '1px solid rgba(60, 118, 107, 0.14)' }}
+                              className="pl-6"
+                              style={{ borderLeft: '1px solid #E5E5EA' }}
                             >
-                              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#6e6e73' }}>
-                                SÜREÇ TARİH ARALIĞI
+                              <div
+                                className="text-[10px] font-semibold uppercase"
+                                style={{ letterSpacing: '0.08em', color: '#86868B' }}
+                              >
+                                BAŞLANGIÇ TARİHİ
                               </div>
-                              <div className="mt-1 text-xs font-extrabold" style={{ color: '#112220' }}>
+                              <div
+                                className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
+                              >
                                 {reportStats.firstDate}
                               </div>
-                              <div className="text-[11px] font-semibold mt-0.5" style={{ color: '#3c766b' }}>
-                                → {reportStats.lastDate}
+                              <div className="text-[11px] mt-0.5" style={{ color: '#6E6E73' }}>
+                                İlk Oturum
                               </div>
                             </div>
 
                             <div
-                              className="p-3.5 rounded-2xl"
-                              style={{ backgroundColor: '#f7faf9', border: '1px solid rgba(60, 118, 107, 0.14)' }}
+                              className="pl-6"
+                              style={{ borderLeft: '1px solid #E5E5EA' }}
                             >
-                              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#6e6e73' }}>
-                                TAKVİM ETKİNLİK NOTU
+                              <div
+                                className="text-[10px] font-semibold uppercase"
+                                style={{ letterSpacing: '0.08em', color: '#86868B' }}
+                              >
+                                SON GÖRÜŞME
                               </div>
-                              <div className="mt-1 flex items-baseline gap-1.5">
-                                <span className="text-xl font-extrabold" style={{ color: '#26423d' }}>
-                                  { enrichedTimeline.filter(i => i.rawNote.length > 0).length }
-                                </span>
-                                <span className="text-[11px] font-semibold" style={{ color: '#b48964' }}>
-                                  Kayıtlı Not
-                                </span>
+                              <div
+                                className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
+                              >
+                                {reportStats.lastDate}
                               </div>
-                              <div className="text-[10px] mt-0.5" style={{ color: '#6e6e73' }}>
-                                Anlık Takvim ID & Seans Verisi
+                              <div className="text-[11px] mt-0.5" style={{ color: '#6E6E73' }}>
+                                Güncel Oturum
                               </div>
                             </div>
 
                             {includeFinancials && (
                               <div
-                                className="p-3.5 rounded-2xl"
-                                style={{ backgroundColor: '#fcfaf7', border: '1px solid rgba(180, 137, 100, 0.25)' }}
+                                className="pl-6"
+                                style={{ borderLeft: '1px solid #E5E5EA' }}
                               >
-                                <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#b48964' }}>
+                                <div
+                                  className="text-[10px] font-semibold uppercase"
+                                  style={{ letterSpacing: '0.08em', color: '#86868B' }}
+                                >
                                   FİNANSAL ÖZET
                                 </div>
-                                <div className="mt-1 text-sm font-extrabold" style={{ color: '#112220' }}>
-                                  Tahsilat: ₺{reportStats.totalPaid.toLocaleString('tr-TR')}
+                                <div
+                                  className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                  style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
+                                >
+                                  ₺{reportStats.totalPaid.toLocaleString('tr-TR')}
                                 </div>
-                                <div className="text-[10px] mt-0.5 font-semibold" style={{ color: reportStats.totalUnpaid > 0 ? '#b91c1c' : '#3c766b' }}>
+                                <div
+                                  className="text-[11px] mt-0.5 tabular-nums"
+                                  style={{
+                                    color: reportStats.totalUnpaid > 0 ? '#B45309' : '#3C766B'
+                                  }}
+                                >
                                   {reportStats.totalUnpaid > 0
                                     ? `Bekleyen: ₺${reportStats.totalUnpaid.toLocaleString('tr-TR')}`
-                                    : 'Tüm ödemeler tamamlandı'}
+                                    : 'Tamamlandı'}
                                 </div>
                               </div>
                             )}
                           </div>
+                        </section>
 
-                          {/* AI Executive Summary Box */}
+                        {/* GROUP 3: Executive Clinical Synthesis & Focus Themes */}
+                        <section className="space-y-3">
                           <div
-                            className="p-5 rounded-2xl space-y-2.5"
-                            style={{
-                              backgroundColor: '#f7faf9',
-                              border: '1px solid rgba(60, 118, 107, 0.18)',
-                              borderLeft: '4px solid #3c766b'
-                            }}
+                            className="text-[10.5px] font-semibold uppercase"
+                            style={{ letterSpacing: '0.1em', color: '#86868B' }}
                           >
-                            <div className="flex items-center justify-between">
-                              <h3
-                                className="text-sm font-bold flex items-center gap-2"
-                                style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#112220' }}
+                            GENEL DEĞERLENDİRME
+                          </div>
+
+                          {isEditMode ? (
+                            <textarea
+                              value={aiReport?.executiveSummary || ''}
+                              onChange={e =>
+                                setAiReport(prev =>
+                                  prev ? { ...prev, executiveSummary: e.target.value } : prev
+                                )
+                              }
+                              rows={4}
+                              className="w-full p-3 text-[13px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-xl focus:outline-none"
+                            />
+                          ) : (
+                            <p
+                              className="text-[13px] leading-[1.65]"
+                              style={{ color: '#1D1D1F' }}
+                            >
+                              {sanitizeBodyText(
+                                aiReport?.executiveSummary ||
+                                  `${displayTitle} ile yürütülen danışmanlık süreci kapsamında gerçekleştirilen görüşmeler kronolojik olarak değerlendirilmiştir.`
+                              )}
+                            </p>
+                          )}
+
+                          {aiReport?.keyThemes && aiReport.keyThemes.length > 0 && (
+                            <div
+                              className="pt-3 flex items-baseline gap-4"
+                              style={{ borderTop: '1px solid #F0F0F2' }}
+                            >
+                              <span
+                                className="text-[11px] font-medium shrink-0"
+                                style={{ color: '#86868B' }}
                               >
-                                <Sparkles className="w-4 h-4" style={{ color: '#3c766b' }} />
-                                <span>Genel Süreç ve İlerleme Değerlendirmesi</span>
-                              </h3>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#3c766b' }}>
-                                Klinik Sentez
+                                Odak Alanları
                               </span>
-                            </div>
-
-                            {isEditMode ? (
-                              <textarea
-                                value={aiReport?.executiveSummary || ''}
-                                onChange={e =>
-                                  setAiReport(prev => (prev ? { ...prev, executiveSummary: e.target.value } : prev))
-                                }
-                                rows={4}
-                                className="w-full p-2.5 text-xs bg-white border border-[#3c766b]/30 rounded-xl focus:outline-none"
-                              />
-                            ) : (
-                              <p className="text-xs leading-relaxed" style={{ color: '#3a3a3c' }}>
-                                {aiReport?.executiveSummary ||
-                                  `${displayTitle} ile yürütülen danışmanlık süreci kapsamında gerçekleştirilen seanslar ve takvim etkinlik notları kronolojik olarak analiz edilmiştir.`}
-                              </p>
-                            )}
-
-                            {/* Key Themes Pills */}
-                            {aiReport?.keyThemes && aiReport.keyThemes.length > 0 && (
-                              <div className="pt-2 flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] font-bold uppercase tracking-wider mr-1" style={{ color: '#6e6e73' }}>
-                                  Odak Alanları:
-                                </span>
+                              <div
+                                className="text-[12px] font-medium flex items-center gap-2 flex-wrap"
+                                style={{ color: '#3C766B' }}
+                              >
                                 {aiReport.keyThemes.map((theme, tIdx) => (
-                                  <span
-                                    key={tIdx}
-                                    className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
-                                    style={{
-                                      backgroundColor: '#ffffff',
-                                      color: '#26423d',
-                                      border: '1px solid rgba(60, 118, 107, 0.22)'
-                                    }}
-                                  >
-                                    • {theme}
-                                  </span>
+                                  <React.Fragment key={tIdx}>
+                                    {tIdx > 0 && (
+                                      <span style={{ color: '#D2D2D7' }}>·</span>
+                                    )}
+                                    <span>{theme}</span>
+                                  </React.Fragment>
                                 ))}
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                            </div>
+                          )}
+                        </section>
+                      </div>
+                    )}
 
-                      {/* ======================================================== */}
-                      {/* CHRONOLOGICAL TIMELINE SECTION                           */}
-                      {/* ======================================================== */}
-                      {page.items.length > 0 && (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h3
-                              className="text-sm font-bold flex items-center gap-2"
-                              style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#112220' }}
+                    {/* ======================================================== */}
+                    {/* GROUP 4: CHRONOLOGICAL SESSION TIMELINE                  */}
+                    {/* ======================================================== */}
+                    {page.items.length > 0 && (
+                      <section className="space-y-1">
+                        <div
+                          className="pb-2.5 flex items-center justify-between"
+                          style={{ borderBottom: '1px solid #D2D2D7' }}
+                        >
+                          <span
+                            className="text-[10.5px] font-semibold uppercase"
+                            style={{ letterSpacing: '0.1em', color: '#86868B' }}
+                          >
+                            {page.isFirstPage ? 'SEANS SÜRECİ' : 'SEANS SÜRECİ (DEVAMI)'}
+                          </span>
+                          <span
+                            className="text-[11px] tabular-nums"
+                            style={{ color: '#86868B' }}
+                          >
+                            {page.items[0].formattedDate} –{' '}
+                            {page.items[page.items.length - 1].formattedDate}
+                          </span>
+                        </div>
+
+                        {/* Clean 2-Column Hierarchical Rows Separated by Hairlines */}
+                        <div>
+                          {page.items.map((item, idx) => {
+                            const { session, sessionNumber, formattedDate, aiItem } = item;
+                            const isCancelled = session.type === 'cancelled';
+                            const isFaceToFace = session.type === 'face-to-face';
+                            const displayPhaseTitle = cleanPhaseTitle(aiItem.phaseTitle);
+                            const displayNote = sanitizeBodyText(cleanReportNote(aiItem.formattedReportNote));
+
+                            return (
+                              <div
+                                key={session.id}
+                                className="py-4 flex items-start gap-6"
+                                style={{
+                                  borderBottom:
+                                    idx === page.items.length - 1
+                                      ? 'none'
+                                      : '1px solid #E5E5EA'
+                                }}
+                              >
+                                {/* Left Column: Session Identity & Date Metadata */}
+                                <div className="w-36 shrink-0 space-y-0.5 tabular-nums">
+                                  <div
+                                    className="text-[11px] font-semibold"
+                                    style={{
+                                      color: isCancelled ? '#86868B' : '#3C766B'
+                                    }}
+                                  >
+                                    {isCancelled
+                                      ? 'İptal / Erteleme'
+                                      : `${sessionNumber}. Seans`}
+                                  </div>
+                                  <div
+                                    className="text-[13px] font-semibold"
+                                    style={{
+                                      letterSpacing: '-0.01em',
+                                      color: '#1D1D1F'
+                                    }}
+                                  >
+                                    {formattedDate}
+                                  </div>
+                                  <div
+                                    className="text-[11px]"
+                                    style={{ color: '#86868B' }}
+                                  >
+                                    {isCancelled
+                                      ? session.time || '00:00'
+                                      : `${isFaceToFace ? 'Yüz Yüze' : 'Online'} · ${
+                                          session.time || '00:00'
+                                        }`}
+                                  </div>
+                                  {includeFinancials && !isCancelled && (
+                                    <div
+                                      className="text-[10.5px] pt-1 font-medium"
+                                      style={{ color: '#6E6E73' }}
+                                    >
+                                      ₺{(session.price || 0).toLocaleString('tr-TR')} ·{' '}
+                                      <span
+                                        style={{
+                                          color:
+                                            session.paymentStatus === 'paid'
+                                              ? '#3C766B'
+                                              : '#B45309'
+                                        }}
+                                      >
+                                        {session.paymentStatus === 'paid'
+                                          ? 'Ödendi'
+                                          : 'Bekliyor'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right Column: Focus Heading & Clinical Process Note */}
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  {isEditMode ? (
+                                    <input
+                                      type="text"
+                                      value={aiItem.phaseTitle}
+                                      onChange={e =>
+                                        handleUpdateTimelineItem(
+                                          session.id,
+                                          'phaseTitle',
+                                          e.target.value
+                                        )
+                                      }
+                                      className="w-full text-[13px] font-semibold px-2.5 py-1 bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg"
+                                    />
+                                  ) : (
+                                    <h4
+                                      className="text-[13.5px] font-semibold"
+                                      style={{
+                                        letterSpacing: '-0.01em',
+                                        color: '#1D1D1F'
+                                      }}
+                                    >
+                                      {displayPhaseTitle}
+                                    </h4>
+                                  )}
+
+                                  {isEditMode ? (
+                                    <textarea
+                                      value={aiItem.formattedReportNote}
+                                      onChange={e =>
+                                        handleUpdateTimelineItem(
+                                          session.id,
+                                          'formattedReportNote',
+                                          e.target.value
+                                        )
+                                      }
+                                      rows={3}
+                                      className="w-full p-2.5 text-[12.5px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg focus:outline-none"
+                                    />
+                                  ) : (
+                                    <p
+                                      className="text-[12.5px] leading-[1.6] whitespace-pre-line"
+                                      style={{ color: '#3A3A3C' }}
+                                    >
+                                      {displayNote}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* GROUP 5 (FINAL PAGE): RECOMMENDATIONS                    */}
+                    {/* ======================================================== */}
+                    {page.includeRecommendations && (
+                      <section className="pt-2">
+                        <div
+                          className="rounded-2xl p-5 space-y-2"
+                          style={{ backgroundColor: '#F5F5F7' }}
+                        >
+                          <div
+                            className="text-[10.5px] font-semibold uppercase"
+                            style={{ letterSpacing: '0.1em', color: '#3C766B' }}
+                          >
+                            SÜREÇ PLANI VE ÖNERİLER
+                          </div>
+                          {isEditMode ? (
+                            <textarea
+                              value={aiReport?.recommendations || ''}
+                              onChange={e =>
+                                setAiReport(prev =>
+                                  prev ? { ...prev, recommendations: e.target.value } : prev
+                                )
+                              }
+                              rows={3}
+                              className="w-full p-2.5 text-[12.5px] bg-white border border-[#D2D2D7] rounded-lg focus:outline-none"
+                            />
+                          ) : (
+                            <p
+                              className="text-[12.5px] leading-[1.6]"
+                              style={{ color: '#1D1D1F' }}
                             >
-                              <Layers className="w-4 h-4" style={{ color: '#b48964' }} />
-                              <span>
-                                {page.isFirstPage
-                                  ? 'Seans İlerleme Zaman Çizelgesi (Kronolojik)'
-                                  : 'Seans İlerleme Zaman Çizelgesi (Devamı)'}
-                              </span>
-                            </h3>
-                            <span className="text-[10px] font-semibold" style={{ color: '#6e6e73' }}>
-                              {page.items[0].formattedDate} — {page.items[page.items.length - 1].formattedDate}
+                              {sanitizeBodyText(
+                                aiReport?.recommendations ||
+                                  'Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.'
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+
+                  {/* ======================================================== */}
+                  {/* FOOTER: DOMAIN BOTTOM-LEFT, PSYCHOLOGIST ONCE AT RIGHT   */}
+                  {/* ======================================================== */}
+                  <footer className="pt-6">
+                    <div
+                      className="pt-4 flex items-end justify-between gap-6"
+                      style={{ borderTop: '1px solid #E5E5EA' }}
+                    >
+                      {/* Bottom-Left: User's configured domain from Settings */}
+                      <div className="space-y-1">
+                        {reportDomain && (
+                          <div className="flex items-center gap-2 text-[11.5px]">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: '#3C766B' }}
+                            />
+                            <span className="font-medium" style={{ color: '#6E6E73' }}>
+                              {reportDomain}
                             </span>
                           </div>
-
-                          {/* Vertical Timeline Container */}
-                          <div className="relative pl-6 space-y-4">
-                            {/* Vertical Timeline Line */}
-                            <div
-                              className="absolute left-2.5 top-3 bottom-3 w-0.5"
-                              style={{
-                                background: 'linear-gradient(180deg, #3c766b 0%, #4e9284 55%, #b48964 100%)',
-                                opacity: 0.35
-                              }}
-                            />
-
-                            {page.items.map((item) => {
-                              const { session, sessionNumber, formattedDate, dayName, rawNote, noteSource, aiItem } = item;
-                              const isCancelled = session.type === 'cancelled';
-                              const isFaceToFace = session.type === 'face-to-face';
-
-                              return (
-                                <div key={session.id} className="relative">
-                                  {/* Timeline Node Circle */}
-                                  <div
-                                    className="absolute -left-6 top-3.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow-xs"
-                                    style={{
-                                      backgroundColor: isCancelled
-                                        ? '#94a3b8'
-                                        : sessionNumber % 2 === 1
-                                        ? '#3c766b'
-                                        : '#b48964'
-                                    }}
-                                  >
-                                    {sessionNumber}
-                                  </div>
-
-                                  {/* Timeline Session Card */}
-                                  <div
-                                    className="rounded-2xl p-4 space-y-2"
-                                    style={{
-                                      backgroundColor: isCancelled ? '#f8fafc' : '#ffffff',
-                                      border: isCancelled
-                                        ? '1px solid #e2e8f0'
-                                        : '1px solid rgba(17, 34, 32, 0.10)',
-                                      boxShadow: '0 2px 8px rgba(17, 34, 32, 0.03)'
-                                    }}
-                                  >
-                                    {/* Top Row: Date + Phase Title + Badges */}
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="space-y-0.5">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-xs font-extrabold" style={{ color: '#3c766b' }}>
-                                            {formattedDate} ({dayName}) • {session.time || '00:00'}
-                                          </span>
-                                          <span
-                                            className="px-2 py-0.5 rounded-md text-[10px] font-bold"
-                                            style={{
-                                              backgroundColor: isCancelled
-                                                ? '#f1f5f9'
-                                                : isFaceToFace
-                                                ? 'rgba(60, 118, 107, 0.10)'
-                                                : 'rgba(180, 137, 100, 0.12)',
-                                              color: isCancelled
-                                                ? '#64748b'
-                                                : isFaceToFace
-                                                ? '#26423d'
-                                                : '#8c6239'
-                                            }}
-                                          >
-                                            {isCancelled ? 'İptal' : isFaceToFace ? 'Yüz Yüze Seans' : 'Online Seans'} ({session.duration || 50} dk)
-                                          </span>
-                                        </div>
-
-                                        {isEditMode ? (
-                                          <input
-                                            type="text"
-                                            value={aiItem.phaseTitle}
-                                            onChange={e =>
-                                              handleUpdateTimelineItem(session.id, 'phaseTitle', e.target.value)
-                                            }
-                                            className="w-full text-xs font-bold px-2 py-1 border border-[#3c766b]/30 rounded-lg mt-1"
-                                          />
-                                        ) : (
-                                          <h4
-                                            className="text-sm font-bold"
-                                            style={{ color: '#112220', fontFamily: '"Playfair Display", Georgia, serif' }}
-                                          >
-                                            {aiItem.phaseTitle}
-                                          </h4>
-                                        )}
-                                      </div>
-
-                                      {/* Right Progress Milestone Badge */}
-                                      <div className="text-right shrink-0 space-y-1">
-                                        <span
-                                          className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-                                          style={{
-                                            backgroundColor: '#f7faf9',
-                                            color: '#3c766b',
-                                            border: '1px solid rgba(60, 118, 107, 0.22)'
-                                          }}
-                                        >
-                                          {aiItem.progressBadge}
-                                        </span>
-                                        {includeFinancials && !isCancelled && (
-                                          <div className="text-[10px] font-bold" style={{ color: '#6e6e73' }}>
-                                            ₺{(session.price || 0).toLocaleString('tr-TR')} •{' '}
-                                            <span style={{ color: session.paymentStatus === 'paid' ? '#3c766b' : '#b48964' }}>
-                                              {session.paymentStatus === 'paid' ? 'Ödendi' : 'Bekliyor'}
-                                            </span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* AI Formatted Progress Note */}
-                                    {isEditMode ? (
-                                      <textarea
-                                        value={aiItem.formattedReportNote}
-                                        onChange={e =>
-                                          handleUpdateTimelineItem(session.id, 'formattedReportNote', e.target.value)
-                                        }
-                                        rows={3}
-                                        className="w-full p-2 text-xs bg-[#f7faf9] border border-[#3c766b]/30 rounded-xl focus:outline-none"
-                                      />
-                                    ) : (
-                                      <p className="text-xs leading-relaxed" style={{ color: '#3a3a3c' }}>
-                                        {aiItem.formattedReportNote}
-                                      </p>
-                                    )}
-
-                                    {/* Bottom Row: Key Takeaway & Raw Calendar Note Indicator */}
-                                    <div
-                                      className="pt-1.5 flex items-center justify-between gap-2 text-[10px]"
-                                      style={{ borderTop: '1px dashed rgba(17, 34, 32, 0.08)' }}
-                                    >
-                                      <div className="flex items-center gap-1.5 font-semibold" style={{ color: '#26423d' }}>
-                                        <ChevronRight className="w-3 h-3 shrink-0" style={{ color: '#b48964' }} />
-                                        <span>{aiItem.keyTakeaway}</span>
-                                      </div>
-
-                                      {rawNote && (
-                                        <span
-                                          className="shrink-0 px-2 py-0.5 rounded text-[9px] font-semibold"
-                                          style={{ backgroundColor: '#f7faf9', color: '#6e6e73' }}
-                                        >
-                                          {noteSource === 'calendar-id' ? '📅 Takvim Etkinlik Notu' : '📝 Seans Notu'}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ======================================================== */}
-                      {/* LAST PAGE: RECOMMENDATIONS & CLINICIAN SIGNATURE         */}
-                      {/* ======================================================== */}
-                      {page.includeRecommendations && (
-                        <div className="space-y-5 pt-2">
+                        )}
+                        {paginatedPages.length > 1 && (
                           <div
-                            className="p-5 rounded-2xl space-y-2"
-                            style={{
-                              backgroundColor: '#fcfaf7',
-                              border: '1px solid rgba(180, 137, 100, 0.28)',
-                              borderLeft: '4px solid #b48964'
-                            }}
+                            className="text-[10.5px] tabular-nums"
+                            style={{ color: '#86868B' }}
                           >
-                            <h3
-                              className="text-sm font-bold flex items-center gap-2"
-                              style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#112220' }}
-                            >
-                              <Award className="w-4 h-4" style={{ color: '#b48964' }} />
-                              <span>Gelecek Seanslar İçin Klinik Öneriler & Süreç Planı</span>
-                            </h3>
-                            {isEditMode ? (
-                              <textarea
-                                value={aiReport?.recommendations || ''}
-                                onChange={e =>
-                                  setAiReport(prev => (prev ? { ...prev, recommendations: e.target.value } : prev))
-                                }
-                                rows={3}
-                                className="w-full p-2 text-xs bg-white border border-[#b48964]/40 rounded-xl focus:outline-none"
-                              />
-                            ) : (
-                              <p className="text-xs leading-relaxed" style={{ color: '#3a3a3c' }}>
-                                {aiReport?.recommendations ||
-                                  'Danışanın seans sürekliliğinin korunması, görüşmeler arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.'}
-                              </p>
-                            )}
+                            Sayfa {pIdx + 1} / {paginatedPages.length}
                           </div>
+                        )}
+                      </div>
 
-                          {/* Signature & Stamp Block */}
-                          <div className="pt-4 flex items-end justify-between px-2">
-                            <div className="space-y-1 text-[10px]" style={{ color: '#6e6e73' }}>
-                              <p className="font-semibold" style={{ color: '#26423d' }}>
-                                Gizlilik & Etik Bildirimi (KVKK)
-                              </p>
-                              <p className="max-w-md leading-normal">
-                                Bu süreç ve ilerleme raporu, danışanın seans kayıtları ve takvim etkinlik notları baz alınarak bilgilendirme ve süreç takibi amacıyla hazırlanmıştır.
-                              </p>
-                            </div>
-
-                            <div className="text-right space-y-1">
-                              <div
-                                className="w-44 pb-2 mb-1 text-center ml-auto"
-                                style={{ borderBottom: '1px solid rgba(60, 118, 107, 0.3)' }}
-                              >
-                                <span
-                                  className="text-xs italic"
-                                  style={{ fontFamily: '"Playfair Display", Georgia, serif', color: '#3c766b' }}
-                                >
-                                  {therapistDisplay}
-                                </span>
-                              </div>
-                              <div className="text-xs font-bold" style={{ color: '#112220' }}>
-                                {therapistDisplay}
-                              </div>
-                              <div className="text-[10px]" style={{ color: '#6e6e73' }}>
-                                Uzman Psikolog & Aile Danışmanı
-                              </div>
-                            </div>
+                      {/* Bottom-Right: Psychologist Name & Title (Rendered ONLY ONCE on the final page) */}
+                      {page.isLastPage ? (
+                        <div className="text-right space-y-0.5 shrink-0">
+                          <div
+                            className="text-[13px] font-semibold"
+                            style={{ color: '#1D1D1F' }}
+                          >
+                            {therapistDisplay}
                           </div>
+                          <div className="text-[11px]" style={{ color: '#86868B' }}>
+                            Uzman Psikolog & Aile Danışmanı
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="text-[10.5px] tabular-nums"
+                          style={{ color: '#86868B' }}
+                        >
+                          Sayfa {pIdx + 1} / {paginatedPages.length}
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  {/* ======================================================== */}
-                  {/* STANDARD FOOTER ON EVERY PAGE WITH SUBTLE busrabakir.com */}
-                  {/* ======================================================== */}
-                  <div className="px-10 pb-6 pt-3">
-                    <div
-                      className="pt-3 flex items-center justify-between text-[10px]"
-                      style={{ borderTop: '1px solid rgba(17, 34, 32, 0.08)', color: '#6e6e73' }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ background: 'linear-gradient(135deg, #3c766b, #b48964)' }}
-                        />
-                        <span className="font-bold" style={{ color: '#26423d' }}>
-                          busrabakir.com
-                        </span>
-                        <span>•</span>
-                        <span>Uzman Psikolog & Aile Danışmanlığı Süreç Raporlama Şablonu</span>
-                      </div>
-
-                      <div className="font-semibold" style={{ color: '#3c766b' }}>
-                        Sayfa {pIdx + 1} / {paginatedPages.length}
-                      </div>
-                    </div>
-                  </div>
+                  </footer>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Sticky Bottom Action Bar */}
-          <div className="bg-white px-4 sm:px-6 py-3.5 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="bg-white/95 backdrop-blur-xl px-5 sm:px-7 py-3.5 border-t border-[#E5E5EA] flex flex-wrap items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3 text-xs">
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none text-slate-600 font-semibold">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none text-[#6E6E73] font-medium">
                 <input
                   type="checkbox"
                   checked={includeCancelled}
                   onChange={e => setIncludeCancelled(e.target.checked)}
-                  className="rounded border-slate-300 text-[#3c766b] focus:ring-[#3c766b] cursor-pointer"
+                  className="rounded border-[#D2D2D7] text-[#3C766B] focus:ring-[#3C766B] cursor-pointer"
                 />
-                <span>İptal Edilen Seansları Göster</span>
+                <span>İptal Edilen Görüşmeleri Göster</span>
               </label>
             </div>
 
-            <div className="flex items-center gap-2.5 ml-auto">
+            <div className="flex items-center gap-2.5 ml-auto flex-wrap">
+              <button
+                type="button"
+                onClick={handleDownloadWord}
+                disabled={isGeneratingAi}
+                className="px-4 py-2 rounded-xl border border-[#D2D2D7] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                title="Aynı tasarımla Word belgesi (.doc) olarak indir"
+              >
+                <FileText className="w-3.5 h-3.5 text-[#3C766B]" />
+                <span>Word İndir</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={isExportingPdf || isGeneratingAi}
-                className="px-4 py-2.5 rounded-xl border border-[#3c766b]/30 bg-white hover:bg-[#f7faf9] text-[#26423d] text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                className="px-4 py-2 rounded-xl border border-[#D2D2D7] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Download className="w-4 h-4 text-[#3c766b]" />
-                <span>{isExportingPdf ? 'PDF Hazırlanıyor...' : 'PDF İndir'}</span>
+                <Download className="w-3.5 h-3.5 text-[#1D1D1F]" />
+                <span>{isExportingPdf ? 'Hazırlanıyor...' : 'PDF İndir'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleSharePdf}
                 disabled={isExportingPdf || isGeneratingAi}
-                className="px-5 py-2.5 rounded-xl text-white text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-md"
-                style={{ background: 'linear-gradient(90deg, #3c766b 0%, #4e9284 55%, #b48964 100%)' }}
+                className="px-4 py-2 rounded-xl bg-[#3C766B] hover:bg-[#316258] text-white text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Share2 className="w-4 h-4" />
-                <span>{isExportingPdf ? 'PDF Oluşturuluyor...' : 'PDF Raporu Paylaş'}</span>
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{isExportingPdf ? 'Oluşturuluyor...' : 'PDF Paylaş'}</span>
               </button>
             </div>
           </div>
@@ -1258,3 +1606,5 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     </AnimatePresence>
   );
 };
+
+

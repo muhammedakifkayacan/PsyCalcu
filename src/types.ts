@@ -120,6 +120,7 @@ export interface AppSettings {
   defaultIsKdvInclusive?: boolean; // default KDV type (true = Dahil, false = Hariç)
   therapistName: string;
   therapistPhone?: string;
+  therapistWebsite?: string;
   calendarSyncEnabled: boolean;
   onlineCalendarWebcalUrl: string; // URL for online sessions calendar
   faceToFaceCalendarWebcalUrl: string; // URL for face-to-face sessions calendar

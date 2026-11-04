@@ -226,8 +226,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
         if (searchQuery.trim()) {
           const query = searchQuery.toLocaleLowerCase('tr-TR');
-          const resolvedNote = resolveLiveSessionNote(s, tempNotesCache).rawNote;
-          const matchNotes = (resolvedNote || s.notes || '').toLocaleLowerCase('tr-TR').includes(query);
+          const matchNotes = (s.notes || '').toLocaleLowerCase('tr-TR').includes(query);
           const matchDate = (s.date || '').includes(query);
           return matchNotes || matchDate;
         }
@@ -909,15 +908,12 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                   </div>
                 </div>
 
-                {/* 3. NOTES (If present in session or live calendar cache, subtle and calm) */}
-                {(() => {
-                  const liveNote = resolveLiveSessionNote(session, tempNotesCache).rawNote;
-                  return liveNote ? (
-                    <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
-                      "{liveNote}"
-                    </p>
-                  ) : null;
-                })()}
+                {/* 3. NOTES (If manually entered in session) */}
+                {session.notes && (
+                  <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
+                    "{session.notes}"
+                  </p>
+                )}
 
                 {/* 4. HAIRLINE FOOTER: QUIET ACTION CONTROLS */}
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-100/80 text-xs">
@@ -1088,14 +1084,11 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                     </div>
 
                     {/* Session Notes snippet */}
-                    {(() => {
-                      const liveNote = resolveLiveSessionNote(session, tempNotesCache).rawNote;
-                      return liveNote ? (
-                        <p className="text-xs text-slate-600 italic bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xl">
-                          "{liveNote}"
-                        </p>
-                      ) : null;
-                    })()}
+                    {session.notes && (
+                      <p className="text-xs text-slate-600 italic bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-100 max-w-xl">
+                        "{session.notes}"
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1187,7 +1180,7 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         </div>
       )}
 
-      {/* AI-Powered PDF Timeline Progress Report Modal */}
+      {/* AI-Powered PDF Timeline Progress Report Modal (queries ONLY this client's Event IDs) */}
       <ClientPdfReportModal
         isOpen={isPdfReportModalOpen}
         onClose={() => setIsPdfReportModalOpen(false)}
@@ -1195,8 +1188,6 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         displayTitle={displayTitle}
         clientSessions={clientSessions}
         settings={settings}
-        tempNotesCache={tempNotesCache}
-        onFetchLiveCalendarNotes={onFetchLiveCalendarNotes}
         showToast={showToast}
       />
     </div>

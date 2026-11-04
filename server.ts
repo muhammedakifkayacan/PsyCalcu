@@ -1070,17 +1070,17 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       const firstDateStr = stats?.firstDate || (sessions[0]?.formattedDate) || "Başlangıç";
       const lastDateStr = stats?.lastDate || (sessions[sessions.length - 1]?.formattedDate) || "Güncel";
 
-      const executiveSummary = `${clientName} ile yürütülen psikolojik danışmanlık ve terapi süreci, ${firstDateStr} – ${lastDateStr} tarihleri arasında toplam ${completed} aktif seans (${stats?.onlineCount || 0} Online, ${stats?.faceToFaceCount || 0} Yüz Yüze) üzerinden düzenli bir zaman çizelgesiyle takip edilmiştir. ${
+      const executiveSummary = `${clientName} ile yürütülen danışmanlık süreci, ${firstDateStr} – ${lastDateStr} döneminde toplam ${completed} görüşme üzerinden düzenli olarak takip edilmiştir. ${
         notesWithContent.length > 0
-          ? `Takvim etkinlik kayıtlarından ve seans notlarından elde edilen ${notesWithContent.length} adet klinik gözlem verisi doğrultusunda; danışanın içgörü kapasitesinin güçlendiği, duygusal regülasyon ve baş etme becerilerinde aşamalı bir ilerleme kaydedildiği gözlemlenmiştir.`
-          : `Seans katılım istikrarı ve terapötik iş birliği çerçevesinde danışanın süreç hedeflerine yönelik farkındalık ve uyum becerilerinin düzenli olarak desteklendiği görülmektedir.`
+          ? `Görüşme içerikleri doğrultusunda danışanın öz-farkındalık kapasitesinin güçlendiği, duygusal regülasyon ve işlevsel baş etme becerilerinde aşamalı bir ilerleme kaydedildiği gözlemlenmiştir.`
+          : `Terapötik iş birliği ve görüşme sürekliliği çerçevesinde danışanın süreç hedeflerine yönelik içgörü ve uyum becerileri desteklenmektedir.`
       }`;
 
       const keyThemes = [
-        "Terapötik İş Birliği ve Süreç İstikrarı",
-        "Duygusal Farkındalık ve Öz-Değerlendirme",
-        "Stres Yönetimi ve İşlevsel Baş Etme Stratejileri",
-        "İlişkisel Dinamikler ve Sınır Koyma Becerileri"
+        "Terapötik İş Birliği",
+        "Duygusal Farkındalık",
+        "Stres Regülasyonu",
+        "İlişkisel Sınırlar"
       ];
 
       const timelineItems = (sessions || []).map((s: any, idx: number) => {
@@ -1089,24 +1089,24 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         const isLast = idx === total - 1 && total > 1;
         const isCancelled = s.type === "cancelled";
 
-        let phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Süreç Takibi ve Değerlendirme`;
-        let progressBadge = "Süreç & İçgörü Çalışması";
+        let phaseTitle = "Süreç Takibi ve Değerlendirme";
+        let progressBadge = "Süreç Çalışması";
 
         if (isCancelled) {
-          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Planlama Değişikliği / İptal`;
-          progressBadge = "İptal / Ertelendi";
+          phaseTitle = "Planlama Değişikliği";
+          progressBadge = "Ertelendi";
         } else if (isFirst) {
-          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • İlk Görüşme, Anamnez ve Çerçeveleme`;
+          phaseTitle = "İlk Görüşme ve Terapötik Çerçeve";
           progressBadge = "İlk Değerlendirme";
         } else if (idx === 1) {
-          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Hedef Belirleme ve Kavramsallaştırma`;
+          phaseTitle = "Hedef Belirleme ve Formülasyon";
           progressBadge = "Formülasyon";
         } else if (isLast) {
-          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Güncel İlerleme ve Pekiştirme`;
-          progressBadge = "Güncel Kazanımlar";
+          phaseTitle = "Güncel İlerleme ve Pekiştirme";
+          progressBadge = "Pekiştirme";
         } else if (idx % 3 === 0) {
-          phaseTitle = `${s.sessionNumber || idx + 1}. Seans • Bilişsel ve Duygusal Derinleşme`;
-          progressBadge = "Derinleşme & Müdahale";
+          phaseTitle = "Bilişsel ve Duygusal Derinleşme";
+          progressBadge = "Derinleşme";
         }
 
         let formattedReportNote = "";
@@ -1114,21 +1114,21 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
         if (isCancelled) {
           formattedReportNote = raw
-            ? `Bu tarihteki seans iptal edilmiş veya ileri bir tarihe ertelenmiştir. Takvim/Etkinlik Notu: "${raw}"`
-            : "Planlanan bu görüşme danışan/klinik planlama doğrultusunda iptal edilmiş olup süreç bir sonraki seansta devam etmiştir.";
-          keyTakeaway = "Görüşme ertelendi / sonraki seansta telafi planlandı.";
+            ? `Görüşme ileri bir tarihe ertelendi. Not: ${raw}`
+            : "Planlanan görüşme ileri bir tarihe ertelendi; süreç bir sonraki oturumda devam etti.";
+          keyTakeaway = "Görüşme ertelendi.";
         } else if (raw) {
-          formattedReportNote = `Takvim etkinlik kaydı (${s.id || "Seans Notu"}) verilerine göre bu oturumda; "${raw}" odağında çalışılmıştır. Danışanın paylaşımları terapötik çerçevede ele alınarak bilişsel ve duygusal farkındalık adımları desteklenmiştir.`;
-          keyTakeaway = raw.length > 95 ? `${raw.slice(0, 92)}...` : raw;
+          formattedReportNote = raw;
+          keyTakeaway = "";
         } else if (isFirst) {
-          formattedReportNote = `Danışan ile ilk değerlendirme görüşmesi (${s.type === "face-to-face" ? "Yüz Yüze" : "Online"}) gerçekleştirilmiştir. Başvuru nedenleri, mevcut yaşam dinamikleri ve terapi sürecinden beklentiler ele alınarak terapötik çerçeve oluşturulmuştur.`;
-          keyTakeaway = "Terapötik ittifak kuruldu ve süreç hedefleri çerçevelendi.";
+          formattedReportNote = `Başvuru nedenleri, güncel yaşam dinamikleri ve süreçten beklentiler ele alınarak terapötik çalışma çerçevesi oluşturuldu.`;
+          keyTakeaway = "";
         } else if (isLast) {
-          formattedReportNote = `Sürecin güncel oturumunda önceki seanslarda kazanılan içgörüler değerlendirilmiş, günlük yaşam içerisindeki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirilmiştir.`;
-          keyTakeaway = "Süreç kazanımları değerlendirildi ve ilerleme pekiştirildi.";
+          formattedReportNote = `Önceki görüşmelerde kazanılan içgörüler değerlendirildi; günlük yaşamdaki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirildi.`;
+          keyTakeaway = "";
         } else {
-          formattedReportNote = `Rutin terapi oturumu (${s.type === "face-to-face" ? "Yüz Yüze" : "Online"}, ${s.duration || 50} dk) kapsamında bir önceki görüşmeden bu yana yaşanan gelişmeler değerlendirilmiş, danışanın öz-gözlem ve farkındalık becerileri üzerinde çalışılmıştır.`;
-          keyTakeaway = `${s.sessionNumber || idx + 1}. seans düzenli katılım ile tamamlandı.`;
+          formattedReportNote = `Önceki görüşmeden bu yana yaşanan gelişmeler ele alındı; öz-gözlem ve duygusal farkındalık odaklı çalışmaya devam edildi.`;
+          keyTakeaway = "";
         }
 
         return {
@@ -1140,10 +1140,10 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         };
       });
 
-      const recommendations = `Danışanın seans sürekliliğinin korunması, görüşmeler arasında önerilen farkındalık ve öz-gözlem egzersizlerinin sürdürülmesi ve belirlenen gelişim hedeflerinin periyodik olarak yeniden değerlendirilmesi önerilmektedir.`;
+      const recommendations = `Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.`;
 
       return {
-        reportTitle: `${clientName} — Terapi Süreci ve İlerleme Zaman Çizelgesi Raporu`,
+        reportTitle: `${clientName} — Süreç ve İlerleme Raporu`,
         executiveSummary,
         keyThemes,
         timelineItems,
@@ -1172,32 +1172,30 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       const sessionDataForPrompt = sessions.map((s: any, idx: number) => ({
         sessionId: s.id,
         sessionNumber: s.sessionNumber || idx + 1,
-        date: s.date,
-        formattedDate: s.formattedDate,
-        dayName: s.dayName,
-        time: s.time,
-        duration: s.duration || 50,
+        date: s.formattedDate || s.date,
         type: s.type === "face-to-face" ? "Yüz Yüze" : s.type === "cancelled" ? "İptal" : "Online",
-        isSyncedFromCalendar: Boolean(s.isSyncedFromCalendar),
-        calendarEventNote: s.rawNote || ""
+        sessionNote: s.rawNote || ""
       }));
 
-      const prompt = `Sen Uzman Psikolog & Aile Danışmanı Büşra Bakır Kayacan (busrabakir.com) kliniği için çalışan kıdemli bir klinik psikoloji raporlama asistanısın.
-Aşağıda "${clientName}" adlı danışanın kronolojik (eskiden yeniye) seans kayıtları ve takvim etkinlik ID'lerinden anlık çekilen ham seans notları ("calendarEventNote") yer almaktadır.
+      const prompt = `Minimalist, sade ve anlaşılır bir "Danışan Süreç ve İlerleme Raporu" hazırlayan klinik asistansın.
+Aşağıda "${clientName}" adlı danışanın kronolojik seans listesi ve seans notları ("sessionNote") yer almaktadır.
 
-GÖREVİN:
-1. Bu ham takvim/etkinlik notlarını ve seans geçmişini analiz ederek profesyonel, özenli, anlaşılır ve etik dile uygun bir "Terapi Süreci ve İlerleme Zaman Çizelgesi Raporu" oluştur.
-2. Eğer bir seansın "calendarEventNote" alanında takvimden çekilmiş bir not varsa (kısa anahtar kelimeler, maddeler veya cümleler halinde olabilir), bu nottaki TÜM önemli detayları koruyarak rapora uygun, akıcı, profesyonel bir klinik ilerleme metnine ("formattedReportNote") dönüştür. Kesinlikle uydurma tıbbi tanı koyma; nottaki gerçek gözlem, konu, duygu, ödev veya temaları profesyonelce ifade et.
-3. Eğer bir seansın "calendarEventNote" alanı boşsa, o seansın kaçıncı seans olduğuna (örn. 1. seans ilk değerlendirme, ara seanslar süreç takibi, son seans güncel değerlendirme) ve seans türüne (Online/Yüz Yüze/İptal) uygun, nötr ve profesyonel bir süreç devamlılığı açıklaması yaz.
-4. Zaman çizelgesinde ("timelineItems") listedeki HER BİR SEANS için ("sessionId" birebir eşleşecek şekilde) kronolojik ilerlemeyi gösteren bir aşama başlığı ("phaseTitle"), kısa ilerleme rozeti ("progressBadge"), detaylı rapor metni ("formattedReportNote") ve 1 cümlelik ana kazanım/özet ("keyTakeaway") üret.
+KESİN YAZIM KURALLARI:
+1. SADE VE TEKRARSIZ DİL: Metinlerde kesinlikle "takvim notuna göre", "takvim etkinlik kaydına göre", "online seans kapsamında", "50 dakikalık görüşmede" veya "X. seansta" gibi tekrar eden kalıp ibareler KULLANMA. Tarih, seans numarası ve görüşme türü zaten sol sütunda gösteriliyor.
+2. PSİKOLOG ADI VE ÜNVANI YASAĞI: Metinlerin ("executiveSummary", "formattedReportNote", "recommendations") içinde kesinlikle psikolog adını, klinik adını veya "Uzman Psikolog & Aile Danışmanı" ünvanını YAZMA (isim ve ünvan yalnızca raporun sağ alt köşesinde bir kez yer almaktadır).
+3. BAŞLIKLAR ("phaseTitle"): Başlığın başına "1. Seans •" gibi numara EKLEME. Doğrudan o görüşmenin odağını anlatan 2-4 kelimelik yalın bir başlık yaz (Örn: "İlk Değerlendirme ve Çerçeve", "Kaygı Tetikleyicileri ve Baş Etme", "Sınır Koyma Pratiği").
+4. SEANS METNİ ("formattedReportNote"):
+   - Eğer "sessionNote" doluysa: Nottaki tüm klinik bilgileri, konuları ve gözlemleri hiçbir detayı atlamadan, doğrudan akıcı, yalın ve profesyonel 1-3 cümlelik bir paragrafa dönüştür. Tıbbi tanı uydurma.
+   - Eğer "sessionNote" boşsa: Oturumun süreçteki yerine uygun, tek cümlelik sade ve doğal bir süreç takip notu yaz; diğer seanslarla aynı cümleyi kopyalayıp tekrarlama.
+5. "executiveSummary": Danışanın genel sürecini özetleyen, gereksiz sıfatlardan arındırılmış, net ve anlaşılır 3-4 cümlelik tek bir değerlendirme paragrafı yaz.
+6. "keyThemes": Süreçte çalışılan 3-4 kısa odak başlığı (her biri 2-3 kelime).
 
-DANIŞAN BİLGİLERİ:
-- Danışan Adı: ${clientName}
-- Uzman / Danışman: ${therapistName || "Uzm. Psk. Büşra Bakır Kayacan"}
-- Toplam Seans: ${sessions.length} (Online: ${stats?.onlineCount || 0}, Yüz Yüze: ${stats?.faceToFaceCount || 0}, İptal: ${stats?.cancelledCount || 0})
-- Tarih Aralığı: ${stats?.firstDate || ""} - ${stats?.lastDate || ""}
+DANIŞAN ÖZETİ:
+- Danışan: ${clientName}
+- Toplam Görüşme: ${sessions.length}
+- Dönem: ${stats?.firstDate || ""} – ${stats?.lastDate || ""}
 
-KRONOLOJİK SEANS VE TAKVİM ETKİNLİK ID NOTLARI:
+SEANS VERİLERİ:
 ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
 
       const responseSchema = {
@@ -1205,16 +1203,16 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         properties: {
           reportTitle: {
             type: Type.STRING,
-            description: "Raporun ana başlığı"
+            description: "Rapor başlığı"
           },
           executiveSummary: {
             type: Type.STRING,
-            description: "Danışanın genel gelişim sürecini, seans devamlılığını ve çalışılan temaları özetleyen 2 paragraflık profesyonel klinik değerlendirme yazısı."
+            description: "Sade, net 3-4 cümlelik genel klinik süreç değerlendirmesi."
           },
           keyThemes: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
-            description: "Süreç boyunca öne çıkan 3 ila 5 temel odak alanı / tema."
+            description: "3-4 adet kısa odak alanı (2-3 kelime)."
           },
           timelineItems: {
             type: Type.ARRAY,
@@ -1224,19 +1222,19 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                 sessionId: { type: Type.STRING },
                 phaseTitle: {
                   type: Type.STRING,
-                  description: "Örn: '1. Seans • İlk Görüşme ve Terapötik Çerçeve' veya notun içeriğine uygun başlık"
+                  description: "Seans numarası içermeyen, 2-4 kelimelik yalın odak başlığı."
                 },
                 progressBadge: {
                   type: Type.STRING,
-                  description: "2-3 kelimelik aşama etiketi (Örn: 'İlk Değerlendirme', 'Farkındalık & İçgörü', 'Bilişsel Çalışma', 'İlerleme & Pekiştirme')"
+                  description: "1-2 kelimelik kısa aşama etiketi."
                 },
                 formattedReportNote: {
                   type: Type.STRING,
-                  description: "Takvim etkinlik notunun rapora uygun, profesyonel ve akıcı Türkçe ile yazılmış 2-4 cümlelik klinik süreç açıklaması."
+                  description: "Tekrarsız, doğrudan konuya giren 1-3 cümlelik seans değerlendirme notu."
                 },
                 keyTakeaway: {
                   type: Type.STRING,
-                  description: "O seanstan öne çıkan tek cümlelik özet veya kazanım."
+                  description: "Boş bırakılabilir veya çok kısa odak."
                 }
               },
               required: ["sessionId", "phaseTitle", "progressBadge", "formattedReportNote", "keyTakeaway"]
@@ -1244,7 +1242,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           },
           recommendations: {
             type: Type.STRING,
-            description: "Gelecek seanslar ve sürecin devamı için 2-3 cümlelik yapıcı klinik öneri ve süreç planı."
+            description: "Sürecin devamı için 1-2 cümlelik net klinik öneri."
           }
         },
         required: ["reportTitle", "executiveSummary", "keyThemes", "timelineItems", "recommendations"]
@@ -1852,6 +1850,246 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         );
       } catch (logErr) {}
       res.status(500).json({ error: `${err?.message || err}` });
+    }
+  });
+
+  // Targeted endpoint: Queries ONLY the requested Calendar Event IDs (UIDs) for a single client
+  // so no other events in the calendar are parsed or returned to the browser.
+  app.post("/api/calendar-notes-by-event-ids", async (req, res) => {
+    try {
+      const { urls, targetBaseUids, targetEventIds } = req.body || {};
+
+      const validUrls: string[] = Array.isArray(urls)
+        ? urls.filter((u: any) => typeof u === "string" && u.trim().length > 0)
+        : [];
+      const rawBaseUids: string[] = Array.isArray(targetBaseUids)
+        ? targetBaseUids.filter((u: any) => typeof u === "string" && u.trim().length > 0)
+        : [];
+      const rawEventIds: string[] = Array.isArray(targetEventIds)
+        ? targetEventIds.filter((u: any) => typeof u === "string" && u.trim().length > 0)
+        : [];
+
+      // Normalize requested UIDs using the exact same sanitization as icsParser.ts
+      const targetUidSet = new Set<string>();
+      for (const u of rawBaseUids) {
+        const cleaned = u.replace(/^ics_/, "").replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+        if (cleaned) targetUidSet.add(cleaned);
+      }
+      for (const eid of rawEventIds) {
+        const withoutPrefix = eid.replace(/^ics_/, "");
+        const lastUnderscore = withoutPrefix.lastIndexOf("_");
+        const base =
+          lastUnderscore !== -1 && /^\d{8}$/.test(withoutPrefix.slice(lastUnderscore + 1))
+            ? withoutPrefix.slice(0, lastUnderscore)
+            : withoutPrefix;
+        const cleaned = base.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+        if (cleaned) targetUidSet.add(cleaned);
+      }
+
+      if (validUrls.length === 0 || targetUidSet.size === 0) {
+        return res.json({
+          notesByEventId: {},
+          queriedUidCount: targetUidSet.size,
+          matchedEventCount: 0
+        });
+      }
+
+      const parseIcsDateOnly = (rawLine: string, targetTimezone = "Europe/Istanbul"): string | null => {
+        if (!rawLine) return null;
+        const colonIdx = rawLine.indexOf(":");
+        const rawValue = colonIdx !== -1 ? rawLine.substring(colonIdx + 1).trim() : rawLine.trim();
+        const cleanValue = rawValue.replace(/[-:]/g, "").trim();
+        if (cleanValue.length < 8) return null;
+
+        const isUtc = cleanValue.toUpperCase().endsWith("Z") || rawValue.toUpperCase().endsWith("Z");
+        const year = parseInt(cleanValue.substring(0, 4), 10);
+        const month = parseInt(cleanValue.substring(4, 6), 10);
+        const day = parseInt(cleanValue.substring(6, 8), 10);
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+        let hour = 0;
+        let minute = 0;
+        let second = 0;
+        const tIndex = cleanValue.indexOf("T");
+        if (tIndex !== -1 && tIndex + 5 <= cleanValue.length) {
+          hour = parseInt(cleanValue.substring(tIndex + 1, tIndex + 3), 10) || 0;
+          minute = parseInt(cleanValue.substring(tIndex + 3, tIndex + 5), 10) || 0;
+          if (tIndex + 7 <= cleanValue.length) {
+            second = parseInt(cleanValue.substring(tIndex + 5, tIndex + 7), 10) || 0;
+          }
+        }
+
+        if (isUtc) {
+          try {
+            const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+            const formatter = new Intl.DateTimeFormat("en-CA", {
+              timeZone: targetTimezone || "Europe/Istanbul",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit"
+            });
+            const parts = formatter.formatToParts(new Date(utcMs));
+            const partMap: Record<string, string> = {};
+            for (const p of parts) partMap[p.type] = p.value;
+            if (partMap.year && partMap.month && partMap.day) {
+              return `${partMap.year}-${partMap.month}-${partMap.day}`;
+            }
+          } catch (e) {}
+        }
+
+        return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      };
+
+      const normalizeCalUrl = (rawUrl: string): string => {
+        let normalizedUrl = rawUrl.trim();
+        if (normalizedUrl.startsWith("webcal://")) {
+          normalizedUrl = "https://" + normalizedUrl.substring(9);
+        } else if (normalizedUrl.startsWith("webcal:")) {
+          normalizedUrl = "https:" + normalizedUrl.substring(7);
+        } else if (normalizedUrl.startsWith("http://")) {
+          normalizedUrl = "https://" + normalizedUrl.substring(7);
+        }
+        try {
+          normalizedUrl = decodeURIComponent(normalizedUrl);
+        } catch (e) {}
+        if (normalizedUrl.includes("google.com")) {
+          normalizedUrl = normalizedUrl.replace(/@/g, "%40");
+        } else {
+          try {
+            normalizedUrl = encodeURI(normalizedUrl);
+          } catch (e) {}
+        }
+        const separator = normalizedUrl.includes("?") ? "&" : "?";
+        return `${normalizedUrl}${separator}_cb=${Date.now()}`;
+      };
+
+      const notesByEventId: Record<string, string> = {};
+      let matchedEventCount = 0;
+
+      for (const rawUrl of validUrls) {
+        try {
+          const fetchUrl = normalizeCalUrl(rawUrl);
+          const fetchResponse = await fetch(fetchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 iCal/1.0",
+              "Accept": "text/calendar, text/plain, application/octet-stream, */*",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              "Pragma": "no-cache"
+            },
+            cache: "no-store",
+            signal: AbortSignal.timeout(12000)
+          });
+
+          if (!fetchResponse.ok) continue;
+          const icsText = await fetchResponse.text();
+          if (!icsText || !icsText.includes("BEGIN:VEVENT")) continue;
+
+          const cleanText = icsText.replace(/^\uFEFF/, "").replace(/^\uFFFE/, "");
+          const normalizedText = cleanText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+          const unfoldedText = normalizedText.replace(/\n[ \t]/g, "");
+          const lines = unfoldedText.split("\n");
+
+          let calTimezone = "Europe/Istanbul";
+          for (const l of lines) {
+            if (l.toUpperCase().startsWith("X-WR-TIMEZONE:")) {
+              const tzVal = l.substring(14).trim();
+              if (tzVal) calTimezone = tzVal;
+              break;
+            }
+          }
+
+          let inEvent = false;
+          let currentUid = "";
+          let isTargetUid = false;
+          let dtStartRaw = "";
+          let recurrenceIdRaw = "";
+          let descriptionRaw = "";
+          let noteRaw = "";
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const upperLine = line.toUpperCase();
+
+            if (upperLine === "BEGIN:VEVENT" || upperLine.startsWith("BEGIN:VEVENT")) {
+              inEvent = true;
+              currentUid = "";
+              isTargetUid = false;
+              dtStartRaw = "";
+              recurrenceIdRaw = "";
+              descriptionRaw = "";
+              noteRaw = "";
+            } else if ((upperLine === "END:VEVENT" || upperLine.startsWith("END:VEVENT")) && inEvent) {
+              // Strictly process ONLY if this VEVENT's UID is in the client's targetUidSet
+              if (currentUid && isTargetUid) {
+                const notesParts: string[] = [];
+                if (descriptionRaw) notesParts.push(descriptionRaw);
+                if (noteRaw) notesParts.push(noteRaw);
+                const finalNote = notesParts.join("\n").trim();
+
+                if (finalNote) {
+                  matchedEventCount++;
+                  const dtDate = parseIcsDateOnly(dtStartRaw, calTimezone);
+                  const recDate = parseIcsDateOnly(recurrenceIdRaw, calTimezone);
+
+                  // Store under exact event IDs for this UID
+                  notesByEventId[`ics_${currentUid}`] = finalNote;
+                  if (!notesByEventId[`uid:${currentUid}`]) {
+                    notesByEventId[`uid:${currentUid}`] = finalNote;
+                  }
+                  if (dtDate) {
+                    notesByEventId[`ics_${currentUid}_${dtDate.replace(/-/g, "")}`] = finalNote;
+                    notesByEventId[`uid:${currentUid}_${dtDate}`] = finalNote;
+                  }
+                  if (recDate) {
+                    notesByEventId[`ics_${currentUid}_${recDate.replace(/-/g, "")}`] = finalNote;
+                    notesByEventId[`uid:${currentUid}_${recDate}`] = finalNote;
+                  }
+                }
+              }
+              inEvent = false;
+            } else if (inEvent) {
+              const colonIndex = line.indexOf(":");
+              if (colonIndex === -1) continue;
+              const keyPart = line.substring(0, colonIndex);
+              const key = keyPart.split(";")[0].toUpperCase();
+
+              if (key === "UID") {
+                const valPart = line.substring(colonIndex + 1).trim();
+                currentUid = valPart.replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 50);
+                isTargetUid = Boolean(currentUid && targetUidSet.has(currentUid));
+              } else if (key === "DTSTART") {
+                dtStartRaw = line;
+              } else if (key === "RECURRENCE-ID") {
+                recurrenceIdRaw = line;
+              } else if (key === "DESCRIPTION") {
+                const valPart = line.substring(colonIndex + 1).trim();
+                descriptionRaw = valPart
+                  .replace(/\\,/g, ",")
+                  .replace(/\\;/g, ";")
+                  .replace(/\\n/gi, "\n");
+              } else if (key === "NOTE" || key === "COMMENT") {
+                const valPart = line.substring(colonIndex + 1).trim();
+                noteRaw = valPart
+                  .replace(/\\,/g, ",")
+                  .replace(/\\;/g, ";")
+                  .replace(/\\n/gi, "\n");
+              }
+            }
+          }
+        } catch (calErr) {
+          console.warn("Targeted calendar UID note query warning:", calErr);
+        }
+      }
+
+      return res.json({
+        notesByEventId,
+        queriedUidCount: targetUidSet.size,
+        matchedEventCount
+      });
+    } catch (err: any) {
+      console.error("Targeted calendar event ID notes error:", err);
+      return res.status(500).json({ error: err?.message || "Etkinlik ID notları sorgulanamadı." });
     }
   });
 

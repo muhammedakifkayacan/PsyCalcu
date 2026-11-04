@@ -273,6 +273,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultIsKdvInclusive: true,
   therapistName: '',
   therapistPhone: '',
+  therapistWebsite: '',
   calendarSyncEnabled: true,
   onlineCalendarWebcalUrl: '',
   faceToFaceCalendarWebcalUrl: '',
@@ -318,6 +319,7 @@ export default function App() {
           defaultIsKdvInclusive: parsed.defaultIsKdvInclusive ?? DEFAULT_SETTINGS.defaultIsKdvInclusive,
           therapistName: parsed.therapistName ?? DEFAULT_SETTINGS.therapistName,
           therapistPhone: parsed.therapistPhone ?? DEFAULT_SETTINGS.therapistPhone,
+          therapistWebsite: parsed.therapistWebsite ?? DEFAULT_SETTINGS.therapistWebsite,
           calendarSyncEnabled: parsed.calendarSyncEnabled ?? DEFAULT_SETTINGS.calendarSyncEnabled,
           onlineCalendarWebcalUrl: parsed.onlineCalendarWebcalUrl ?? parsed.calendarWebcalUrl ?? DEFAULT_SETTINGS.onlineCalendarWebcalUrl,
           faceToFaceCalendarWebcalUrl: parsed.faceToFaceCalendarWebcalUrl ?? DEFAULT_SETTINGS.faceToFaceCalendarWebcalUrl,
@@ -2261,19 +2263,13 @@ export default function App() {
   const [prefilledTime, setPrefilledTime] = useState('');
   const [tempNotesCache, setTempNotesCache] = useState<Record<string, string>>(() => {
     try {
-      const cached = sessionStorage.getItem('psycalcu_temp_notes_cache');
-      return cached ? JSON.parse(cached) : {};
-    } catch (e) {
-      return {};
-    }
+      // Purge any previously cached global event descriptions so unrequested notes never appear across pages
+      sessionStorage.removeItem('psycalcu_temp_notes_cache');
+      sessionStorage.removeItem('psycalcu_has_fetched_instant_notes');
+    } catch (e) {}
+    return {};
   });
-  const [hasFetchedInstantNotes, setHasFetchedInstantNotes] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem('psycalcu_has_fetched_instant_notes') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
+  const [hasFetchedInstantNotes, setHasFetchedInstantNotes] = useState<boolean>(false);
   const [isFetchingNotes, setIsFetchingNotes] = useState(false);
   const [exportIncludeNotes, setExportIncludeNotes] = useState<boolean>(() => {
     try {
@@ -2292,23 +2288,19 @@ export default function App() {
     }
   });
 
-  const fetchInstantCalendarNotes = async (silent = false): Promise<Record<string, string>> => {
+  const fetchInstantCalendarNotes = async () => {
     const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = settings;
     if (!calendarSyncEnabled) {
-      if (!silent) showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
-      return tempNotesCache;
+      showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
+      return;
     }
     const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
     if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
-      if (!silent) {
-        showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
-      }
-      return tempNotesCache;
+      showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
+      return;
     }
 
-    if (!silent) {
-      setIsFetchingNotes(true);
-    }
+    setIsFetchingNotes(true);
     const newCache: Record<string, string> = { ...tempNotesCache };
     let fetchedAny = false;
 
@@ -2329,7 +2321,6 @@ export default function App() {
           const effectiveAccountingStartDate = settings.accountingStartDate
             ? settings.accountingStartDate.split('T')[0]
             : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
-          // Parse without closedMonths / cutoff filtering so read-only live notes for ALL past/closed sessions can be retrieved by Event ID
           const parsed = parseICS(
             icsText, 
             settings.defaultSessionPrice, 
@@ -2339,24 +2330,13 @@ export default function App() {
             registrationCreatedAt, 
             settings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
-            undefined,
-            false
+            getEffectiveClosedMonths(settings.closedMonths, user?.uid),
+            Boolean(settings.initialCalendarSyncCompleted)
           );
 
           parsed.forEach(ev => {
             if (ev.id && ev.notes) {
               newCache[ev.id] = ev.notes;
-              const baseUid = extractBaseCalendarUid(ev.id);
-              if (baseUid && ev.date) {
-                newCache[`uid:${baseUid}_${ev.date}`] = ev.notes;
-              }
-              if (baseUid && !newCache[`uid:${baseUid}`]) {
-                newCache[`uid:${baseUid}`] = ev.notes;
-              }
-              if (ev.clientName && ev.date) {
-                const normKey = `client_date:${toTurkishAscii(getNormalizedClientName(ev.clientName)).toLowerCase()}_${ev.date}`;
-                newCache[normKey] = ev.notes;
-              }
               fetchedAny = true;
             }
           });
@@ -2368,26 +2348,17 @@ export default function App() {
 
     setTempNotesCache(newCache);
     setHasFetchedInstantNotes(true);
+    setIsFetchingNotes(false);
+    setShowNotes(true);
     try {
-      sessionStorage.setItem('psycalcu_temp_notes_cache', JSON.stringify(newCache));
-      sessionStorage.setItem('psycalcu_has_fetched_instant_notes', 'true');
+      const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
+      safeStorage.setItem(key, 'true', user?.uid);
     } catch (e) {}
-
-    if (!silent) {
-      setIsFetchingNotes(false);
-      setShowNotes(true);
-      try {
-        const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
-        safeStorage.setItem(key, 'true', user?.uid);
-      } catch (e) {}
-      if (fetchedAny) {
-        showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
-      } else {
-        showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
-      }
+    if (fetchedAny) {
+      showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
+    } else {
+      showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
     }
-
-    return newCache;
   };
 
   const [showNotes, setShowNotes] = useState<boolean>(() => {

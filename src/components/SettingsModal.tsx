@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Globe, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar } from 'lucide-react';
 import { AppSettings } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -32,6 +32,7 @@ export default function SettingsModal({
   useBodyScrollLock(isOpen);
   const [therapistName, setTherapistName] = useState(settings.therapistName);
   const [therapistPhone, setTherapistPhone] = useState(settings.therapistPhone || '');
+  const [therapistWebsite, setTherapistWebsite] = useState(settings.therapistWebsite || '');
   const [defaultSessionPrice, setDefaultSessionPrice] = useState<number | string>(settings.defaultSessionPrice);
   const [defaultOnlinePrice, setDefaultOnlinePrice] = useState<number | string>(settings.defaultOnlinePrice ?? settings.defaultSessionPrice);
   const [defaultFaceToFacePrice, setDefaultFaceToFacePrice] = useState<number | string>(settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice);
@@ -65,6 +66,7 @@ export default function SettingsModal({
     if (isOpen) {
       setTherapistName(settings.therapistName);
       setTherapistPhone(settings.therapistPhone || '');
+      setTherapistWebsite(settings.therapistWebsite || '');
       setDefaultSessionPrice(settings.defaultSessionPrice);
       setDefaultOnlinePrice(settings.defaultOnlinePrice ?? settings.defaultSessionPrice);
       setDefaultFaceToFacePrice(settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice);
@@ -88,6 +90,7 @@ export default function SettingsModal({
       ...settings,
       therapistName,
       therapistPhone,
+      therapistWebsite: therapistWebsite.trim(),
       defaultSessionPrice: Number(defaultSessionPrice) || Number(defaultOnlinePrice) || 1200,
       defaultOnlinePrice: Number(defaultOnlinePrice) || Number(defaultSessionPrice) || 1200,
       defaultFaceToFacePrice: Number(defaultFaceToFacePrice) || Number(defaultSessionPrice) || 1200,
@@ -188,28 +191,47 @@ export default function SettingsModal({
             />
           </div>
 
-          {/* Therapist Phone / WhatsApp (Inset Label) */}
-          <div>
-            <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
-              <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
-                <Phone className="w-2.5 h-2.5 text-[#a5a58d]" />
-                <span>İLETİŞİM / WHATSAPP NUMARASI</span>
-              </label>
-              <input
-                type="tel"
-                inputMode="tel"
-                value={therapistPhone}
-                onChange={(e) => setTherapistPhone(e.target.value)}
-                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none"
-                placeholder="Örn. 0532 123 45 67"
-              />
+          {/* Therapist Phone / WhatsApp & Website / Report Domain */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <Phone className="w-2.5 h-2.5 text-[#a5a58d]" />
+                  <span>İLETİŞİM / WHATSAPP</span>
+                </label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={therapistPhone}
+                  onChange={(e) => setTherapistPhone(e.target.value)}
+                  className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none"
+                  placeholder="Örn. 0532 123 45 67"
+                />
+              </div>
             </div>
-            {showExplanations && (
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 mt-1">
-                Oda paylaşım sayfasını ziyaret eden kişilerin WhatsApp üzerinden talep gönderebilmesi için kullanılır.
-              </p>
-            )}
+
+            <div>
+              <div className="rounded-xl border border-[#e5e1d8] bg-[#fdfbf7] px-3 pt-1.5 pb-1.5 focus-within:border-[#6b705c] focus-within:bg-white transition-colors">
+                <label className="text-[9px] font-bold text-[#6b705c] uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <Globe className="w-2.5 h-2.5 text-[#a5a58d]" />
+                  <span>WEB SİTESİ / RAPOR DOMAİNİ</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="url"
+                  value={therapistWebsite}
+                  onChange={(e) => setTherapistWebsite(e.target.value)}
+                  className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none"
+                  placeholder="Örn. busrabakir.com"
+                />
+              </div>
+            </div>
           </div>
+          {showExplanations && (
+            <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-1 -mt-1">
+              Telefon numarası oda paylaşım sayfasında WhatsApp talepleri için; web sitesi (domain) ise danışan PDF ve Word süreç raporlarının sol alt köşesinde kullanılır.
+            </p>
+          )}
 
           {/* User Role Display (Read-Only with Inset Label) */}
           <div className="space-y-1">
