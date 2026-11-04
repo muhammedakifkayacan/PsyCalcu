@@ -400,6 +400,10 @@ export default function CalendarSyncGuide({
 
   const handleSaveUrls = (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      if (onlineUrl.trim()) localStorage.setItem('psycalcu_last_online_ical_url', onlineUrl.trim());
+      if (faceToFaceUrl.trim()) localStorage.setItem('psycalcu_last_facetoface_ical_url', faceToFaceUrl.trim());
+    } catch (err) {}
     onSaveSettings({
       ...settings,
       onlineCalendarWebcalUrl: onlineUrl,
@@ -417,6 +421,9 @@ export default function CalendarSyncGuide({
     }
     setIsOnlineSyncing(true);
     try {
+      try {
+        if (onlineUrl.trim()) localStorage.setItem('psycalcu_last_online_ical_url', onlineUrl.trim());
+      } catch (e) {}
       const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(onlineUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -444,7 +451,7 @@ export default function CalendarSyncGuide({
       
       if (isValidIcs) {
         if (onlineUrl.trim() && settings.onlineCalendarWebcalUrl !== onlineUrl.trim()) {
-          onUpdateSettings({
+          onSaveSettings({
             ...settings,
             calendarSyncEnabled: true,
             onlineCalendarWebcalUrl: onlineUrl.trim()
@@ -480,6 +487,9 @@ export default function CalendarSyncGuide({
     }
     setIsFaceToFaceSyncing(true);
     try {
+      try {
+        if (faceToFaceUrl.trim()) localStorage.setItem('psycalcu_last_facetoface_ical_url', faceToFaceUrl.trim());
+      } catch (e) {}
       const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -507,7 +517,7 @@ export default function CalendarSyncGuide({
       
       if (isValidIcs) {
         if (faceToFaceUrl.trim() && settings.faceToFaceCalendarWebcalUrl !== faceToFaceUrl.trim()) {
-          onUpdateSettings({
+          onSaveSettings({
             ...settings,
             calendarSyncEnabled: true,
             faceToFaceCalendarWebcalUrl: faceToFaceUrl.trim()

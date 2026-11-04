@@ -8,6 +8,7 @@ import "dotenv/config";
 import { initializeApp as initializeAdminApp, getApps as getAdminApps } from "firebase-admin/app";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
+import { parseICS } from "./src/utils/icsParser";
 
 let adminDb: any = null;
 
@@ -1034,14 +1035,14 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3-flash-preview",
           contents: prompt,
         });
       } catch (firstErr: any) {
-        console.warn("Primary model (gemini-3.8-flash) failed, trying fallback model (gemini-3.1-flash-lite):", firstErr);
+        console.warn("Primary model (gemini-3-flash-preview) failed, trying fallback model (gemini-2.5-flash):", firstErr);
         try {
           response = await ai.models.generateContent({
-            model: "gemini-3.1-flash-lite",
+            model: "gemini-2.5-flash",
             contents: prompt,
           });
         } catch (fallbackErr: any) {
@@ -1208,7 +1209,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3-flash-preview",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -1216,9 +1217,9 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           }
         });
       } catch (err1: any) {
-        console.warn("gemini-3.8-flash failed for client-progress-report, trying gemini-3.1-flash-lite:", err1?.message);
+        console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-2.5-flash:", err1?.message);
         response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -1233,10 +1234,20 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       }
 
       // Map AI results ONLY onto sessions that actually had a rawNote; keep note-less sessions strictly empty
-      const aiMap = new Map<string, any>();
-      parsed.timelineItems.forEach((item: any) => {
+      const aiMapById = new Map<string, any>();
+      const aiMapByDate = new Map<string, any>();
+      parsed.timelineItems.forEach((item: any, idx: number) => {
         if (item && item.sessionId) {
-          aiMap.set(item.sessionId, item);
+          aiMapById.set(String(item.sessionId).trim(), item);
+        }
+        const promptItem = sessionDataForPrompt[idx];
+        if (promptItem && item) {
+          if (!aiMapById.has(promptItem.sessionId)) {
+            aiMapById.set(promptItem.sessionId, item);
+          }
+          if (promptItem.date) {
+            aiMapByDate.set(String(promptItem.date), item);
+          }
         }
       });
 
@@ -1251,12 +1262,15 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
             keyTakeaway: ""
           };
         }
-        const aiItem = aiMap.get(s.id);
+        const aiItem =
+          aiMapById.get(String(s.id || "").trim()) ||
+          aiMapByDate.get(String(s.formattedDate || s.date || ""));
+        const aiFormatted = String(aiItem?.formattedReportNote || "").trim();
         return {
           sessionId: s.id,
-          phaseTitle: aiItem?.phaseTitle || "",
-          progressBadge: aiItem?.progressBadge || "",
-          formattedReportNote: aiItem?.formattedReportNote || raw,
+          phaseTitle: String(aiItem?.phaseTitle || "").trim(),
+          progressBadge: String(aiItem?.progressBadge || "").trim(),
+          formattedReportNote: aiFormatted || raw,
           keyTakeaway: ""
         };
       });
@@ -1956,6 +1970,23 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         }
       }
 
+      const targetEventIdSet = new Set<string>(rawEventIds.map((id) => id.trim()).filter(Boolean));
+
+      // Fallback URL recovery if client settings had not yet persisted the calendar URLs
+      if (validUrls.length === 0) {
+        try {
+          const debugLogPath = path.join(process.cwd(), "src", "debug_log.json");
+          if (fs.existsSync(debugLogPath)) {
+            const debugRaw = JSON.parse(fs.readFileSync(debugLogPath, "utf-8"));
+            if (debugRaw?.originalUrl && typeof debugRaw.originalUrl === "string") {
+              validUrls.push(debugRaw.originalUrl.trim());
+            } else if (debugRaw?.normalizedUrl && typeof debugRaw.normalizedUrl === "string") {
+              validUrls.push(debugRaw.normalizedUrl.trim());
+            }
+          }
+        } catch (e) {}
+      }
+
       if (validUrls.length === 0 || (targetUidSet.size === 0 && candidateClientNames.size === 0)) {
         return res.json({
           notesByEventId: {},
@@ -2177,6 +2208,44 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         return null;
       };
 
+      const extractServerBaseUid = (sessionId: string): string => {
+        if (!sessionId) return "";
+        const withoutPrefix = sessionId.startsWith("ics_") ? sessionId.slice(4) : sessionId;
+        const lastUnderscore = withoutPrefix.lastIndexOf("_");
+        if (lastUnderscore !== -1 && /^\d{8}$/.test(withoutPrefix.slice(lastUnderscore + 1))) {
+          return withoutPrefix.slice(0, lastUnderscore);
+        }
+        return withoutPrefix;
+      };
+
+      const stripRedundantLocationLine = (noteText: string): string => {
+        if (!noteText) return "";
+        const lines = noteText
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (lines.length === 0) return "";
+        // If there are actual description lines plus a trailing "Konum: ...", strip the "Konum: ..." line
+        if (lines.length > 1) {
+          const withoutKonum = lines.filter((l) => !/^Konum:\s*/i.test(l));
+          if (withoutKonum.length > 0) {
+            return cleanIcsNoteText(withoutKonum.join("\n"));
+          }
+        }
+        // If the only line is "Konum: ...", ignore generic short room/online location labels
+        if (lines.length === 1 && /^Konum:\s*/i.test(lines[0])) {
+          const locVal = lines[0].replace(/^Konum:\s*/i, "").trim();
+          if (
+            locVal.length <= 25 ||
+            /^(online|zoom|google meet|meet|teams|skype|whatsapp|ofis|klinik|yüzyüze|yüz yüze|oda\b|salon\b|http)/i.test(locVal)
+          ) {
+            return "";
+          }
+          return cleanIcsNoteText(locVal);
+        }
+        return cleanIcsNoteText(lines.join("\n"));
+      };
+
       const notesByEventId: Record<string, string> = {};
       let matchedEventCount = 0;
 
@@ -2185,6 +2254,62 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           const icsText = await fetchIcsFromUrl(rawUrl);
           if (!icsText) continue;
 
+          // PASS 1: Use the app's exact `parseICS` engine (expands all RRULE occurrences, RECURRENCE-ID exceptions, and timezones)
+          // with closedMonths=undefined and accountingStartDate=null so ALL historical & closed-month sessions are included,
+          // then filter STRICTLY to the requested client's events!
+          try {
+            const parsedSessions = parseICS(
+              icsText,
+              0,
+              0,
+              0,
+              undefined,
+              null,
+              false,
+              null,
+              undefined,
+              false
+            );
+            for (const ev of parsedSessions) {
+              if (!ev) continue;
+              const evBaseUid = extractServerBaseUid(ev.id || "");
+              const isTargetById = Boolean(ev.id && targetEventIdSet.has(ev.id));
+              const isTargetByUid = Boolean(evBaseUid && targetUidSet.has(evBaseUid));
+              const isTargetByName = matchesTargetClientSummary(ev.clientName || "");
+
+              if (isTargetById || isTargetByUid || isTargetByName) {
+                const cleanedEvNote = stripRedundantLocationLine(ev.notes || "");
+                if (cleanedEvNote) {
+                  matchedEventCount++;
+                  if (ev.id) {
+                    notesByEventId[ev.id] = cleanedEvNote;
+                  }
+                  if (ev.date) {
+                    notesByEventId[`date:${ev.date}`] = cleanedEvNote;
+                    if (ev.time) {
+                      notesByEventId[`date_time:${ev.date}_${ev.time}`] = cleanedEvNote;
+                    }
+                  }
+                  if (evBaseUid) {
+                    if (ev.date) {
+                      notesByEventId[`ics_${evBaseUid}_${ev.date.replace(/-/g, "")}`] = cleanedEvNote;
+                      notesByEventId[`uid:${evBaseUid}_${ev.date}`] = cleanedEvNote;
+                    }
+                    if (!notesByEventId[`ics_${evBaseUid}`]) {
+                      notesByEventId[`ics_${evBaseUid}`] = cleanedEvNote;
+                    }
+                    if (!notesByEventId[`uid:${evBaseUid}`]) {
+                      notesByEventId[`uid:${evBaseUid}`] = cleanedEvNote;
+                    }
+                  }
+                }
+              }
+            }
+          } catch (parseErr) {
+            console.warn("parseICS pass in calendar-notes-by-event-ids warning:", parseErr);
+          }
+
+          // PASS 2: Direct VEVENT scan (also captures X-ALT-DESC HTML notes, Quoted-Printable notes, and events outside 365-day window)
           const cleanText = icsText.replace(/^\uFEFF/, "").replace(/^\uFFFE/, "");
           const normalizedText = cleanText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
           const unfoldedText = normalizedText.replace(/\n[ \t]/g, "");
@@ -2204,7 +2329,6 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           let summaryRaw = "";
           let dtStartRaw = "";
           let recurrenceIdRaw = "";
-          let hasRrule = false;
           let descriptionRaw = "";
           let altDescRaw = "";
           let noteRaw = "";
@@ -2220,7 +2344,6 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
               summaryRaw = "";
               dtStartRaw = "";
               recurrenceIdRaw = "";
-              hasRrule = false;
               descriptionRaw = "";
               altDescRaw = "";
               noteRaw = "";
@@ -2268,8 +2391,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                       notesByEventId[`ics_${currentUid}_${recDate.replace(/-/g, "")}`] = finalNote;
                       notesByEventId[`uid:${currentUid}_${recDate}`] = finalNote;
                     }
-                    // Only store bare UID note when the event is a single non-recurring event (not a recurring exception)
-                    if (!recurrenceIdRaw && !hasRrule) {
+                    if (!recurrenceIdRaw) {
                       notesByEventId[`ics_${currentUid}`] = finalNote;
                       notesByEventId[`uid:${currentUid}`] = finalNote;
                     }
@@ -2292,20 +2414,16 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                 dtStartRaw = line;
               } else if (key === "RECURRENCE-ID") {
                 recurrenceIdRaw = line;
-              } else if (key === "RRULE") {
-                hasRrule = true;
               } else if (key === "DESCRIPTION") {
                 const cleaned = cleanIcsNoteText(valPart, keyPart);
                 if (cleaned) descriptionRaw = cleaned;
               } else if (key === "X-ALT-DESC") {
                 const cleaned = cleanIcsNoteText(valPart, keyPart);
                 if (cleaned) altDescRaw = cleaned;
-              } else if (key === "NOTE" || key === "COMMENT" || key === "X-APPLE-STRUCTURED-LOCATION") {
-                if (key === "NOTE" || key === "COMMENT") {
-                  const cleaned = cleanIcsNoteText(valPart, keyPart);
-                  if (cleaned) {
-                    noteRaw = noteRaw ? `${noteRaw}\n${cleaned}` : cleaned;
-                  }
+              } else if (key === "NOTE" || key === "COMMENT") {
+                const cleaned = cleanIcsNoteText(valPart, keyPart);
+                if (cleaned) {
+                  noteRaw = noteRaw ? `${noteRaw}\n${cleaned}` : cleaned;
                 }
               }
             }

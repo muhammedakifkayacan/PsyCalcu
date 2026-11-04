@@ -25,8 +25,10 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { toJpeg } from 'html-to-image';
-import { Session, AppSettings, getNormalizedClientName, toTurkishAscii } from '../types';
+import { Session, AppSettings, getNormalizedClientName, toTurkishAscii, areClientNamesEquivalent } from '../types';
 import { extractBaseCalendarUid } from '../lib/firestoreService';
+import { parseICS } from '../utils/icsParser';
+import { idbGet } from '../utils/idbStorage';
 
 interface TimelineAiItem {
   sessionId: string;
@@ -97,31 +99,24 @@ export function resolveLiveSessionNote(
 ): { rawNote: string; source: 'calendar-id' | 'manual' | 'none' } {
   if (!session) return { rawNote: '', source: 'none' };
 
-  // 1. Direct event ID lookup from targeted Event ID response
+  const baseUid = session.id && session.id.startsWith('ics_') ? extractBaseCalendarUid(session.id) : '';
+  const compactDate = (session.date || '').replace(/-/g, '');
+
+  // 1. Exact Base UID + Date lookup (most specific for recurring or rescheduled calendar events)
+  if (baseUid && compactDate && notesMap[`ics_${baseUid}_${compactDate}`]?.trim()) {
+    return { rawNote: notesMap[`ics_${baseUid}_${compactDate}`].trim(), source: 'calendar-id' };
+  }
+  if (baseUid && session.date && notesMap[`uid:${baseUid}_${session.date}`]?.trim()) {
+    return { rawNote: notesMap[`uid:${baseUid}_${session.date}`].trim(), source: 'calendar-id' };
+  }
+
+  // 2. Direct event ID lookup if session.id is date-specific or non-recurring
   if (session.id && notesMap[session.id]?.trim()) {
     return { rawNote: notesMap[session.id].trim(), source: 'calendar-id' };
   }
 
-  // 2. Base Calendar UID + Date lookup (handles recurring or rescheduled event IDs for this specific UID)
-  if (session.id && session.id.startsWith('ics_')) {
-    const baseUid = extractBaseCalendarUid(session.id);
-    const compactDate = (session.date || '').replace(/-/g, '');
-    if (baseUid && compactDate && notesMap[`ics_${baseUid}_${compactDate}`]?.trim()) {
-      return { rawNote: notesMap[`ics_${baseUid}_${compactDate}`].trim(), source: 'calendar-id' };
-    }
-    if (baseUid && session.date && notesMap[`uid:${baseUid}_${session.date}`]?.trim()) {
-      return { rawNote: notesMap[`uid:${baseUid}_${session.date}`].trim(), source: 'calendar-id' };
-    }
-    if (baseUid && notesMap[`ics_${baseUid}`]?.trim()) {
-      return { rawNote: notesMap[`ics_${baseUid}`].trim(), source: 'calendar-id' };
-    }
-    if (baseUid && notesMap[`uid:${baseUid}`]?.trim()) {
-      return { rawNote: notesMap[`uid:${baseUid}`].trim(), source: 'calendar-id' };
-    }
-  }
-
-  // 3. Client-scoped date+time or date lookup from /api/calendar-notes-by-event-ids
-  // (Handles closed months, paid sessions, or split recurring calendar events where UID changed)
+  // 3. Client-scoped date+time or date lookup
+  // (Handles closed months, paid sessions decoupled from calendar, or split recurring calendar events)
   if (session.date && session.time && notesMap[`date_time:${session.date}_${session.time}`]?.trim()) {
     return { rawNote: notesMap[`date_time:${session.date}_${session.time}`].trim(), source: 'calendar-id' };
   }
@@ -129,12 +124,26 @@ export function resolveLiveSessionNote(
     return { rawNote: notesMap[`date:${session.date}`].trim(), source: 'calendar-id' };
   }
 
-  // 4. In-memory tempNotesCache for this session ID (if previously synced in current session)
+  // 4. Bare Base Calendar UID lookup (single non-recurring event or master recurring event note)
+  if (baseUid && notesMap[`ics_${baseUid}`]?.trim()) {
+    return { rawNote: notesMap[`ics_${baseUid}`].trim(), source: 'calendar-id' };
+  }
+  if (baseUid && notesMap[`uid:${baseUid}`]?.trim()) {
+    return { rawNote: notesMap[`uid:${baseUid}`].trim(), source: 'calendar-id' };
+  }
+
+  // 5. In-memory tempNotesCache for this session ID or Base UID
   if (session.id && tempNotesCache[session.id]?.trim()) {
     return { rawNote: tempNotesCache[session.id].trim(), source: 'calendar-id' };
   }
+  if (baseUid && compactDate && tempNotesCache[`ics_${baseUid}_${compactDate}`]?.trim()) {
+    return { rawNote: tempNotesCache[`ics_${baseUid}_${compactDate}`].trim(), source: 'calendar-id' };
+  }
+  if (baseUid && tempNotesCache[`ics_${baseUid}`]?.trim()) {
+    return { rawNote: tempNotesCache[`ics_${baseUid}`].trim(), source: 'calendar-id' };
+  }
 
-  // 5. Stored session.notes (if manually entered)
+  // 6. Stored session.notes (if manually entered or preserved)
   if (session.notes && session.notes.trim()) {
     return {
       rawNote: session.notes.trim(),
@@ -266,8 +275,8 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     };
   }, [clientSessions]);
 
-  // Gather all configured calendar URLs (from settings + any local backup in localStorage)
-  const getConfiguredCalendarUrls = (): string[] => {
+  // Gather all configured calendar URLs (from settings + localStorage + IndexedDB backups)
+  const getConfiguredCalendarUrls = async (): Promise<string[]> => {
     const urlSet = new Set<string>();
     const addUrl = (u?: string | null) => {
       if (typeof u === 'string' && u.trim().length > 0) {
@@ -282,9 +291,11 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
 
     try {
+      addUrl(localStorage.getItem('psycalcu_last_online_ical_url'));
+      addUrl(localStorage.getItem('psycalcu_last_facetoface_ical_url'));
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('psycalcu_settings')) {
+        if (key && (key.startsWith('psycalcu_settings') || key.startsWith('psycalcu_safety_settings'))) {
           const raw = localStorage.getItem(key);
           if (raw) {
             const parsed = JSON.parse(raw);
@@ -301,41 +312,171 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     return Array.from(urlSet);
   };
 
-  // Generate AI Report (queries ONLY this client's events via /api/calendar-notes-by-event-ids)
+  // Clean redundant "Konum: ..." line from parseICS note if a clinical description exists or if it's just a generic platform/room tag
+  const cleanParsedIcsNote = (rawNoteText?: string): string => {
+    if (!rawNoteText) return '';
+    let text = rawNoteText.replace(
+      /-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-([\s\S]*?)-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-/g,
+      ''
+    );
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return '';
+    if (lines.length > 1) {
+      const withoutKonum = lines.filter(l => !/^Konum:\s*/i.test(l));
+      if (withoutKonum.length > 0) {
+        return withoutKonum.join('\n').trim();
+      }
+    }
+    if (lines.length === 1 && /^Konum:\s*/i.test(lines[0])) {
+      const locVal = lines[0].replace(/^Konum:\s*/i, '').trim();
+      if (
+        locVal.length <= 25 ||
+        /^(online|zoom|google meet|meet|teams|skype|whatsapp|ofis|klinik|yüzyüze|yüz yüze|oda\b|salon\b|http)/i.test(locVal)
+      ) {
+        return '';
+      }
+      return locVal;
+    }
+    return lines.join('\n').trim();
+  };
+
+  // Generate AI Report (queries ONLY this client's events and keeps them strictly isolated in local modal state)
   const handleGenerateReport = async (forceRefreshCalendar = false) => {
-    let activeMap: Record<string, string> = { ...liveNotesMap };
+    let activeMap: Record<string, string> = forceRefreshCalendar ? {} : { ...liveNotesMap };
 
     const { targetEventIds, targetBaseUids, targetSessionNames } = targetClientEventIdsInfo;
-    const calendarUrls = getConfiguredCalendarUrls();
+    const targetEventIdSet = new Set(targetEventIds);
+    const targetBaseUidSet = new Set(targetBaseUids);
+    const candidateNames = Array.from(new Set([clientName, displayTitle, ...targetSessionNames].filter(Boolean)));
+
+    const isEventForTargetClient = (evId: string, evClientName: string): boolean => {
+      if (evId && targetEventIdSet.has(evId)) return true;
+      const baseUid = evId && evId.startsWith('ics_') ? extractBaseCalendarUid(evId) : '';
+      if (baseUid && targetBaseUidSet.has(baseUid)) return true;
+      if (evClientName) {
+        for (const cand of candidateNames) {
+          if (areClientNamesEquivalent(evClientName, cand)) return true;
+        }
+      }
+      return false;
+    };
 
     if (
-      calendarUrls.length > 0 &&
       clientSessions.length > 0 &&
       (forceRefreshCalendar || Object.keys(activeMap).length === 0)
     ) {
       setIsFetchingCalendar(true);
       try {
-        const res = await fetch('/api/calendar-notes-by-event-ids', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            urls: calendarUrls,
-            targetEventIds,
-            targetBaseUids,
-            targetClientName: clientName,
-            targetDisplayTitle: displayTitle,
-            targetSessionNames
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.notesByEventId && typeof data.notesByEventId === 'object') {
-            activeMap = data.notesByEventId;
-            setLiveNotesMap(activeMap);
+        // 1. Check local IndexedDB cache (populated when .ics files are uploaded or synced locally) for this client ONLY
+        try {
+          const localIcsNotes = await idbGet<Record<string, string>>('psycalcu_local_ics_notes');
+          if (localIcsNotes && typeof localIcsNotes === 'object') {
+            for (const s of clientSessions) {
+              if (!s) continue;
+              const baseUid = s.id?.startsWith('ics_') ? extractBaseCalendarUid(s.id) : '';
+              const compactDate = (s.date || '').replace(/-/g, '');
+              const normClient = getNormalizedClientName(s.clientName || clientName);
+              const candidateKeys = [
+                s.id,
+                baseUid && compactDate ? `ics_${baseUid}_${compactDate}` : '',
+                baseUid ? `ics_${baseUid}` : '',
+                normClient && s.date && s.time ? `client_dt:${normClient}_${s.date}_${s.time}` : '',
+                normClient && s.date ? `client_d:${normClient}_${s.date}` : ''
+              ].filter(Boolean);
+
+              for (const k of candidateKeys) {
+                if (localIcsNotes[k]?.trim()) {
+                  const val = localIcsNotes[k].trim();
+                  if (s.id) activeMap[s.id] = val;
+                  if (s.date) activeMap[`date:${s.date}`] = val;
+                  if (s.date && s.time) activeMap[`date_time:${s.date}_${s.time}`] = val;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (idbErr) {}
+
+        // 2. Query server-side /api/calendar-notes-by-event-ids (uses parseICS + direct VEVENT extraction + server URL fallback)
+        const calendarUrls = await getConfiguredCalendarUrls();
+        try {
+          const res = await fetch('/api/calendar-notes-by-event-ids', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              urls: calendarUrls,
+              targetEventIds,
+              targetBaseUids,
+              targetClientName: clientName,
+              targetDisplayTitle: displayTitle,
+              targetSessionNames
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.notesByEventId && typeof data.notesByEventId === 'object') {
+              activeMap = { ...activeMap, ...data.notesByEventId };
+            }
+          }
+        } catch (err) {
+          console.warn('Could not query targeted client calendar event IDs:', err);
+        }
+
+        // 3. Client-side /api/proxy-ical + parseICS fallback (strictly filtered to ONLY this client, never touching tempNotesCache)
+        const resolvedCountSoFar = clientSessions.filter(
+          s => resolveLiveSessionNote(s, activeMap, tempNotesCache).rawNote.trim().length > 0
+        ).length;
+
+        if (calendarUrls.length > 0 && resolvedCountSoFar === 0) {
+          for (const calUrl of calendarUrls) {
+            try {
+              const proxyRes = await fetch(`/api/proxy-ical?url=${encodeURIComponent(calUrl)}&_t=${Date.now()}`, {
+                cache: 'no-store'
+              });
+              if (proxyRes.ok) {
+                const icsText = await proxyRes.text();
+                const parsedEvents = parseICS(
+                  icsText,
+                  0,
+                  0,
+                  0,
+                  undefined,
+                  null,
+                  false,
+                  null,
+                  undefined,
+                  false
+                );
+                for (const ev of parsedEvents) {
+                  if (!ev || !isEventForTargetClient(ev.id, ev.clientName)) continue;
+                  const cleanedNote = cleanParsedIcsNote(ev.notes);
+                  if (!cleanedNote) continue;
+                  const evBaseUid = ev.id?.startsWith('ics_') ? extractBaseCalendarUid(ev.id) : '';
+                  if (ev.id) activeMap[ev.id] = cleanedNote;
+                  if (ev.date) {
+                    activeMap[`date:${ev.date}`] = cleanedNote;
+                    if (ev.time) activeMap[`date_time:${ev.date}_${ev.time}`] = cleanedNote;
+                  }
+                  if (evBaseUid) {
+                    if (ev.date) {
+                      activeMap[`ics_${evBaseUid}_${ev.date.replace(/-/g, '')}`] = cleanedNote;
+                      activeMap[`uid:${evBaseUid}_${ev.date}`] = cleanedNote;
+                    }
+                    if (!activeMap[`ics_${evBaseUid}`]) activeMap[`ics_${evBaseUid}`] = cleanedNote;
+                    if (!activeMap[`uid:${evBaseUid}`]) activeMap[`uid:${evBaseUid}`] = cleanedNote;
+                  }
+                }
+              }
+            } catch (proxyErr) {
+              console.warn('Client-side proxy-ical fallback warning:', proxyErr);
+            }
           }
         }
-      } catch (err) {
-        console.warn('Could not query targeted client calendar event IDs:', err);
+
+        setLiveNotesMap({ ...activeMap });
       } finally {
         setIsFetchingCalendar(false);
       }

@@ -2318,20 +2318,17 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(item.url)}`);
         if (response.ok) {
           const icsText = await response.text();
-          const effectiveAccountingStartDate = settings.accountingStartDate
-            ? settings.accountingStartDate.split('T')[0]
-            : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
           const parsed = parseICS(
             icsText, 
             settings.defaultSessionPrice, 
             settings.defaultBabysitterFee, 
             settings.defaultOfficeRentFee, 
             item.type, 
-            registrationCreatedAt, 
-            settings.autoMarkShortEventsAsNonSession ?? true,
-            effectiveAccountingStartDate,
-            getEffectiveClosedMonths(settings.closedMonths, user?.uid),
-            Boolean(settings.initialCalendarSyncCompleted)
+            null, 
+            false,
+            null,
+            undefined,
+            false
           );
 
           parsed.forEach(ev => {
@@ -3980,6 +3977,53 @@ export default function App() {
       clientCostsCache.set(cacheKey, costs);
       return costs;
     };
+
+    // Preserve incoming .ics / calendar notes in local-only IndexedDB (never sent to Firestore, never in tempNotesCache)
+    // so ClientPdfReportModal can retrieve a client's notes even when sessions were imported via .ics file upload.
+    try {
+      const incomingNotesMap: Record<string, string> = {};
+      let hasAnyIncomingNote = false;
+      newSessions.forEach(ns => {
+        if (!ns || !ns.notes || !ns.notes.trim()) return;
+        const lines = ns.notes
+          .split('\n')
+          .map(l => l.trim())
+          .filter(Boolean);
+        const withoutGenericKonum =
+          lines.length > 1
+            ? lines.filter(l => !/^Konum:\s*/i.test(l)).join('\n').trim()
+            : lines.length === 1 && /^Konum:\s*/i.test(lines[0])
+            ? ''
+            : lines.join('\n').trim();
+        if (!withoutGenericKonum) return;
+        hasAnyIncomingNote = true;
+        if (ns.id) incomingNotesMap[ns.id] = withoutGenericKonum;
+        if (ns.id?.startsWith('ics_')) {
+          const baseUid = extractBaseUid(ns.id);
+          if (baseUid) {
+            incomingNotesMap[`ics_${baseUid}`] = withoutGenericKonum;
+            if (ns.date) {
+              incomingNotesMap[`ics_${baseUid}_${ns.date.replace(/-/g, '')}`] = withoutGenericKonum;
+            }
+          }
+        }
+        const normClient = getNormalizedClientName(ns.clientName);
+        if (normClient && ns.date) {
+          incomingNotesMap[`client_d:${normClient}_${ns.date}`] = withoutGenericKonum;
+          if (ns.time) {
+            incomingNotesMap[`client_dt:${normClient}_${ns.date}_${ns.time}`] = withoutGenericKonum;
+          }
+        }
+      });
+      if (hasAnyIncomingNote) {
+        idbGet<Record<string, string>>('psycalcu_local_ics_notes')
+          .then(existingMap => {
+            const merged = { ...(existingMap || {}), ...incomingNotesMap };
+            return idbSet('psycalcu_local_ics_notes', merged);
+          })
+          .catch(() => {});
+      }
+    } catch (e) {}
 
     newSessions.forEach(ns => {
       // 1. CLOSED / LOCKED MONTH PROTECTION:
