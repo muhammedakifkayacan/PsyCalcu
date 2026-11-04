@@ -1061,86 +1061,40 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
 
   // API Route for Client Timeline & Progress Report Generation (PDF Export)
   app.post("/api/gemini/client-progress-report", async (req, res) => {
-    const { clientName, therapistName, sessions = [], stats = {} } = req.body || {};
+    const { clientName, sessions = [], stats = {} } = req.body || {};
 
     const buildFallbackReport = () => {
-      const total = Array.isArray(sessions) ? sessions.length : 0;
       const completed = (sessions || []).filter((s: any) => s.type !== "cancelled").length;
       const notesWithContent = (sessions || []).filter((s: any) => s.rawNote && String(s.rawNote).trim().length > 0);
       const firstDateStr = stats?.firstDate || (sessions[0]?.formattedDate) || "Başlangıç";
       const lastDateStr = stats?.lastDate || (sessions[sessions.length - 1]?.formattedDate) || "Güncel";
 
-      const executiveSummary = `${clientName} ile yürütülen danışmanlık süreci, ${firstDateStr} – ${lastDateStr} döneminde toplam ${completed} görüşme üzerinden düzenli olarak takip edilmiştir. ${
+      const executiveSummary = `${clientName} ile ${firstDateStr} – ${lastDateStr} tarihleri arasında toplam ${completed} görüşme gerçekleştirilmiştir.${
         notesWithContent.length > 0
-          ? `Görüşme içerikleri doğrultusunda danışanın öz-farkındalık kapasitesinin güçlendiği, duygusal regülasyon ve işlevsel baş etme becerilerinde aşamalı bir ilerleme kaydedildiği gözlemlenmiştir.`
-          : `Terapötik iş birliği ve görüşme sürekliliği çerçevesinde danışanın süreç hedeflerine yönelik içgörü ve uyum becerileri desteklenmektedir.`
+          ? ` Görüşme kayıtları doğrultusunda danışanın süreç hedefleri ve klinik ilerlemesi aşağıda kronolojik olarak sunulmuştur.`
+          : ``
       }`;
 
-      const keyThemes = [
-        "Terapötik İş Birliği",
-        "Duygusal Farkındalık",
-        "Stres Regülasyonu",
-        "İlişkisel Sınırlar"
-      ];
+      const keyThemes =
+        notesWithContent.length > 0
+          ? ["Terapötik İş Birliği", "Duygusal Farkındalık", "Süreç Takibi"]
+          : [];
 
-      const timelineItems = (sessions || []).map((s: any, idx: number) => {
+      const timelineItems = (sessions || []).map((s: any) => {
         const raw = (s.rawNote || "").trim();
-        const isFirst = idx === 0;
-        const isLast = idx === total - 1 && total > 1;
-        const isCancelled = s.type === "cancelled";
-
-        let phaseTitle = "Süreç Takibi ve Değerlendirme";
-        let progressBadge = "Süreç Çalışması";
-
-        if (isCancelled) {
-          phaseTitle = "Planlama Değişikliği";
-          progressBadge = "Ertelendi";
-        } else if (isFirst) {
-          phaseTitle = "İlk Görüşme ve Terapötik Çerçeve";
-          progressBadge = "İlk Değerlendirme";
-        } else if (idx === 1) {
-          phaseTitle = "Hedef Belirleme ve Formülasyon";
-          progressBadge = "Formülasyon";
-        } else if (isLast) {
-          phaseTitle = "Güncel İlerleme ve Pekiştirme";
-          progressBadge = "Pekiştirme";
-        } else if (idx % 3 === 0) {
-          phaseTitle = "Bilişsel ve Duygusal Derinleşme";
-          progressBadge = "Derinleşme";
-        }
-
-        let formattedReportNote = "";
-        let keyTakeaway = "";
-
-        if (isCancelled) {
-          formattedReportNote = raw
-            ? `Görüşme ileri bir tarihe ertelendi. Not: ${raw}`
-            : "Planlanan görüşme ileri bir tarihe ertelendi; süreç bir sonraki oturumda devam etti.";
-          keyTakeaway = "Görüşme ertelendi.";
-        } else if (raw) {
-          formattedReportNote = raw;
-          keyTakeaway = "";
-        } else if (isFirst) {
-          formattedReportNote = `Başvuru nedenleri, güncel yaşam dinamikleri ve süreçten beklentiler ele alınarak terapötik çalışma çerçevesi oluşturuldu.`;
-          keyTakeaway = "";
-        } else if (isLast) {
-          formattedReportNote = `Önceki görüşmelerde kazanılan içgörüler değerlendirildi; günlük yaşamdaki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirildi.`;
-          keyTakeaway = "";
-        } else {
-          formattedReportNote = `Önceki görüşmeden bu yana yaşanan gelişmeler ele alındı; öz-gözlem ve duygusal farkındalık odaklı çalışmaya devam edildi.`;
-          keyTakeaway = "";
-        }
-
         return {
           sessionId: s.id,
-          phaseTitle,
-          progressBadge,
-          formattedReportNote,
-          keyTakeaway
+          phaseTitle: "",
+          progressBadge: "",
+          formattedReportNote: raw,
+          keyTakeaway: ""
         };
       });
 
-      const recommendations = `Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.`;
+      const recommendations =
+        notesWithContent.length > 0
+          ? `Görüşme sürekliliğinin korunması ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.`
+          : ``;
 
       return {
         reportTitle: `${clientName} — Süreç ve İlerleme Raporu`,
@@ -1156,7 +1110,12 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         return res.json(buildFallbackReport());
       }
 
-      if (!process.env.GEMINI_API_KEY) {
+      const sessionsWithNotes = sessions.filter(
+        (s: any) => s && s.rawNote && String(s.rawNote).trim().length > 0
+      );
+
+      // If no sessions have notes, return immediately without inventing any boilerplate text
+      if (sessionsWithNotes.length === 0 || !process.env.GEMINI_API_KEY) {
         return res.json(buildFallbackReport());
       }
 
@@ -1169,33 +1128,31 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         }
       });
 
-      const sessionDataForPrompt = sessions.map((s: any, idx: number) => ({
+      const sessionDataForPrompt = sessionsWithNotes.map((s: any, idx: number) => ({
         sessionId: s.id,
         sessionNumber: s.sessionNumber || idx + 1,
         date: s.formattedDate || s.date,
         type: s.type === "face-to-face" ? "Yüz Yüze" : s.type === "cancelled" ? "İptal" : "Online",
-        sessionNote: s.rawNote || ""
+        sessionNote: String(s.rawNote || "").trim()
       }));
 
       const prompt = `Minimalist, sade ve anlaşılır bir "Danışan Süreç ve İlerleme Raporu" hazırlayan klinik asistansın.
-Aşağıda "${clientName}" adlı danışanın kronolojik seans listesi ve seans notları ("sessionNote") yer almaktadır.
+Aşağıda "${clientName}" adlı danışanın YALNIZCA not bulunan seansları ("sessionNote") yer almaktadır.
 
 KESİN YAZIM KURALLARI:
-1. SADE VE TEKRARSIZ DİL: Metinlerde kesinlikle "takvim notuna göre", "takvim etkinlik kaydına göre", "online seans kapsamında", "50 dakikalık görüşmede" veya "X. seansta" gibi tekrar eden kalıp ibareler KULLANMA. Tarih, seans numarası ve görüşme türü zaten sol sütunda gösteriliyor.
-2. PSİKOLOG ADI VE ÜNVANI YASAĞI: Metinlerin ("executiveSummary", "formattedReportNote", "recommendations") içinde kesinlikle psikolog adını, klinik adını veya "Uzman Psikolog & Aile Danışmanı" ünvanını YAZMA (isim ve ünvan yalnızca raporun sağ alt köşesinde bir kez yer almaktadır).
-3. BAŞLIKLAR ("phaseTitle"): Başlığın başına "1. Seans •" gibi numara EKLEME. Doğrudan o görüşmenin odağını anlatan 2-4 kelimelik yalın bir başlık yaz (Örn: "İlk Değerlendirme ve Çerçeve", "Kaygı Tetikleyicileri ve Baş Etme", "Sınır Koyma Pratiği").
-4. SEANS METNİ ("formattedReportNote"):
-   - Eğer "sessionNote" doluysa: Nottaki tüm klinik bilgileri, konuları ve gözlemleri hiçbir detayı atlamadan, doğrudan akıcı, yalın ve profesyonel 1-3 cümlelik bir paragrafa dönüştür. Tıbbi tanı uydurma.
-   - Eğer "sessionNote" boşsa: Oturumun süreçteki yerine uygun, tek cümlelik sade ve doğal bir süreç takip notu yaz; diğer seanslarla aynı cümleyi kopyalayıp tekrarlama.
-5. "executiveSummary": Danışanın genel sürecini özetleyen, gereksiz sıfatlardan arındırılmış, net ve anlaşılır 3-4 cümlelik tek bir değerlendirme paragrafı yaz.
+1. SADE VE TEKRARSIZ DİL: Metinlerde kesinlikle "takvim notuna göre", "takvim etkinlik kaydına göre", "online seans kapsamında", "50 dakikalık görüşmede" veya "X. seansta" gibi tekrar eden kalıp ibareler KULLANMA.
+2. PSİKOLOG ADI VE ÜNVANI YASAĞI: Metinlerin ("executiveSummary", "formattedReportNote", "recommendations") içinde kesinlikle psikolog adını, klinik adını veya "Uzman Psikolog & Aile Danışmanı" ünvanını YAZMA.
+3. BAŞLIKLAR ("phaseTitle"): Başlığın başına "1. Seans •" gibi numara EKLEME. Doğrudan o görüşmenin notundaki odağı anlatan 2-4 kelimelik yalın bir başlık yaz.
+4. SEANS METNİ ("formattedReportNote"): Nottaki bilgileri hiçbir detayı atlamadan, doğrudan akıcı, yalın ve profesyonel 1-3 cümlelik bir paragrafa dönüştür. Notta olmayan hayali veya kalıp cümleler EKLEME.
+5. "executiveSummary": Danışanın genel sürecini özetleyen, net ve anlaşılır 2-3 cümlelik tek bir değerlendirme paragrafı yaz.
 6. "keyThemes": Süreçte çalışılan 3-4 kısa odak başlığı (her biri 2-3 kelime).
 
 DANIŞAN ÖZETİ:
 - Danışan: ${clientName}
-- Toplam Görüşme: ${sessions.length}
+- Toplam Görüşme: ${sessions.length} (Not bulunan görüşme: ${sessionsWithNotes.length})
 - Dönem: ${stats?.firstDate || ""} – ${stats?.lastDate || ""}
 
-SEANS VERİLERİ:
+NOT BULUNAN SEANS VERİLERİ:
 ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
 
       const responseSchema = {
@@ -1207,7 +1164,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           },
           executiveSummary: {
             type: Type.STRING,
-            description: "Sade, net 3-4 cümlelik genel klinik süreç değerlendirmesi."
+            description: "Sade, net 2-3 cümlelik genel klinik süreç değerlendirmesi."
           },
           keyThemes: {
             type: Type.ARRAY,
@@ -1230,11 +1187,11 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                 },
                 formattedReportNote: {
                   type: Type.STRING,
-                  description: "Tekrarsız, doğrudan konuya giren 1-3 cümlelik seans değerlendirme notu."
+                  description: "Tekrarsız, doğrudan notu aktaran 1-3 cümlelik seans değerlendirme notu."
                 },
                 keyTakeaway: {
                   type: Type.STRING,
-                  description: "Boş bırakılabilir veya çok kısa odak."
+                  description: "Boş bırakılabilir."
                 }
               },
               required: ["sessionId", "phaseTitle", "progressBadge", "formattedReportNote", "keyTakeaway"]
@@ -1271,10 +1228,43 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       }
 
       const parsed = JSON.parse(response.text || "{}");
-      if (!parsed || !Array.isArray(parsed.timelineItems) || parsed.timelineItems.length === 0) {
+      if (!parsed || !Array.isArray(parsed.timelineItems)) {
         return res.json(buildFallbackReport());
       }
-      return res.json(parsed);
+
+      // Map AI results ONLY onto sessions that actually had a rawNote; keep note-less sessions strictly empty
+      const aiMap = new Map<string, any>();
+      parsed.timelineItems.forEach((item: any) => {
+        if (item && item.sessionId) {
+          aiMap.set(item.sessionId, item);
+        }
+      });
+
+      const mergedTimelineItems = sessions.map((s: any) => {
+        const raw = String(s.rawNote || "").trim();
+        if (!raw) {
+          return {
+            sessionId: s.id,
+            phaseTitle: "",
+            progressBadge: "",
+            formattedReportNote: "",
+            keyTakeaway: ""
+          };
+        }
+        const aiItem = aiMap.get(s.id);
+        return {
+          sessionId: s.id,
+          phaseTitle: aiItem?.phaseTitle || "",
+          progressBadge: aiItem?.progressBadge || "",
+          formattedReportNote: aiItem?.formattedReportNote || raw,
+          keyTakeaway: ""
+        };
+      });
+
+      return res.json({
+        ...parsed,
+        timelineItems: mergedTimelineItems
+      });
     } catch (error: any) {
       console.error("Client progress report AI error, using fallback:", error);
       return res.json(buildFallbackReport());

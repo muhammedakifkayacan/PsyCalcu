@@ -155,6 +155,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   const [includeFinancials, setIncludeFinancials] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [liveNotesMap, setLiveNotesMap] = useState<Record<string, string>>({});
+  const [customNotesById, setCustomNotesById] = useState<Record<string, string>>({});
+  const [customTitlesById, setCustomTitlesById] = useState<Record<string, string>>({});
+  const [editingNoteSessionId, setEditingNoteSessionId] = useState<string | null>(null);
   const [aiReport, setAiReport] = useState<AiProgressReport | null>(null);
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -178,6 +181,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setLiveNotesMap({});
+      setCustomNotesById({});
+      setCustomTitlesById({});
+      setEditingNoteSessionId(null);
     }
   }, [isOpen]);
 
@@ -329,61 +335,56 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
   }, [isOpen, clientName, includeCancelled]);
 
-  // Combine chronological sessions with AI timeline output
+  // Combine chronological sessions with AI timeline output — NEVER invent notes when rawNote & customNote are empty
   const enrichedTimeline: EnrichedTimelineSession[] = useMemo(() => {
     let activeNum = 0;
-    const total = chronologicalSessions.length;
     return chronologicalSessions.map((s, idx) => {
       if (s.type !== 'cancelled') activeNum++;
       const sessionNumber = s.type === 'cancelled' ? idx + 1 : activeNum;
       const { formattedDate, dayName } = formatSessionTurkishDate(s.date);
       const { rawNote, source } = resolveLiveSessionNote(s, liveNotesMap);
 
+      const hasManualOverride = customNotesById[s.id] !== undefined;
+      const effectiveRawNote = hasManualOverride ? customNotesById[s.id].trim() : rawNote.trim();
       const matchedAi = aiReport?.timelineItems?.find(item => item.sessionId === s.id);
-      const isFirst = idx === 0;
-      const isLast = idx === total - 1 && total > 1;
 
-      const fallbackAi: TimelineAiItem = {
-        sessionId: s.id,
-        phaseTitle:
-          s.type === 'cancelled'
-            ? 'Planlama Değişikliği'
-            : isFirst
-            ? 'İlk Görüşme ve Terapötik Çerçeve'
-            : isLast
-            ? 'Güncel İlerleme ve Pekiştirme'
-            : 'Süreç Takibi ve Değerlendirme',
-        progressBadge:
-          s.type === 'cancelled'
-            ? 'Ertelendi'
-            : isFirst
-            ? 'İlk Değerlendirme'
-            : 'Süreç Çalışması',
-        formattedReportNote: rawNote
-          ? rawNote
-          : s.type === 'cancelled'
-          ? 'Planlanan görüşme ileri bir tarihe ertelendi; süreç bir sonraki oturumda devam etti.'
-          : isFirst
-          ? 'Başvuru nedenleri, güncel yaşam dinamikleri ve süreçten beklentiler ele alınarak terapötik çalışma çerçevesi oluşturuldu.'
-          : isLast
-          ? 'Önceki görüşmelerde kazanılan içgörüler değerlendirildi; günlük yaşamdaki baş etme uygulamaları ve duygusal denge göstergeleri gözden geçirildi.'
-          : 'Önceki görüşmeden bu yana yaşanan gelişmeler ele alındı; öz-gözlem ve duygusal farkındalık odaklı çalışmaya devam edildi.',
-        keyTakeaway: ''
-      };
+      // Only show a note if the calendar event actually had a note OR the user manually entered one
+      const finalNote = hasManualOverride
+        ? customNotesById[s.id]
+        : effectiveRawNote
+        ? matchedAi?.formattedReportNote?.trim() || effectiveRawNote
+        : '';
+
+      const finalTitle =
+        customTitlesById[s.id] !== undefined
+          ? customTitlesById[s.id]
+          : finalNote.trim()
+          ? matchedAi?.phaseTitle?.trim() || ''
+          : '';
 
       return {
         session: s,
         sessionNumber,
         formattedDate,
         dayName,
-        rawNote,
-        noteSource: source,
-        aiItem: matchedAi || fallbackAi
+        rawNote: effectiveRawNote,
+        noteSource: hasManualOverride ? 'manual' : source,
+        aiItem: {
+          sessionId: s.id,
+          phaseTitle: finalTitle,
+          progressBadge: '',
+          formattedReportNote: finalNote,
+          keyTakeaway: ''
+        }
       };
     });
-  }, [chronologicalSessions, liveNotesMap, aiReport]);
+  }, [chronologicalSessions, liveNotesMap, aiReport, customNotesById, customTitlesById]);
 
-  // Dynamic Multi-Page Pagination with balanced whitespace
+  const hasAnyRecommendations = Boolean(
+    (aiReport?.recommendations && aiReport.recommendations.trim().length > 0) || isEditMode
+  );
+
+  // Pixel-accurate A4 Multi-Page Pagination — fills each A4 sheet properly without half-empty pages
   const paginatedPages = useMemo(() => {
     const pages: {
       pageIndex: number;
@@ -399,99 +400,77 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         isFirstPage: true,
         isLastPage: true,
         items: [],
-        includeRecommendations: true
+        includeRecommendations: hasAnyRecommendations
       });
       return pages;
     }
 
-    // Page 1 has Header + Unified Summary Bar + Executive Evaluation + Timeline start
-    let page1Cursor = 0;
-    let page1Weight = 0;
-    const maxPage1Weight = 620;
-
-    while (page1Cursor < enrichedTimeline.length && page1Cursor < 4) {
-      const candidate = enrichedTimeline[page1Cursor];
-      const noteLen = (candidate.aiItem.formattedReportNote || '').length;
-      const itemWeight = 110 + noteLen;
-      if (page1Cursor > 0 && page1Weight + itemWeight > maxPage1Weight) {
-        break;
+    // Estimate exact vertical height (in px) of a single session row on the 794x1123 A4 sheet
+    const estimateRowHeight = (item: EnrichedTimelineSession): number => {
+      const noteText = (item.aiItem.formattedReportNote || '').trim();
+      const titleText = cleanPhaseTitle(item.aiItem.phaseTitle || '');
+      if (!noteText && !isEditMode) {
+        // Single-line compact row (session number + date + online/face-to-face + time)
+        return includeFinancials ? 44 : 33;
       }
-      page1Weight += itemWeight;
-      page1Cursor++;
-    }
+      const lineBreaks = (noteText.match(/\n/g) || []).length;
+      const wrappedLines = Math.max(1, Math.ceil(noteText.length / 72) + lineBreaks);
+      const titleHeight = titleText ? 20 : 0;
+      const noteHeight = wrappedLines * 18.5;
+      const contentHeight = Math.max(includeFinancials ? 58 : 44, titleHeight + noteHeight);
+      return 20 + contentHeight; // 20px vertical padding + content height
+    };
 
-    const firstPageItems = enrichedTimeline.slice(0, page1Cursor);
-    const remaining = enrichedTimeline.slice(page1Cursor);
+    // Usable content height on an A4 sheet (1123px total - 72px top/bottom padding - 44px footer = 1007px)
+    const totalUsableHeight = 1005;
 
-    if (remaining.length === 0) {
-      const canFitRecsOnPage1 = firstPageItems.length <= 3 && page1Weight <= 460;
-      if (canFitRecsOnPage1) {
-        pages.push({
-          pageIndex: 0,
-          isFirstPage: true,
-          isLastPage: true,
-          items: firstPageItems,
-          includeRecommendations: true
-        });
-      } else {
-        pages.push({
-          pageIndex: 0,
-          isFirstPage: true,
-          isLastPage: false,
-          items: firstPageItems,
-          includeRecommendations: false
-        });
-        pages.push({
-          pageIndex: 1,
-          isFirstPage: false,
-          isLastPage: true,
-          items: [],
-          includeRecommendations: true
-        });
-      }
-      return pages;
-    }
+    // Fixed header + summary strip + executive evaluation + timeline section header on Page 1
+    const execTextLen = (aiReport?.executiveSummary || '').length || 120;
+    const execLines = Math.max(2, Math.ceil(execTextLen / 92));
+    const hasThemes = Boolean(aiReport?.keyThemes && aiReport.keyThemes.length > 0);
+    const page1FixedOverhead =
+      60 + // Document Header
+      72 + // Unified Summary Bar
+      (22 + execLines * 19 + (hasThemes ? 28 : 0)) + // Executive Evaluation
+      30 + // Timeline Section Header
+      54; // Inter-section gaps
 
-    pages.push({
-      pageIndex: 0,
-      isFirstPage: true,
-      isLastPage: false,
-      items: firstPageItems,
-      includeRecommendations: false
-    });
+    const page1AvailableForRows = Math.max(380, totalUsableHeight - page1FixedOverhead);
+    const continuationAvailableForRows = totalUsableHeight - (36 + 30 + 24); // ~915px for rows on Page 2+
+    const recommendationsHeight = hasAnyRecommendations ? 84 : 0;
 
-    // Subsequent pages: up to 6 clean rows per page depending on text length
     let cursor = 0;
-    while (cursor < remaining.length) {
+    let isFirst = true;
+
+    while (cursor < enrichedTimeline.length) {
+      const availableHeight = isFirst ? page1AvailableForRows : continuationAvailableForRows;
       const chunk: EnrichedTimelineSession[] = [];
-      let currentWeight = 0;
-      const maxWeightPerPage = 1200;
+      let usedHeight = 0;
 
-      while (cursor < remaining.length && chunk.length < 6) {
-        const candidate = remaining[cursor];
-        const noteLen = (candidate.aiItem.formattedReportNote || '').length;
-        const itemWeight = 130 + noteLen;
-
-        if (chunk.length > 0 && currentWeight + itemWeight > maxWeightPerPage) {
+      while (cursor < enrichedTimeline.length) {
+        const candidate = enrichedTimeline[cursor];
+        const rowH = estimateRowHeight(candidate);
+        if (chunk.length > 0 && usedHeight + rowH > availableHeight) {
           break;
         }
         chunk.push(candidate);
-        currentWeight += itemWeight;
+        usedHeight += rowH;
         cursor++;
       }
 
-      const isEnd = cursor >= remaining.length;
-      const canFitRecsOnSamePage = isEnd && chunk.length <= 5 && currentWeight <= 940;
+      const isEnd = cursor >= enrichedTimeline.length;
+      const canFitRecsHere =
+        !hasAnyRecommendations || usedHeight + recommendationsHeight <= availableHeight + 42;
 
       pages.push({
         pageIndex: pages.length,
-        isFirstPage: false,
-        isLastPage: isEnd && canFitRecsOnSamePage,
+        isFirstPage: isFirst,
+        isLastPage: isEnd && canFitRecsHere,
         items: chunk,
-        includeRecommendations: isEnd && canFitRecsOnSamePage
+        includeRecommendations: isEnd && canFitRecsHere && hasAnyRecommendations
       });
 
-      if (isEnd && !canFitRecsOnSamePage) {
+      if (isEnd && !canFitRecsHere && hasAnyRecommendations) {
         pages.push({
           pageIndex: pages.length,
           isFirstPage: false,
@@ -500,13 +479,18 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           includeRecommendations: true
         });
       }
+
+      isFirst = false;
     }
 
     return pages;
-  }, [enrichedTimeline]);
+  }, [enrichedTimeline, aiReport, includeFinancials, isEditMode, hasAnyRecommendations]);
 
   // Build multi-page PDF Blob using html-to-image + jsPDF
   const generatePdfDocument = async (): Promise<{ blob: Blob; filename: string }> => {
+    setEditingNoteSessionId(null);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -523,7 +507,13 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         quality: 0.96,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
-        cacheBust: true
+        cacheBust: true,
+        filter: (node: HTMLElement) => {
+          if (node && node.dataset && node.dataset.exportIgnore === 'true') {
+            return false;
+          }
+          return true;
+        }
       });
 
       if (i > 0) {
@@ -611,15 +601,11 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   };
 
   const handleUpdateTimelineItem = (sessionId: string, field: keyof TimelineAiItem, value: string) => {
-    setAiReport(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        timelineItems: prev.timelineItems.map(item =>
-          item.sessionId === sessionId ? { ...item, [field]: value } : item
-        )
-      };
-    });
+    if (field === 'formattedReportNote') {
+      setCustomNotesById(prev => ({ ...prev, [sessionId]: value }));
+    } else if (field === 'phaseTitle') {
+      setCustomTitlesById(prev => ({ ...prev, [sessionId]: value }));
+    }
   };
 
   if (!isOpen) return null;
@@ -661,12 +647,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       const execSummaryText = sanitizeBodyText(
         aiReport?.executiveSummary ||
-          `${displayTitle} ile yürütülen danışmanlık süreci kapsamında gerçekleştirilen görüşmeler kronolojik olarak değerlendirilmiştir.`
+          `${displayTitle} ile ${reportStats.firstDate} – ${reportStats.lastDate} tarihleri arasında toplam ${reportStats.completedCount} görüşme gerçekleştirilmiştir.`
       );
-      const recsText = sanitizeBodyText(
-        aiReport?.recommendations ||
-          'Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.'
-      );
+      const recsText = sanitizeBodyText(aiReport?.recommendations || '');
       const themes = aiReport?.keyThemes || [];
       const firstSessionDate = enrichedTimeline[0]?.formattedDate || reportStats.firstDate;
       const lastSessionDate =
@@ -677,29 +660,59 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           const { session, sessionNumber, formattedDate, aiItem } = item;
           const isCancelled = session.type === 'cancelled';
           const isFaceToFace = session.type === 'face-to-face';
-          const displayPhaseTitle = cleanPhaseTitle(aiItem.phaseTitle);
-          const displayNote = sanitizeBodyText(cleanReportNote(aiItem.formattedReportNote));
+          const rawTitle = (aiItem.phaseTitle || '').trim();
+          const displayPhaseTitle = rawTitle ? cleanPhaseTitle(rawTitle) : '';
+          const displayNote = sanitizeBodyText(cleanReportNote(aiItem.formattedReportNote || ''));
+          const hasNote = displayNote.length > 0;
           const isLastRow = idx === enrichedTimeline.length - 1;
           const borderBottom = isLastRow ? 'none' : '1px solid #E5E5EA';
 
           const financialHtml =
             includeFinancials && !isCancelled
-              ? `<div style="font-size:8.5pt; color:#6E6E73; margin-top:3pt;">₺${(
+              ? `<span style="font-size:8.5pt; color:#6E6E73; margin-left:6pt;">· ₺${(
                   session.price || 0
-                ).toLocaleString('tr-TR')} · <span style="color:${
+                ).toLocaleString('tr-TR')} (<span style="color:${
                   session.paymentStatus === 'paid' ? '#3C766B' : '#B45309'
-                };">${session.paymentStatus === 'paid' ? 'Ödendi' : 'Bekliyor'}</span></div>`
+                };">${session.paymentStatus === 'paid' ? 'Ödendi' : 'Bekliyor'}</span>)</span>`
               : '';
+
+          // If there is NO note, render a sleek single-line compact row with just the session date & info
+          if (!hasNote) {
+            return `
+              <tr>
+                <td colspan="2" valign="middle" style="padding:6pt 0; border-bottom:${borderBottom};">
+                  <span style="font-size:8.5pt; font-weight:600; color:${
+                    isCancelled ? '#86868B' : '#3C766B'
+                  }; display:inline-block; width:68pt;">
+                    ${isCancelled ? 'İptal / Erteleme' : `${sessionNumber}. Seans`}
+                  </span>
+                  <span style="font-size:9.5pt; font-weight:600; color:#1D1D1F; margin-right:8pt;">
+                    ${escapeHtml(formattedDate)}
+                  </span>
+                  <span style="font-size:8.5pt; color:#86868B;">
+                    ${
+                      isCancelled
+                        ? escapeHtml(session.time || '00:00')
+                        : `${isFaceToFace ? 'Yüz Yüze' : 'Online'} · ${escapeHtml(
+                            session.time || '00:00'
+                          )}`
+                    }
+                  </span>
+                  ${financialHtml}
+                </td>
+              </tr>
+            `;
+          }
 
           return `
             <tr>
-              <td valign="top" style="width:26%; padding:11pt 12pt 11pt 0; border-bottom:${borderBottom};">
+              <td valign="top" style="width:26%; padding:9pt 12pt 9pt 0; border-bottom:${borderBottom};">
                 <div style="font-size:8.5pt; font-weight:600; color:${
                   isCancelled ? '#86868B' : '#3C766B'
-                }; margin-bottom:2pt;">
+                }; margin-bottom:1.5pt;">
                   ${isCancelled ? 'İptal / Erteleme' : `${sessionNumber}. Seans`}
                 </div>
-                <div style="font-size:10pt; font-weight:600; color:#1D1D1F; margin-bottom:2pt;">
+                <div style="font-size:9.5pt; font-weight:600; color:#1D1D1F; margin-bottom:1.5pt;">
                   ${escapeHtml(formattedDate)}
                 </div>
                 <div style="font-size:8.5pt; color:#86868B;">
@@ -711,12 +724,15 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                         )}`
                   }
                 </div>
-                ${financialHtml}
               </td>
-              <td valign="top" style="width:74%; padding:11pt 0 11pt 12pt; border-bottom:${borderBottom};">
-                <div style="font-size:10.5pt; font-weight:600; color:#1D1D1F; margin-bottom:3pt;">
-                  ${escapeHtml(displayPhaseTitle)}
-                </div>
+              <td valign="top" style="width:74%; padding:9pt 0 9pt 12pt; border-bottom:${borderBottom};">
+                ${
+                  displayPhaseTitle
+                    ? `<div style="font-size:10pt; font-weight:600; color:#1D1D1F; margin-bottom:2.5pt;">${escapeHtml(
+                        displayPhaseTitle
+                      )}</div>`
+                    : ''
+                }
                 <div style="font-size:9.5pt; line-height:1.55; color:#3A3A3C;">
                   ${escapeHtml(displayNote).replace(/\n/g, '<br/>')}
                 </div>
@@ -728,14 +744,14 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       const financialSummaryCellHtml = includeFinancials
         ? `
-          <td valign="top" style="width:25%; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
+          <td valign="top" style="width:25%; padding:10pt 12pt; border-left:1px solid #E5E5EA;">
             <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">FİNANSAL ÖZET</div>
-            <div style="font-size:12pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">₺${reportStats.totalPaid.toLocaleString(
+            <div style="font-size:11.5pt; font-weight:600; color:#1D1D1F; margin-top:3pt;">₺${reportStats.totalPaid.toLocaleString(
               'tr-TR'
             )}</div>
             <div style="font-size:8.5pt; color:${
               reportStats.totalUnpaid > 0 ? '#B45309' : '#3C766B'
-            }; margin-top:2pt;">
+            }; margin-top:1.5pt;">
               ${
                 reportStats.totalUnpaid > 0
                   ? `Bekleyen: ₺${reportStats.totalUnpaid.toLocaleString('tr-TR')}`
@@ -749,7 +765,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       const themesHtml =
         themes.length > 0
           ? `
-            <div style="margin-top:10pt; padding-top:8pt; border-top:1px solid #F0F0F2; font-size:9pt;">
+            <div style="margin-top:8pt; padding-top:6pt; border-top:1px solid #F0F0F2; font-size:8.5pt;">
               <span style="color:#86868B; font-weight:500;">Odak Alanları:&nbsp;&nbsp;</span>
               <span style="color:#3C766B; font-weight:600;">${themes
                 .map(t => escapeHtml(t))
@@ -757,6 +773,23 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
             </div>
           `
           : '';
+
+      const recommendationsHtml = recsText
+        ? `
+          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:18pt;">
+            <tr>
+              <td style="padding:12pt 14pt;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#3C766B; margin-bottom:4pt;">
+                  SÜREÇ PLANI VE ÖNERİLER
+                </div>
+                <div style="font-size:9.5pt; line-height:1.55; color:#1D1D1F;">
+                  ${escapeHtml(recsText).replace(/\n/g, '<br/>')}
+                </div>
+              </td>
+            </tr>
+          </table>
+        `
+        : '';
 
       const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
         xmlns:w="urn:schemas-microsoft-com:office:word"
@@ -776,7 +809,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         <style>
           @page WordSection1 {
             size: 595.3pt 841.9pt;
-            margin: 42pt 45pt 42pt 45pt;
+            margin: 36pt 42pt 36pt 42pt;
           }
           div.WordSection1 {
             page: WordSection1;
@@ -797,21 +830,21 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       <body>
         <div class="WordSection1">
           <!-- GROUP 1: HEADER -->
-          <table style="width:100%; border-bottom:1px solid #E5E5EA; margin-bottom:18pt;">
+          <table style="width:100%; border-bottom:1px solid #E5E5EA; margin-bottom:14pt;">
             <tr>
-              <td valign="bottom" style="padding-bottom:14pt;">
-                <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:1.2pt; color:#3C766B; margin-bottom:4pt;">
+              <td valign="bottom" style="padding-bottom:11pt;">
+                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:1.2pt; color:#3C766B; margin-bottom:3pt;">
                   SÜREÇ VE İLERLEME RAPORU
                 </div>
-                <div style="font-size:21pt; font-weight:600; color:#1D1D1F; letter-spacing:-0.4pt;">
+                <div style="font-size:20pt; font-weight:600; color:#1D1D1F; letter-spacing:-0.4pt;">
                   ${escapeHtml(displayTitle)}
                 </div>
               </td>
-              <td valign="bottom" align="right" style="padding-bottom:14pt; text-align:right;">
-                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B; margin-bottom:2pt;">
+              <td valign="bottom" align="right" style="padding-bottom:11pt; text-align:right;">
+                <div style="font-size:7pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B; margin-bottom:2pt;">
                   RAPOR TARİHİ
                 </div>
-                <div style="font-size:10pt; font-weight:500; color:#1D1D1F;">
+                <div style="font-size:9.5pt; font-weight:500; color:#1D1D1F;">
                   ${escapeHtml(reportDateFormatted)}
                 </div>
               </td>
@@ -819,45 +852,45 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           </table>
 
           <!-- GROUP 2: UNIFIED SUMMARY BAR -->
-          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:20pt;">
+          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:16pt;">
             <tr>
-              <td valign="top" style="width:${includeFinancials ? '25%' : '34%'}; padding:12pt 14pt;">
-                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">TOPLAM GÖRÜŞME</div>
-                <div style="font-size:14pt; font-weight:600; color:#1D1D1F; margin-top:3pt;">${
+              <td valign="top" style="width:${includeFinancials ? '25%' : '34%'}; padding:10pt 12pt;">
+                <div style="font-size:7pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">TOPLAM GÖRÜŞME</div>
+                <div style="font-size:13pt; font-weight:600; color:#1D1D1F; margin-top:2.5pt;">${
                   reportStats.completedCount
                 } Seans</div>
-                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">${
+                <div style="font-size:8pt; color:#6E6E73; margin-top:1.5pt;">${
                   reportStats.onlineCount
                 } Online · ${reportStats.faceToFaceCount} Yüz Yüze</div>
               </td>
               <td valign="top" style="width:${
                 includeFinancials ? '25%' : '33%'
-              }; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
-                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">BAŞLANGIÇ TARİHİ</div>
-                <div style="font-size:11.5pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">${escapeHtml(
+              }; padding:10pt 12pt; border-left:1px solid #E5E5EA;">
+                <div style="font-size:7pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">BAŞLANGIÇ TARİHİ</div>
+                <div style="font-size:11pt; font-weight:600; color:#1D1D1F; margin-top:3pt;">${escapeHtml(
                   reportStats.firstDate
                 )}</div>
-                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">İlk Oturum</div>
+                <div style="font-size:8pt; color:#6E6E73; margin-top:1.5pt;">İlk Oturum</div>
               </td>
               <td valign="top" style="width:${
                 includeFinancials ? '25%' : '33%'
-              }; padding:12pt 14pt; border-left:1px solid #E5E5EA;">
-                <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">SON GÖRÜŞME</div>
-                <div style="font-size:11.5pt; font-weight:600; color:#1D1D1F; margin-top:4pt;">${escapeHtml(
+              }; padding:10pt 12pt; border-left:1px solid #E5E5EA;">
+                <div style="font-size:7pt; font-weight:600; text-transform:uppercase; letter-spacing:0.8pt; color:#86868B;">SON GÖRÜŞME</div>
+                <div style="font-size:11pt; font-weight:600; color:#1D1D1F; margin-top:3pt;">${escapeHtml(
                   reportStats.lastDate
                 )}</div>
-                <div style="font-size:8.5pt; color:#6E6E73; margin-top:2pt;">Güncel Oturum</div>
+                <div style="font-size:8pt; color:#6E6E73; margin-top:1.5pt;">Güncel Oturum</div>
               </td>
               ${financialSummaryCellHtml}
             </tr>
           </table>
 
           <!-- GROUP 3: EXECUTIVE CLINICAL EVALUATION -->
-          <div style="margin-bottom:22pt;">
-            <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B; margin-bottom:6pt;">
+          <div style="margin-bottom:16pt;">
+            <div style="font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B; margin-bottom:4pt;">
               GENEL DEĞERLENDİRME
             </div>
-            <div style="font-size:10pt; line-height:1.65; color:#1D1D1F;">
+            <div style="font-size:9.5pt; line-height:1.6; color:#1D1D1F;">
               ${escapeHtml(execSummaryText).replace(/\n/g, '<br/>')}
             </div>
             ${themesHtml}
@@ -869,15 +902,15 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
               ? `
                 <table style="width:100%; border-bottom:1px solid #D2D2D7; margin-bottom:2pt;">
                   <tr>
-                    <td style="padding-bottom:6pt; font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B;">
+                    <td style="padding-bottom:5pt; font-size:7.5pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#86868B;">
                       SEANS SÜRECİ
                     </td>
-                    <td align="right" style="padding-bottom:6pt; font-size:8.5pt; color:#86868B; text-align:right;">
+                    <td align="right" style="padding-bottom:5pt; font-size:8pt; color:#86868B; text-align:right;">
                       ${escapeHtml(firstSessionDate)} – ${escapeHtml(lastSessionDate)}
                     </td>
                   </tr>
                 </table>
-                <table style="width:100%; margin-bottom:20pt;">
+                <table style="width:100%; margin-bottom:16pt;">
                   ${timelineRowsHtml}
                 </table>
               `
@@ -885,36 +918,25 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           }
 
           <!-- GROUP 5: RECOMMENDATIONS -->
-          <table style="width:100%; background-color:#F5F5F7; border-radius:10pt; margin-bottom:24pt;">
-            <tr>
-              <td style="padding:14pt 16pt;">
-                <div style="font-size:8pt; font-weight:600; text-transform:uppercase; letter-spacing:0.9pt; color:#3C766B; margin-bottom:5pt;">
-                  SÜREÇ PLANI VE ÖNERİLER
-                </div>
-                <div style="font-size:9.5pt; line-height:1.6; color:#1D1D1F;">
-                  ${escapeHtml(recsText).replace(/\n/g, '<br/>')}
-                </div>
-              </td>
-            </tr>
-          </table>
+          ${recommendationsHtml}
 
           <!-- FOOTER: DOMAIN BOTTOM-LEFT, PSYCHOLOGIST ONCE AT BOTTOM-RIGHT -->
-          <table style="width:100%; border-top:1px solid #E5E5EA; padding-top:12pt;">
+          <table style="width:100%; border-top:1px solid #E5E5EA; padding-top:10pt;">
             <tr>
-              <td valign="bottom" style="padding-top:12pt;">
+              <td valign="bottom" style="padding-top:10pt;">
                 ${
                   reportDomain
-                    ? `<span style="color:#3C766B; font-size:10pt;">&#9679;</span>&nbsp;<span style="font-size:9.5pt; font-weight:500; color:#6E6E73;">${escapeHtml(
+                    ? `<span style="color:#3C766B; font-size:9.5pt;">&#9679;</span>&nbsp;<span style="font-size:9pt; font-weight:500; color:#6E6E73;">${escapeHtml(
                         reportDomain
                       )}</span>`
                     : ''
                 }
               </td>
-              <td valign="bottom" align="right" style="padding-top:12pt; text-align:right;">
-                <div style="font-size:10pt; font-weight:600; color:#1D1D1F;">
+              <td valign="bottom" align="right" style="padding-top:10pt; text-align:right;">
+                <div style="font-size:9.5pt; font-weight:600; color:#1D1D1F;">
                   ${escapeHtml(therapistDisplay)}
                 </div>
-                <div style="font-size:8.5pt; color:#86868B; margin-top:1.5pt;">
+                <div style="font-size:8pt; color:#86868B; margin-top:1pt;">
                   Uzman Psikolog &amp; Aile Danışmanı
                 </div>
               </td>
@@ -999,7 +1021,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsEditMode(prev => !prev)}
+                onClick={() => {
+                  setIsEditMode(prev => !prev);
+                  setEditingNoteSessionId(null);
+                }}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                   isEditMode
                     ? 'bg-[#1D1D1F] text-white border-[#1D1D1F]'
@@ -1069,22 +1094,22 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                   style={{
                     width: '794px',
                     minHeight: '1123px',
-                    padding: '52px 56px 40px 56px',
+                    padding: '40px 48px 32px 48px',
                     color: '#1D1D1F',
                     fontFamily: appleFontStack,
                     WebkitFontSmoothing: 'antialiased'
                   }}
                 >
-                  <div className="space-y-8">
+                  <div className="space-y-5">
                     {/* ======================================================== */}
                     {/* GROUP 1: DOCUMENT HEADER (NO DUPLICATE PSYCHOLOGIST NAME)*/}
                     {/* ======================================================== */}
                     {page.isFirstPage ? (
                       <header
-                        className="pb-6 flex items-end justify-between gap-8"
+                        className="pb-4 flex items-end justify-between gap-8"
                         style={{ borderBottom: '1px solid #E5E5EA' }}
                       >
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <div
                             className="text-[10px] font-semibold uppercase"
                             style={{ letterSpacing: '0.14em', color: '#3C766B' }}
@@ -1092,7 +1117,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                             SÜREÇ VE İLERLEME RAPORU
                           </div>
                           <h1
-                            className="text-[28px] font-semibold leading-tight"
+                            className="text-[25px] font-semibold leading-tight"
                             style={{ letterSpacing: '-0.025em', color: '#1D1D1F' }}
                           >
                             {displayTitle}
@@ -1101,13 +1126,13 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
                         <div className="text-right space-y-0.5 shrink-0">
                           <div
-                            className="text-[10px] font-semibold uppercase"
+                            className="text-[9.5px] font-semibold uppercase"
                             style={{ letterSpacing: '0.08em', color: '#86868B' }}
                           >
                             RAPOR TARİHİ
                           </div>
                           <div
-                            className="text-[12.5px] font-medium tabular-nums"
+                            className="text-[12px] font-medium tabular-nums"
                             style={{ color: '#1D1D1F' }}
                           >
                             {reportDateFormatted}
@@ -1116,7 +1141,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                       </header>
                     ) : (
                       <header
-                        className="pb-4 flex items-center justify-between gap-4"
+                        className="pb-3 flex items-center justify-between gap-4"
                         style={{ borderBottom: '1px solid #E5E5EA' }}
                       >
                         <div
@@ -1135,96 +1160,96 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                     {/* GROUP 2 & 3 (PAGE 1): UNIFIED SUMMARY & EVALUATION       */}
                     {/* ======================================================== */}
                     {page.isFirstPage && (
-                      <div className="space-y-7">
+                      <div className="space-y-5">
                         {/* GROUP 2: Unified Apple-Style Grouped Summary Strip */}
                         <section
-                          className="rounded-2xl px-6 py-4"
+                          className="rounded-2xl px-5 py-3.5"
                           style={{ backgroundColor: '#F5F5F7' }}
                         >
                           <div
                             className={`grid ${
                               includeFinancials ? 'grid-cols-4' : 'grid-cols-3'
-                            } gap-6`}
+                            } gap-5`}
                           >
                             <div>
                               <div
-                                className="text-[10px] font-semibold uppercase"
+                                className="text-[9.5px] font-semibold uppercase"
                                 style={{ letterSpacing: '0.08em', color: '#86868B' }}
                               >
                                 TOPLAM GÖRÜŞME
                               </div>
                               <div
-                                className="mt-1 text-[20px] font-semibold tabular-nums"
+                                className="mt-0.5 text-[18px] font-semibold tabular-nums"
                                 style={{ letterSpacing: '-0.02em', color: '#1D1D1F' }}
                               >
                                 {reportStats.completedCount} Seans
                               </div>
-                              <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: '#6E6E73' }}>
+                              <div className="text-[10.5px] mt-0.5 tabular-nums" style={{ color: '#6E6E73' }}>
                                 {reportStats.onlineCount} Online · {reportStats.faceToFaceCount} Yüz Yüze
                               </div>
                             </div>
 
                             <div
-                              className="pl-6"
+                              className="pl-5"
                               style={{ borderLeft: '1px solid #E5E5EA' }}
                             >
                               <div
-                                className="text-[10px] font-semibold uppercase"
+                                className="text-[9.5px] font-semibold uppercase"
                                 style={{ letterSpacing: '0.08em', color: '#86868B' }}
                               >
                                 BAŞLANGIÇ TARİHİ
                               </div>
                               <div
-                                className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                className="mt-1 text-[14px] font-semibold tabular-nums"
                                 style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
                               >
                                 {reportStats.firstDate}
                               </div>
-                              <div className="text-[11px] mt-0.5" style={{ color: '#6E6E73' }}>
+                              <div className="text-[10.5px] mt-0.5" style={{ color: '#6E6E73' }}>
                                 İlk Oturum
                               </div>
                             </div>
 
                             <div
-                              className="pl-6"
+                              className="pl-5"
                               style={{ borderLeft: '1px solid #E5E5EA' }}
                             >
                               <div
-                                className="text-[10px] font-semibold uppercase"
+                                className="text-[9.5px] font-semibold uppercase"
                                 style={{ letterSpacing: '0.08em', color: '#86868B' }}
                               >
                                 SON GÖRÜŞME
                               </div>
                               <div
-                                className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                className="mt-1 text-[14px] font-semibold tabular-nums"
                                 style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
                               >
                                 {reportStats.lastDate}
                               </div>
-                              <div className="text-[11px] mt-0.5" style={{ color: '#6E6E73' }}>
+                              <div className="text-[10.5px] mt-0.5" style={{ color: '#6E6E73' }}>
                                 Güncel Oturum
                               </div>
                             </div>
 
                             {includeFinancials && (
                               <div
-                                className="pl-6"
+                                className="pl-5"
                                 style={{ borderLeft: '1px solid #E5E5EA' }}
                               >
                                 <div
-                                  className="text-[10px] font-semibold uppercase"
+                                  className="text-[9.5px] font-semibold uppercase"
                                   style={{ letterSpacing: '0.08em', color: '#86868B' }}
                                 >
                                   FİNANSAL ÖZET
                                 </div>
                                 <div
-                                  className="mt-1.5 text-[15px] font-semibold tabular-nums"
+                                  className="mt-1 text-[14px] font-semibold tabular-nums"
                                   style={{ letterSpacing: '-0.01em', color: '#1D1D1F' }}
                                 >
                                   ₺{reportStats.totalPaid.toLocaleString('tr-TR')}
                                 </div>
                                 <div
-                                  className="text-[11px] mt-0.5 tabular-nums"
+                                  className="text-[10.5px] mt-0.5 tabular-nums"
                                   style={{
                                     color: reportStats.totalUnpaid > 0 ? '#B45309' : '#3C766B'
                                   }}
@@ -1239,9 +1264,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                         </section>
 
                         {/* GROUP 3: Executive Clinical Synthesis & Focus Themes */}
-                        <section className="space-y-3">
+                        <section className="space-y-2">
                           <div
-                            className="text-[10.5px] font-semibold uppercase"
+                            className="text-[10px] font-semibold uppercase"
                             style={{ letterSpacing: '0.1em', color: '#86868B' }}
                           >
                             GENEL DEĞERLENDİRME
@@ -1255,34 +1280,34 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                   prev ? { ...prev, executiveSummary: e.target.value } : prev
                                 )
                               }
-                              rows={4}
-                              className="w-full p-3 text-[13px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-xl focus:outline-none"
+                              rows={3}
+                              className="w-full p-2.5 text-[12.5px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-xl focus:outline-none"
                             />
                           ) : (
                             <p
-                              className="text-[13px] leading-[1.65]"
+                              className="text-[12.5px] leading-[1.6]"
                               style={{ color: '#1D1D1F' }}
                             >
                               {sanitizeBodyText(
                                 aiReport?.executiveSummary ||
-                                  `${displayTitle} ile yürütülen danışmanlık süreci kapsamında gerçekleştirilen görüşmeler kronolojik olarak değerlendirilmiştir.`
+                                  `${displayTitle} ile ${reportStats.firstDate} – ${reportStats.lastDate} tarihleri arasında toplam ${reportStats.completedCount} görüşme gerçekleştirilmiştir.`
                               )}
                             </p>
                           )}
 
                           {aiReport?.keyThemes && aiReport.keyThemes.length > 0 && (
                             <div
-                              className="pt-3 flex items-baseline gap-4"
+                              className="pt-2 flex items-baseline gap-3"
                               style={{ borderTop: '1px solid #F0F0F2' }}
                             >
                               <span
-                                className="text-[11px] font-medium shrink-0"
+                                className="text-[10.5px] font-medium shrink-0"
                                 style={{ color: '#86868B' }}
                               >
                                 Odak Alanları
                               </span>
                               <div
-                                className="text-[12px] font-medium flex items-center gap-2 flex-wrap"
+                                className="text-[11.5px] font-medium flex items-center gap-2 flex-wrap"
                                 style={{ color: '#3C766B' }}
                               >
                                 {aiReport.keyThemes.map((theme, tIdx) => (
@@ -1304,19 +1329,19 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                     {/* GROUP 4: CHRONOLOGICAL SESSION TIMELINE                  */}
                     {/* ======================================================== */}
                     {page.items.length > 0 && (
-                      <section className="space-y-1">
+                      <section className="space-y-0.5">
                         <div
-                          className="pb-2.5 flex items-center justify-between"
+                          className="pb-2 flex items-center justify-between"
                           style={{ borderBottom: '1px solid #D2D2D7' }}
                         >
                           <span
-                            className="text-[10.5px] font-semibold uppercase"
+                            className="text-[10px] font-semibold uppercase"
                             style={{ letterSpacing: '0.1em', color: '#86868B' }}
                           >
                             {page.isFirstPage ? 'SEANS SÜRECİ' : 'SEANS SÜRECİ (DEVAMI)'}
                           </span>
                           <span
-                            className="text-[11px] tabular-nums"
+                            className="text-[10.5px] tabular-nums"
                             style={{ color: '#86868B' }}
                           >
                             {page.items[0].formattedDate} –{' '}
@@ -1324,19 +1349,117 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                           </span>
                         </div>
 
-                        {/* Clean 2-Column Hierarchical Rows Separated by Hairlines */}
+                        {/* Clean Hierarchical Rows — Compact 1-line when no note, 2-column when note exists */}
                         <div>
                           {page.items.map((item, idx) => {
                             const { session, sessionNumber, formattedDate, aiItem } = item;
                             const isCancelled = session.type === 'cancelled';
                             const isFaceToFace = session.type === 'face-to-face';
-                            const displayPhaseTitle = cleanPhaseTitle(aiItem.phaseTitle);
-                            const displayNote = sanitizeBodyText(cleanReportNote(aiItem.formattedReportNote));
+                            const rawTitle = (aiItem.phaseTitle || '').trim();
+                            const displayPhaseTitle = rawTitle ? cleanPhaseTitle(rawTitle) : '';
+                            const displayNote = sanitizeBodyText(
+                              cleanReportNote(aiItem.formattedReportNote || '')
+                            );
+                            const hasNote = displayNote.length > 0;
+                            const isEditingThisNote =
+                              isEditMode || editingNoteSessionId === session.id;
 
+                            // COMPACT SINGLE-LINE ROW WHEN NO NOTE EXISTS (AND NOT CURRENTLY TYPING A NOTE)
+                            if (!hasNote && !isEditingThisNote) {
+                              return (
+                                <div
+                                  key={session.id}
+                                  className="py-1.5 flex items-center justify-between gap-4"
+                                  style={{
+                                    borderBottom:
+                                      idx === page.items.length - 1
+                                        ? 'none'
+                                        : '1px solid #F0F0F2'
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3 min-w-0 tabular-nums">
+                                    <span
+                                      className="text-[11px] font-semibold w-20 shrink-0"
+                                      style={{
+                                        color: isCancelled ? '#86868B' : '#3C766B'
+                                      }}
+                                    >
+                                      {isCancelled
+                                        ? 'İptal / Erteleme'
+                                        : `${sessionNumber}. Seans`}
+                                    </span>
+                                    <span
+                                      className="text-[12.5px] font-semibold"
+                                      style={{
+                                        letterSpacing: '-0.01em',
+                                        color: '#1D1D1F'
+                                      }}
+                                    >
+                                      {formattedDate}
+                                    </span>
+                                    <span
+                                      className="text-[11px]"
+                                      style={{ color: '#86868B' }}
+                                    >
+                                      {isCancelled
+                                        ? session.time || '00:00'
+                                        : `${isFaceToFace ? 'Yüz Yüze' : 'Online'} · ${
+                                            session.time || '00:00'
+                                          }`}
+                                    </span>
+                                    {includeFinancials && !isCancelled && (
+                                      <span
+                                        className="text-[10.5px] font-medium"
+                                        style={{ color: '#6E6E73' }}
+                                      >
+                                        · ₺{(session.price || 0).toLocaleString('tr-TR')} (
+                                        <span
+                                          style={{
+                                            color:
+                                              session.paymentStatus === 'paid'
+                                                ? '#3C766B'
+                                                : '#B45309'
+                                          }}
+                                        >
+                                          {session.paymentStatus === 'paid'
+                                            ? 'Ödendi'
+                                            : 'Bekliyor'}
+                                        </span>
+                                        )
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Interactive "Not yok · + Not Ekle" shown on screen, ignored during PDF/Word export so only session date is printed if user doesn't add a note */}
+                                  {!isExportingPdf && (
+                                    <div
+                                      data-export-ignore="true"
+                                      className="flex items-center gap-2 shrink-0"
+                                    >
+                                      <span
+                                        className="text-[11px]"
+                                        style={{ color: '#AEAEB2' }}
+                                      >
+                                        Not yok
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingNoteSessionId(session.id)}
+                                        className="px-2 py-0.5 rounded-md text-[10.5px] font-medium border border-[#E5E5EA] hover:border-[#3C766B] text-[#3C766B] bg-[#F5F5F7]/70 hover:bg-[#3C766B]/5 transition-colors cursor-pointer"
+                                      >
+                                        + Not Ekle
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            // 2-COLUMN ROW WHEN SESSION HAS A NOTE OR USER IS ADDING/EDITING A NOTE
                             return (
                               <div
                                 key={session.id}
-                                className="py-4 flex items-start gap-6"
+                                className="py-2.5 flex items-start gap-5"
                                 style={{
                                   borderBottom:
                                     idx === page.items.length - 1
@@ -1357,7 +1480,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                       : `${sessionNumber}. Seans`}
                                   </div>
                                   <div
-                                    className="text-[13px] font-semibold"
+                                    className="text-[12.5px] font-semibold"
                                     style={{
                                       letterSpacing: '-0.01em',
                                       color: '#1D1D1F'
@@ -1377,7 +1500,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                   </div>
                                   {includeFinancials && !isCancelled && (
                                     <div
-                                      className="text-[10.5px] pt-1 font-medium"
+                                      className="text-[10.5px] pt-0.5 font-medium"
                                       style={{ color: '#6E6E73' }}
                                     >
                                       ₺{(session.price || 0).toLocaleString('tr-TR')} ·{' '}
@@ -1399,51 +1522,77 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
                                 {/* Right Column: Focus Heading & Clinical Process Note */}
                                 <div className="flex-1 min-w-0 space-y-1">
-                                  {isEditMode ? (
-                                    <input
-                                      type="text"
-                                      value={aiItem.phaseTitle}
-                                      onChange={e =>
-                                        handleUpdateTimelineItem(
-                                          session.id,
-                                          'phaseTitle',
-                                          e.target.value
-                                        )
-                                      }
-                                      className="w-full text-[13px] font-semibold px-2.5 py-1 bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg"
-                                    />
+                                  {isEditingThisNote ? (
+                                    <div className="space-y-1.5" data-export-ignore={!hasNote ? 'true' : undefined}>
+                                      <input
+                                        type="text"
+                                        placeholder="Başlık (isteğe bağlı)"
+                                        value={aiItem.phaseTitle}
+                                        onChange={e =>
+                                          handleUpdateTimelineItem(
+                                            session.id,
+                                            'phaseTitle',
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-full text-[12.5px] font-semibold px-2.5 py-1 bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg focus:outline-none"
+                                      />
+                                      <textarea
+                                        placeholder="Bu seans için not yazın (boş bırakılırsa sadece seans tarihi yer alır)..."
+                                        value={aiItem.formattedReportNote}
+                                        onChange={e =>
+                                          handleUpdateTimelineItem(
+                                            session.id,
+                                            'formattedReportNote',
+                                            e.target.value
+                                          )
+                                        }
+                                        rows={2}
+                                        autoFocus={editingNoteSessionId === session.id}
+                                        className="w-full p-2 text-[12px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg focus:outline-none"
+                                      />
+                                      {editingNoteSessionId === session.id && !isEditMode && (
+                                        <div className="flex justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingNoteSessionId(null)}
+                                            className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-[#1D1D1F] text-white cursor-pointer"
+                                          >
+                                            Tamam
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
                                   ) : (
-                                    <h4
-                                      className="text-[13.5px] font-semibold"
-                                      style={{
-                                        letterSpacing: '-0.01em',
-                                        color: '#1D1D1F'
-                                      }}
-                                    >
-                                      {displayPhaseTitle}
-                                    </h4>
-                                  )}
-
-                                  {isEditMode ? (
-                                    <textarea
-                                      value={aiItem.formattedReportNote}
-                                      onChange={e =>
-                                        handleUpdateTimelineItem(
-                                          session.id,
-                                          'formattedReportNote',
-                                          e.target.value
-                                        )
-                                      }
-                                      rows={3}
-                                      className="w-full p-2.5 text-[12.5px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg focus:outline-none"
-                                    />
-                                  ) : (
-                                    <p
-                                      className="text-[12.5px] leading-[1.6] whitespace-pre-line"
-                                      style={{ color: '#3A3A3C' }}
-                                    >
-                                      {displayNote}
-                                    </p>
+                                    <div className="group relative">
+                                      {displayPhaseTitle && (
+                                        <h4
+                                          className="text-[13px] font-semibold mb-0.5"
+                                          style={{
+                                            letterSpacing: '-0.01em',
+                                            color: '#1D1D1F'
+                                          }}
+                                        >
+                                          {displayPhaseTitle}
+                                        </h4>
+                                      )}
+                                      <p
+                                        className="text-[12px] leading-[1.55] whitespace-pre-line"
+                                        style={{ color: '#3A3A3C' }}
+                                      >
+                                        {displayNote}
+                                      </p>
+                                      {!isExportingPdf && (
+                                        <button
+                                          type="button"
+                                          data-export-ignore="true"
+                                          onClick={() => setEditingNoteSessionId(session.id)}
+                                          className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 px-2 py-0.5 rounded text-[10px] font-medium bg-[#F5F5F7] border border-[#D2D2D7] text-[#6E6E73] hover:text-[#1D1D1F] transition-opacity cursor-pointer"
+                                        >
+                                          Düzenle
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1457,13 +1606,13 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                     {/* GROUP 5 (FINAL PAGE): RECOMMENDATIONS                    */}
                     {/* ======================================================== */}
                     {page.includeRecommendations && (
-                      <section className="pt-2">
+                      <section className="pt-1">
                         <div
-                          className="rounded-2xl p-5 space-y-2"
+                          className="rounded-2xl p-4 space-y-1.5"
                           style={{ backgroundColor: '#F5F5F7' }}
                         >
                           <div
-                            className="text-[10.5px] font-semibold uppercase"
+                            className="text-[10px] font-semibold uppercase"
                             style={{ letterSpacing: '0.1em', color: '#3C766B' }}
                           >
                             SÜREÇ PLANI VE ÖNERİLER
@@ -1476,18 +1625,16 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                   prev ? { ...prev, recommendations: e.target.value } : prev
                                 )
                               }
-                              rows={3}
-                              className="w-full p-2.5 text-[12.5px] bg-white border border-[#D2D2D7] rounded-lg focus:outline-none"
+                              rows={2}
+                              placeholder="Süreç planı veya öneri ekleyin (boş bırakılırsa raporda gösterilmez)..."
+                              className="w-full p-2 text-[12px] bg-white border border-[#D2D2D7] rounded-lg focus:outline-none"
                             />
                           ) : (
                             <p
-                              className="text-[12.5px] leading-[1.6]"
+                              className="text-[12px] leading-[1.55]"
                               style={{ color: '#1D1D1F' }}
                             >
-                              {sanitizeBodyText(
-                                aiReport?.recommendations ||
-                                  'Görüşme sürekliliğinin korunması, oturumlar arasında önerilen farkındalık çalışmalarının sürdürülmesi ve süreç hedeflerinin periyodik olarak değerlendirilmesi önerilmektedir.'
-                              )}
+                              {sanitizeBodyText(aiReport?.recommendations || '')}
                             </p>
                           )}
                         </div>
@@ -1498,9 +1645,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                   {/* ======================================================== */}
                   {/* FOOTER: DOMAIN BOTTOM-LEFT, PSYCHOLOGIST ONCE AT RIGHT   */}
                   {/* ======================================================== */}
-                  <footer className="pt-6">
+                  <footer className="pt-4">
                     <div
-                      className="pt-4 flex items-end justify-between gap-6"
+                      className="pt-3 flex items-end justify-between gap-6"
                       style={{ borderTop: '1px solid #E5E5EA' }}
                     >
                       {/* Bottom-Left: User's configured domain from Settings */}
