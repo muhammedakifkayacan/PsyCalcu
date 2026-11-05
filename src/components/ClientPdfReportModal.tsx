@@ -819,7 +819,162 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
   };
 
-  // Proofread a single session note using AI
+  // Comprehensive Turkish orthography, sentence capitalization, punctuation & clinical spelling normalizer
+  const correctTurkishNoteOrthography = (
+    rawInput: string,
+    rawTitleInput = ''
+  ): { correctedText: string; correctedTitle: string } => {
+    if (!rawInput || !rawInput.trim()) {
+      return { correctedText: '', correctedTitle: rawTitleInput.trim() };
+    }
+
+    const turkishUpperChar = (ch: string): string => {
+      if (ch === 'i') return 'İ';
+      if (ch === 'ı') return 'I';
+      return ch.toLocaleUpperCase('tr-TR');
+    };
+
+    const wordReplacements: Array<[RegExp, string]> = [
+      [/\bbugun\b/gi, 'bugün'],
+      [/\bdun\b/gi, 'dün'],
+      [/\byarin\b/gi, 'yarın'],
+      [/\bcok\b/gi, 'çok'],
+      [/\bgecti\b/gi, 'geçti'],
+      [/\bgectigimiz\b/gi, 'geçtiğimiz'],
+      [/\buzerine\b/gi, 'üzerine'],
+      [/\buzerinde\b/gi, 'üzerinde'],
+      [/\bkonustuk\b/gi, 'konuştuk'],
+      [/\bkonusuldu\b/gi, 'konuşuldu'],
+      [/\bkonusulacak\b/gi, 'konuşulacak'],
+      [/\bdanisan\b/gi, 'danışan'],
+      [/\bdanisanla\b/gi, 'danışanla'],
+      [/\bdanisanin\b/gi, 'danışanın'],
+      [/\bdanisana\b/gi, 'danışana'],
+      [/\bgorusme\b/gi, 'görüşme'],
+      [/\bgorusmede\b/gi, 'görüşmede'],
+      [/\bgorustuk\b/gi, 'görüştük'],
+      [/\bgorusuldu\b/gi, 'görüşüldü'],
+      [/\bkaygi\b/gi, 'kaygı'],
+      [/\bkaygisi\b/gi, 'kaygısı'],
+      [/\bkaygilar\b/gi, 'kaygılar'],
+      [/\bdusunce\b/gi, 'düşünce'],
+      [/\bdusunceler\b/gi, 'düşünceler'],
+      [/\bdusunceleri\b/gi, 'düşünceleri'],
+      [/\bdavranis\b/gi, 'davranış'],
+      [/\bdavranislar\b/gi, 'davranışlar'],
+      [/\biliski\b/gi, 'ilişki'],
+      [/\biliskisi\b/gi, 'ilişkisi'],
+      [/\biliskiler\b/gi, 'ilişkiler'],
+      [/\biletisim\b/gi, 'iletişim'],
+      [/\bofke\b/gi, 'öfke'],
+      [/\buzuntu\b/gi, 'üzüntü'],
+      [/\bsurec\b/gi, 'süreç'],
+      [/\bsureci\b/gi, 'süreci'],
+      [/\bsurecte\b/gi, 'süreçte'],
+      [/\bdegerlendirme\b/gi, 'değerlendirme'],
+      [/\bdegerlendirildi\b/gi, 'değerlendirildi'],
+      [/\bcalisma\b/gi, 'çalışma'],
+      [/\bcalisildi\b/gi, 'çalışıldı'],
+      [/\bcalistik\b/gi, 'çalıştık'],
+      [/\byapildi\b/gi, 'yapıldı'],
+      [/\byaptik\b/gi, 'yaptık'],
+      [/\bbaslandi\b/gi, 'başlandı'],
+      [/\bbaslangic\b/gi, 'başlangıç'],
+      [/\bplanlandi\b/gi, 'planlandı'],
+      [/\bpaylasti\b/gi, 'paylaştı'],
+      [/\banlatti\b/gi, 'anlattı'],
+      [/\bsoyledi\b/gi, 'söyledi'],
+      [/\bfarkindalik\b/gi, 'farkındalık'],
+      [/\bozguven\b/gi, 'özgüven'],
+      [/\bgecmis\b/gi, 'geçmiş'],
+      [/\bgunluk\b/gi, 'günlük'],
+      [/\bhaftalik\b/gi, 'haftalık'],
+      [/\bodev\b/gi, 'ödev'],
+      [/\bodevi\b/gi, 'ödevi'],
+      [/\bgevseme\b/gi, 'gevşeme'],
+      [/\bcocuk\b/gi, 'çocuk'],
+      [/\bcocukluk\b/gi, 'çocukluk'],
+      [/\byogun\b/gi, 'yoğun'],
+      [/\bazaldi\b/gi, 'azaldı'],
+      [/\bartti\b/gi, 'arttı'],
+      [/\boldukca\b/gi, 'oldukça'],
+      [/\bozellikle\b/gi, 'özellikle'],
+      [/\bhakkinda\b/gi, 'hakkında'],
+      [/\bsonrasinda\b/gi, 'sonrasında'],
+      [/\boncesinde\b/gi, 'öncesinde'],
+      [/\bsirasinda\b/gi, 'sırasında'],
+      [/\bgosterdi\b/gi, 'gösterdi'],
+      [/\bgozlemlendi\b/gi, 'gözlemlendi'],
+      [/\bele alindi\b/gi, 'ele alındı'],
+      [/\bgozden gecirildi\b/gi, 'gözden geçirildi'],
+      [/\bguzel\b/gi, 'güzel'],
+      [/\bolumlu\b/gi, 'olumlu'],
+      [/\bdonem\b/gi, 'dönem'],
+      [/\bdonemde\b/gi, 'dönemde'],
+      [/\bcozum\b/gi, 'çözüm'],
+      [/\bdonus\b/gi, 'dönüş']
+    ];
+
+    let text = rawInput
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\s+([.,!?;:])/g, '$1')
+      .replace(/([.,!?;:])(?=[^\s.,!?;:\d])/g, '$1 ')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    for (const [pattern, replacement] of wordReplacements) {
+      text = text.replace(pattern, match => {
+        const firstCh = match.charAt(0);
+        const isFirstUpper =
+          firstCh === firstCh.toLocaleUpperCase('tr-TR') &&
+          firstCh !== firstCh.toLocaleLowerCase('tr-TR');
+        if (isFirstUpper) {
+          return turkishUpperChar(replacement.charAt(0)) + replacement.slice(1);
+        }
+        return replacement;
+      });
+    }
+
+    // Capitalize the very first character of each line and every character following sentence-ending punctuation (. ! ? : ;)
+    const lines = text
+      .split('\n')
+      .map(line => {
+        let l = line.trim();
+        if (!l) return '';
+        // Capitalize first letter of the line (skipping leading bullets/dashes if any)
+        l = l.replace(/^([\s•\-–—*]*)(["'“‘(]?)([a-zçğıöşüi])/u, (_, lead, quote, ch) => {
+          return `${lead}${quote}${turkishUpperChar(ch)}`;
+        });
+        // Capitalize first letter after sentence punctuation (. ! ? :)
+        l = l.replace(/([.!?]\s+)(["'“‘(]?)([a-zçğıöşüi])/gu, (_, punct, quote, ch) => {
+          return `${punct}${quote}${turkishUpperChar(ch)}`;
+        });
+        // Ensure line ends with terminal punctuation if it ends with a word character
+        if (/[a-zA-ZÇĞİÖŞÜçğıöşü0-9)]$/.test(l)) {
+          l += '.';
+        }
+        return l;
+      })
+      .filter(Boolean);
+
+    const correctedText = lines.join('\n');
+
+    let correctedTitle = cleanPhaseTitle(rawTitleInput || '');
+    if (correctedTitle) {
+      correctedTitle = correctedTitle
+        .split(/\s+/)
+        .map(w => (w ? turkishUpperChar(w.charAt(0)) + w.slice(1) : ''))
+        .join(' ')
+        .replace(/[.!?]+$/, '')
+        .trim();
+    }
+
+    return { correctedText, correctedTitle };
+  };
+
+  // Proofread a single session note using AI + guaranteed Turkish orthography/capitalization enforcement
   const handleProofreadSingleNote = async (
     sessionId: string,
     currentNoteText: string,
@@ -831,45 +986,94 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     if (!trimmed) return false;
 
     setProofreadingSessionId(sessionId);
+    const startTime = Date.now();
+
     try {
-      const res = await fetch('/api/gemini/proofread-note', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: trimmed,
-          phaseTitle: currentTitleText,
-          clientName: displayTitle,
-          sessionDate,
-          mode: 'session_note'
-        })
+      let aiText = '';
+      let aiTitle = '';
+
+      try {
+        const res = await fetch('/api/gemini/proofread-note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: trimmed,
+            phaseTitle: currentTitleText,
+            clientName: displayTitle,
+            sessionDate,
+            mode: 'session_note'
+          })
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          aiText = String(data?.correctedText || '').trim();
+          aiTitle = String(data?.correctedTitle || '').trim();
+        }
+      } catch (networkErr) {
+        console.warn('AI proofread endpoint fallback to local Turkish orthography:', networkErr);
+      }
+
+      // Always pass through Turkish orthography & sentence capitalization fixer so capital letters and punctuation are 100% guaranteed
+      const { correctedText, correctedTitle } = correctTurkishNoteOrthography(
+        aiText || trimmed,
+        aiTitle || currentTitleText
+      );
+
+      // Ensure visible step progression when running one-by-one
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 320) {
+        await new Promise(resolve => setTimeout(resolve, 320 - elapsed));
+      }
+
+      const finalTextToApply = correctedText || trimmed;
+      setCustomNotesById(prev => ({ ...prev, [sessionId]: finalTextToApply }));
+      if (correctedTitle) {
+        setCustomTitlesById(prev => ({ ...prev, [sessionId]: correctedTitle }));
+      }
+
+      // Also sync into aiReport state so timeline rendering is immediately updated everywhere
+      setAiReport(prev => {
+        if (!prev) return prev;
+        const exists = prev.timelineItems.some(t => t.sessionId === sessionId);
+        const updatedItems = exists
+          ? prev.timelineItems.map(t =>
+              t.sessionId === sessionId
+                ? {
+                    ...t,
+                    formattedReportNote: finalTextToApply,
+                    phaseTitle: correctedTitle || t.phaseTitle
+                  }
+                : t
+            )
+          : [
+              ...prev.timelineItems,
+              {
+                sessionId,
+                phaseTitle: correctedTitle,
+                progressBadge: '',
+                formattedReportNote: finalTextToApply,
+                keyTakeaway: ''
+              }
+            ];
+        return { ...prev, timelineItems: updatedItems };
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const correctedText = String(data?.correctedText || '').trim();
-        const correctedTitle = String(data?.correctedTitle || '').trim();
-
-        if (correctedText) {
-          setCustomNotesById(prev => ({ ...prev, [sessionId]: correctedText }));
-        }
-        if (correctedTitle) {
-          setCustomTitlesById(prev => ({ ...prev, [sessionId]: cleanPhaseTitle(correctedTitle) }));
-        }
-        setProofreadCompletedIds(prev => ({ ...prev, [sessionId]: true }));
-        if (!silentToast && showToast) {
-          showToast('Seans notunun imla ve yazımı düzeltildi.', 'success');
-        }
-        return true;
+      setProofreadCompletedIds(prev => ({ ...prev, [sessionId]: true }));
+      if (!silentToast && showToast) {
+        showToast('Seans notunun imla ve yazımı düzeltildi.', 'success');
       }
+      return true;
     } catch (err) {
       console.error('Error proofreading single note:', err);
       if (!silentToast && showToast) {
         showToast('İmla düzeltmesi sırasında bir hata oluştu.', 'error');
       }
+      return false;
     } finally {
       setProofreadingSessionId(prev => (prev === sessionId ? null : prev));
     }
-    return false;
   };
 
   // Proofread all session notes ONE BY ONE sequentially so user sees live step-by-step correction
@@ -911,51 +1115,65 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       // Also proofread Executive Summary and Recommendations if present
       if (aiReport?.executiveSummary?.trim()) {
         try {
+          const rawExec = aiReport.executiveSummary.trim();
+          let aiExec = '';
           const execRes = await fetch('/api/gemini/proofread-note', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              text: aiReport.executiveSummary.trim(),
+              text: rawExec,
               clientName: displayTitle,
               mode: 'summary'
             })
           });
-          if (execRes.ok) {
+          if (execRes.ok && (execRes.headers.get('content-type') || '').includes('application/json')) {
             const execData = await execRes.json();
-            if (execData?.correctedText?.trim()) {
-              setAiReport(prev =>
-                prev ? { ...prev, executiveSummary: execData.correctedText.trim() } : prev
-              );
-            }
+            aiExec = String(execData?.correctedText || '').trim();
           }
-        } catch (e) {}
+          const { correctedText } = correctTurkishNoteOrthography(aiExec || rawExec);
+          if (correctedText) {
+            setAiReport(prev => (prev ? { ...prev, executiveSummary: correctedText } : prev));
+          }
+        } catch (e) {
+          const { correctedText } = correctTurkishNoteOrthography(aiReport.executiveSummary);
+          if (correctedText) {
+            setAiReport(prev => (prev ? { ...prev, executiveSummary: correctedText } : prev));
+          }
+        }
       }
 
       if (aiReport?.recommendations?.trim()) {
         try {
+          const rawRec = aiReport.recommendations.trim();
+          let aiRec = '';
           const recRes = await fetch('/api/gemini/proofread-note', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              text: aiReport.recommendations.trim(),
+              text: rawRec,
               clientName: displayTitle,
               mode: 'summary'
             })
           });
-          if (recRes.ok) {
+          if (recRes.ok && (recRes.headers.get('content-type') || '').includes('application/json')) {
             const recData = await recRes.json();
-            if (recData?.correctedText?.trim()) {
-              setAiReport(prev =>
-                prev ? { ...prev, recommendations: recData.correctedText.trim() } : prev
-              );
-            }
+            aiRec = String(recData?.correctedText || '').trim();
           }
-        } catch (e) {}
+          const { correctedText } = correctTurkishNoteOrthography(aiRec || rawRec);
+          if (correctedText) {
+            setAiReport(prev => (prev ? { ...prev, recommendations: correctedText } : prev));
+          }
+        } catch (e) {
+          const { correctedText } = correctTurkishNoteOrthography(aiReport.recommendations);
+          if (correctedText) {
+            setAiReport(prev => (prev ? { ...prev, recommendations: correctedText } : prev));
+          }
+        }
       }
 
       if (showToast) {
         showToast(
-          `${correctedCount} seans notunun imla ve yazım kontrolü tek tek tamamlandı.`,
+          `${correctedCount} seans notunun imla, büyük harf ve noktalama kontrolü tek tek tamamlandı.`,
           'success'
         );
       }

@@ -1035,27 +1035,15 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3-flash-preview",
           contents: prompt,
         });
       } catch (firstErr: any) {
-        console.warn("Primary model (gemini-3.8-flash) failed, trying fallback model (gemini-3-flash-preview):", firstErr?.message);
-        try {
-          response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-          });
-        } catch (secondErr: any) {
-          try {
-            response = await ai.models.generateContent({
-              model: "gemini-2.5-flash",
-              contents: prompt,
-            });
-          } catch (fallbackErr: any) {
-            console.error("Fallback model also failed:", fallbackErr);
-            throw new Error("Yapay zeka servisleri şu anda yoğun talep altında. Lütfen birkaç saniye sonra tekrar deneyin.");
-          }
-        }
+        console.warn("Primary model (gemini-3-flash-preview) failed, trying fallback model (gemini-3.8-flash):", firstErr?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+        });
       }
 
       res.json({ text: response.text });
@@ -1216,7 +1204,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3-flash-preview",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -1224,27 +1212,15 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
           }
         });
       } catch (err0: any) {
-        console.warn("gemini-3.8-flash failed for client-progress-report, trying gemini-3-flash-preview:", err0?.message);
-        try {
-          response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema
-            }
-          });
-        } catch (err1: any) {
-          console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-2.5-flash:", err1?.message);
-          response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema
-            }
-          });
-        }
+        console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-3.8-flash:", err0?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
       }
 
       const parsed = JSON.parse(response.text || "{}");
@@ -1388,7 +1364,7 @@ ${rawText}`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3-flash-preview",
           contents: prompt,
           config: {
             systemInstruction,
@@ -1397,29 +1373,16 @@ ${rawText}`;
           }
         });
       } catch (err0: any) {
-        console.warn("gemini-3.8-flash failed for proofread-note, trying gemini-3-flash-preview:", err0?.message);
-        try {
-          response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: {
-              systemInstruction,
-              responseMimeType: "application/json",
-              responseSchema
-            }
-          });
-        } catch (err1: any) {
-          console.warn("gemini-3-flash-preview failed for proofread-note, trying gemini-2.5-flash:", err1?.message);
-          response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-              systemInstruction,
-              responseMimeType: "application/json",
-              responseSchema
-            }
-          });
-        }
+        console.warn("gemini-3-flash-preview failed for proofread-note, trying gemini-3.8-flash:", err0?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
       }
 
       const parsed = JSON.parse(response.text || "{}");
