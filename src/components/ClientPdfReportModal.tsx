@@ -191,6 +191,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
   const [customTitlesById, setCustomTitlesById] = useState<Record<string, string>>({});
   const [editingNoteSessionId, setEditingNoteSessionId] = useState<string | null>(null);
   const [aiReport, setAiReport] = useState<AiProgressReport | null>(null);
+  const [isProofreadingAll, setIsProofreadingAll] = useState(false);
+  const [proofreadingSessionId, setProofreadingSessionId] = useState<string | null>(null);
+  const [proofreadProgress, setProofreadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [proofreadCompletedIds, setProofreadCompletedIds] = useState<Record<string, boolean>>({});
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -223,6 +227,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       setCustomNotesById({});
       setCustomTitlesById({});
       setEditingNoteSessionId(null);
+      setIsProofreadingAll(false);
+      setProofreadingSessionId(null);
+      setProofreadProgress(null);
+      setProofreadCompletedIds({});
     }
   }, [isOpen]);
 
@@ -811,6 +819,153 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
   };
 
+  // Proofread a single session note using AI
+  const handleProofreadSingleNote = async (
+    sessionId: string,
+    currentNoteText: string,
+    currentTitleText = '',
+    sessionDate = '',
+    silentToast = false
+  ): Promise<boolean> => {
+    const trimmed = (currentNoteText || '').trim();
+    if (!trimmed) return false;
+
+    setProofreadingSessionId(sessionId);
+    try {
+      const res = await fetch('/api/gemini/proofread-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: trimmed,
+          phaseTitle: currentTitleText,
+          clientName: displayTitle,
+          sessionDate,
+          mode: 'session_note'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const correctedText = String(data?.correctedText || '').trim();
+        const correctedTitle = String(data?.correctedTitle || '').trim();
+
+        if (correctedText) {
+          setCustomNotesById(prev => ({ ...prev, [sessionId]: correctedText }));
+        }
+        if (correctedTitle) {
+          setCustomTitlesById(prev => ({ ...prev, [sessionId]: cleanPhaseTitle(correctedTitle) }));
+        }
+        setProofreadCompletedIds(prev => ({ ...prev, [sessionId]: true }));
+        if (!silentToast && showToast) {
+          showToast('Seans notunun imla ve yazımı düzeltildi.', 'success');
+        }
+        return true;
+      }
+    } catch (err) {
+      console.error('Error proofreading single note:', err);
+      if (!silentToast && showToast) {
+        showToast('İmla düzeltmesi sırasında bir hata oluştu.', 'error');
+      }
+    } finally {
+      setProofreadingSessionId(prev => (prev === sessionId ? null : prev));
+    }
+    return false;
+  };
+
+  // Proofread all session notes ONE BY ONE sequentially so user sees live step-by-step correction
+  const handleProofreadAllNotesOneByOne = async () => {
+    if (isProofreadingAll || isFetchingCalendar || isGeneratingAi) return;
+
+    const sessionsWithNotes = enrichedTimeline.filter(item => {
+      const noteText = (item.aiItem.formattedReportNote || item.rawNote || '').trim();
+      return noteText.length > 0;
+    });
+
+    if (sessionsWithNotes.length === 0) {
+      if (showToast) {
+        showToast('Rapor içinde imlası düzeltilecek seans notu bulunamadı.', 'info');
+      }
+      return;
+    }
+
+    setIsProofreadingAll(true);
+    setProofreadProgress({ current: 0, total: sessionsWithNotes.length });
+
+    let correctedCount = 0;
+    try {
+      for (let i = 0; i < sessionsWithNotes.length; i++) {
+        const item = sessionsWithNotes[i];
+        setProofreadProgress({ current: i + 1, total: sessionsWithNotes.length });
+        const currentNote = (item.aiItem.formattedReportNote || item.rawNote || '').trim();
+        const currentTitle = (item.aiItem.phaseTitle || '').trim();
+        const ok = await handleProofreadSingleNote(
+          item.session.id,
+          currentNote,
+          currentTitle,
+          item.formattedDate,
+          true
+        );
+        if (ok) correctedCount++;
+      }
+
+      // Also proofread Executive Summary and Recommendations if present
+      if (aiReport?.executiveSummary?.trim()) {
+        try {
+          const execRes = await fetch('/api/gemini/proofread-note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: aiReport.executiveSummary.trim(),
+              clientName: displayTitle,
+              mode: 'summary'
+            })
+          });
+          if (execRes.ok) {
+            const execData = await execRes.json();
+            if (execData?.correctedText?.trim()) {
+              setAiReport(prev =>
+                prev ? { ...prev, executiveSummary: execData.correctedText.trim() } : prev
+              );
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (aiReport?.recommendations?.trim()) {
+        try {
+          const recRes = await fetch('/api/gemini/proofread-note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: aiReport.recommendations.trim(),
+              clientName: displayTitle,
+              mode: 'summary'
+            })
+          });
+          if (recRes.ok) {
+            const recData = await recRes.json();
+            if (recData?.correctedText?.trim()) {
+              setAiReport(prev =>
+                prev ? { ...prev, recommendations: recData.correctedText.trim() } : prev
+              );
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (showToast) {
+        showToast(
+          `${correctedCount} seans notunun imla ve yazım kontrolü tek tek tamamlandı.`,
+          'success'
+        );
+      }
+    } finally {
+      setProofreadingSessionId(null);
+      setIsProofreadingAll(false);
+      setProofreadProgress(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   const therapistDisplay = settings.therapistName?.trim() || 'Uzm. Psk. Büşra Bakır Kayacan';
@@ -1211,8 +1366,27 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
+                onClick={handleProofreadAllNotesOneByOne}
+                disabled={isFetchingCalendar || isGeneratingAi || isProofreadingAll}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${
+                  isProofreadingAll
+                    ? 'bg-[#3C766B] text-white border-[#3C766B]'
+                    : 'bg-[#3C766B]/10 hover:bg-[#3C766B]/20 text-[#26423D] border-[#3C766B]/30'
+                }`}
+                title="Yapay zeka ile tüm seans notlarının imla ve yazım hatalarını tek tek düzelt"
+              >
+                <Sparkles className={`w-3.5 h-3.5 text-[#3C766B] ${isProofreadingAll ? 'text-white animate-spin' : ''}`} />
+                <span>
+                  {isProofreadingAll && proofreadProgress
+                    ? `İmla Düzeltiliyor (${proofreadProgress.current}/${proofreadProgress.total})...`
+                    : 'AI İmla Düzelt'}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleGenerateReport(true)}
-                disabled={isFetchingCalendar || isGeneratingAi}
+                disabled={isFetchingCalendar || isGeneratingAi || isProofreadingAll}
                 className="px-3 py-1.5 rounded-lg border border-[#D2D2D7] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 title="Rapor içeriğini yenile"
               >
@@ -1263,12 +1437,16 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           </div>
 
           {/* Subtle Loading Strip */}
-          {(isFetchingCalendar || isGeneratingAi) && (
+          {(isFetchingCalendar || isGeneratingAi || isProofreadingAll || Boolean(proofreadingSessionId)) && (
             <div className="px-6 py-2 bg-[#1D1D1F] text-white text-xs font-medium flex items-center justify-center gap-2 shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-[#3C766B] animate-pulse" />
               <span>
                 {isFetchingCalendar
                   ? 'Danışanın görüşme notları alınıyor...'
+                  : isProofreadingAll && proofreadProgress
+                  ? `Yapay zeka seans notlarının imla ve yazımını tek tek düzeltiyor (${proofreadProgress.current} / ${proofreadProgress.total})...`
+                  : proofreadingSessionId
+                  ? 'Seçili seans notunun imla ve yazımı düzeltiliyor...'
                   : 'Süreç ve ilerleme raporu düzenleniyor...'}
               </span>
             </div>
@@ -1754,8 +1932,36 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                         autoFocus={editingNoteSessionId === session.id}
                                         className="w-full p-2 text-[12px] bg-[#F5F5F7] border border-[#D2D2D7] rounded-lg focus:outline-none"
                                       />
-                                      {editingNoteSessionId === session.id && !isEditMode && (
-                                        <div className="flex justify-end gap-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            !aiItem.formattedReportNote?.trim() ||
+                                            proofreadingSessionId === session.id
+                                          }
+                                          onClick={() =>
+                                            handleProofreadSingleNote(
+                                              session.id,
+                                              aiItem.formattedReportNote,
+                                              aiItem.phaseTitle,
+                                              formattedDate
+                                            )
+                                          }
+                                          className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-[#3C766B]/10 hover:bg-[#3C766B]/20 text-[#26423D] border border-[#3C766B]/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40"
+                                        >
+                                          <Sparkles
+                                            className={`w-3 h-3 text-[#3C766B] ${
+                                              proofreadingSessionId === session.id ? 'animate-spin' : ''
+                                            }`}
+                                          />
+                                          <span>
+                                            {proofreadingSessionId === session.id
+                                              ? 'Düzeltiliyor...'
+                                              : 'AI İmla Düzelt'}
+                                          </span>
+                                        </button>
+
+                                        {editingNoteSessionId === session.id && !isEditMode && (
                                           <button
                                             type="button"
                                             onClick={() => setEditingNoteSessionId(null)}
@@ -1763,22 +1969,49 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                           >
                                             Tamam
                                           </button>
-                                        </div>
-                                      )}
+                                        )}
+                                      </div>
                                     </div>
                                   ) : (
                                     <div className="group relative">
-                                      {displayPhaseTitle && (
-                                        <h4
-                                          className="text-[13px] font-semibold mb-0.5"
-                                          style={{
-                                            letterSpacing: '-0.01em',
-                                            color: '#1D1D1F'
-                                          }}
-                                        >
-                                          {displayPhaseTitle}
-                                        </h4>
-                                      )}
+                                      <div className="flex items-center justify-between gap-2">
+                                        {displayPhaseTitle ? (
+                                          <h4
+                                            className="text-[13px] font-semibold mb-0.5"
+                                            style={{
+                                              letterSpacing: '-0.01em',
+                                              color: '#1D1D1F'
+                                            }}
+                                          >
+                                            {displayPhaseTitle}
+                                          </h4>
+                                        ) : (
+                                          <span />
+                                        )}
+
+                                        {!isExportingPdf && proofreadingSessionId === session.id && (
+                                          <span
+                                            data-export-ignore="true"
+                                            className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[#3C766B] bg-[#3C766B]/10 px-2 py-0.5 rounded-md"
+                                          >
+                                            <Sparkles className="w-3 h-3 animate-spin" />
+                                            İmla düzeltiliyor...
+                                          </span>
+                                        )}
+
+                                        {!isExportingPdf &&
+                                          proofreadingSessionId !== session.id &&
+                                          proofreadCompletedIds[session.id] && (
+                                            <span
+                                              data-export-ignore="true"
+                                              className="inline-flex items-center gap-1 text-[10px] font-medium text-[#3C766B]"
+                                            >
+                                              <Check className="w-3 h-3" />
+                                              İmla düzeltildi
+                                            </span>
+                                          )}
+                                      </div>
+
                                       <p
                                         className="text-[12px] leading-[1.55] whitespace-pre-line"
                                         style={{ color: '#3A3A3C' }}
@@ -1786,14 +2019,35 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                                         {displayNote}
                                       </p>
                                       {!isExportingPdf && (
-                                        <button
-                                          type="button"
+                                        <div
                                           data-export-ignore="true"
-                                          onClick={() => setEditingNoteSessionId(session.id)}
-                                          className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 px-2 py-0.5 rounded text-[10px] font-medium bg-[#F5F5F7] border border-[#D2D2D7] text-[#6E6E73] hover:text-[#1D1D1F] transition-opacity cursor-pointer"
+                                          className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 flex items-center gap-1.5 transition-opacity"
                                         >
-                                          Düzenle
-                                        </button>
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(proofreadingSessionId) || isProofreadingAll}
+                                            onClick={() =>
+                                              handleProofreadSingleNote(
+                                                session.id,
+                                                displayNote,
+                                                displayPhaseTitle,
+                                                formattedDate
+                                              )
+                                            }
+                                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#F5F5F7] border border-[#3C766B]/30 text-[#26423D] hover:bg-[#3C766B]/10 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                                            title="Bu seans notunun imla ve yazımını yapay zeka ile düzelt"
+                                          >
+                                            <Sparkles className="w-2.5 h-2.5 text-[#3C766B]" />
+                                            <span>İmla Düzelt</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingNoteSessionId(session.id)}
+                                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#F5F5F7] border border-[#D2D2D7] text-[#6E6E73] hover:text-[#1D1D1F] cursor-pointer"
+                                          >
+                                            Düzenle
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
                                   )}

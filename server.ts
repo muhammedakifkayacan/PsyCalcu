@@ -1035,19 +1035,26 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.8-flash",
           contents: prompt,
         });
       } catch (firstErr: any) {
-        console.warn("Primary model (gemini-3-flash-preview) failed, trying fallback model (gemini-2.5-flash):", firstErr);
+        console.warn("Primary model (gemini-3.8-flash) failed, trying fallback model (gemini-3-flash-preview):", firstErr?.message);
         try {
           response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: prompt,
           });
-        } catch (fallbackErr: any) {
-          console.error("Fallback model also failed:", fallbackErr);
-          throw new Error("Yapay zeka servisleri şu anda yoğun talep altında. Lütfen birkaç saniye sonra tekrar deneyin.");
+        } catch (secondErr: any) {
+          try {
+            response = await ai.models.generateContent({
+              model: "gemini-2.5-flash",
+              contents: prompt,
+            });
+          } catch (fallbackErr: any) {
+            console.error("Fallback model also failed:", fallbackErr);
+            throw new Error("Yapay zeka servisleri şu anda yoğun talep altında. Lütfen birkaç saniye sonra tekrar deneyin.");
+          }
         }
       }
 
@@ -1209,23 +1216,35 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.8-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
             responseSchema
           }
         });
-      } catch (err1: any) {
-        console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-2.5-flash:", err1?.message);
-        response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema
-          }
-        });
+      } catch (err0: any) {
+        console.warn("gemini-3.8-flash failed for client-progress-report, trying gemini-3-flash-preview:", err0?.message);
+        try {
+          response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+        } catch (err1: any) {
+          console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-2.5-flash:", err1?.message);
+          response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+        }
       }
 
       const parsed = JSON.parse(response.text || "{}");
@@ -1282,6 +1301,141 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
     } catch (error: any) {
       console.error("Client progress report AI error, using fallback:", error);
       return res.json(buildFallbackReport());
+    }
+  });
+
+  // API Route for Single-Note AI Proofreading & Grammar/Spelling Correction (used one by one in PDF Report Modal)
+  app.post("/api/gemini/proofread-note", async (req, res) => {
+    const { text = "", phaseTitle = "", clientName = "", sessionDate = "", mode = "session_note" } = req.body || {};
+    const rawText = String(text || "").trim();
+    const rawTitle = String(phaseTitle || "").trim();
+
+    const localTurkishCleanup = (input: string): string => {
+      if (!input) return "";
+      let s = input
+        .replace(/[ \t]+/g, " ")
+        .replace(/\s*([.,!?;:])\s*/g, "$1 ")
+        .replace(/\s+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      // Capitalize first letter of sentences in Turkish
+      s = s.replace(/(^|[.!?]\s+|\n\s*)([a-zçğıöşü])/g, (_, prefix, ch) => {
+        return prefix + ch.toLocaleUpperCase("tr-TR");
+      });
+      if (s && !/[.!?…:]$/.test(s)) {
+        s += ".";
+      }
+      return s;
+    };
+
+    if (!rawText) {
+      return res.json({ correctedText: "", correctedTitle: rawTitle });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.json({
+        correctedText: localTurkishCleanup(rawText),
+        correctedTitle: rawTitle
+      });
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build"
+          }
+        }
+      });
+
+      const systemInstruction =
+        mode === "summary"
+          ? `Sen uzman bir Türkçe klinik metin editörüsün. Verilen değerlendirme/öneri metninin anlamını ve içeriğini değiştirmeden yalnızca Türkçe imla, yazım, noktalama ve anlatım bozukluklarını düzelt. Kesinlikle psikolog adı veya ünvanı ekleme.`
+          : `Sen uzman bir Türkçe klinik metin ve imla editörüsün.
+GÖREVİN: Verilen psikolojik danışmanlık seans notunun anlamını, klinik detaylarını ve bilgi içeriğini HİÇBİR ŞEKİLDE değiştirmeden veya eksiltmeden; yalnızca Türkçe imla, yazım yanlışları, eksik Türkçe karakterler, noktalama işaretleri, büyük-küçük harf uyumu ve cümle düşüklüklerini düzelterek profesyonel, yalın ve akıcı bir Türkçe metne dönüştürmek.
+
+KESİN KURALLAR:
+1. Notta bulunmayan hiçbir hayali bilgi, yorum veya kalıp ifade ("bu seansta", "takvim notuna göre", "online görüşmede", psikolog adı/ünvanı vb.) EKLEME.
+2. Nottaki hiçbir klinik detayı veya bilgiyi SİLME, atlama.
+3. Kısaltmaları, klavye yazım hatalarını (typoları) ve noktalama eksikliklerini Türk Dil Kurumu (TDK) imla kurallarına uygun biçimde düzelt.
+4. "correctedTitle" alanında, seans numarası içermeyen 2-4 kelimelik sade ve net bir odak başlığı döndür (mevcut başlık uygunsa sadece imlasını düzelt, boşsa notun içeriğine uygun 2-4 kelimelik başlık üret).`;
+
+      const prompt =
+        mode === "summary"
+          ? `Düzeltilecek Metin:\n${rawText}`
+          : `Danışan: ${clientName || "Danışan"}
+Tarih: ${sessionDate || "-"}
+Mevcut Başlık: ${rawTitle || "(Yok)"}
+Düzeltilecek Seans Notu:
+${rawText}`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          correctedText: {
+            type: Type.STRING,
+            description: "İmla, yazım ve noktalama hataları düzeltilmiş, anlamı ve detayları korunmuş Türkçe metin."
+          },
+          correctedTitle: {
+            type: Type.STRING,
+            description: "Seans numarası içermeyen, 2-4 kelimelik imlası düzgün odak başlığı."
+          }
+        },
+        required: ["correctedText", "correctedTitle"]
+      };
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema
+          }
+        });
+      } catch (err0: any) {
+        console.warn("gemini-3.8-flash failed for proofread-note, trying gemini-3-flash-preview:", err0?.message);
+        try {
+          response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+        } catch (err1: any) {
+          console.warn("gemini-3-flash-preview failed for proofread-note, trying gemini-2.5-flash:", err1?.message);
+          response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+        }
+      }
+
+      const parsed = JSON.parse(response.text || "{}");
+      const correctedText = String(parsed?.correctedText || "").trim() || localTurkishCleanup(rawText);
+      const correctedTitle = String(parsed?.correctedTitle || "").trim() || rawTitle;
+
+      return res.json({
+        correctedText,
+        correctedTitle
+      });
+    } catch (error: any) {
+      console.error("Single-note AI proofread error, using local cleanup:", error);
+      return res.json({
+        correctedText: localTurkishCleanup(rawText),
+        correctedTitle: rawTitle
+      });
     }
   });
 
