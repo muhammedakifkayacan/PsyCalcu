@@ -518,7 +518,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       const response = await fetch('/api/gemini/client-progress-report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({
           clientName: displayTitle,
           therapistName: settings.therapistName || 'Uzm. Psk. Büşra Bakır Kayacan',
@@ -1048,6 +1048,39 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     let text = rawInput
       .replace(/\r\n/g, '\n')
       .replace(/[ \t]+/g, ' ')
+      // Fix "A., anne", "A, anne", "A anne", "a anne" -> "Anne" / "anne"
+      .replace(/\b[Aa][.,]?\s+(anne[a-zçğıöşü]*)\b/g, (match, word) => {
+        const first = match.trim().charAt(0);
+        return first === 'A' ? 'A' + word.slice(1) : word;
+      })
+      // Fix stuttered single-letter typos before words (e.g. "B bugün" -> "Bugün", "d danışan" -> "danışan", "A okul" -> "Okul")
+      .replace(
+        /(^|[\s(.,;:"'“‘\-–—])([a-zçğıöşüA-ZÇĞİÖŞÜ])[.,]?\s+([a-zçğıöşüA-ZÇĞİÖŞÜ]{3,})\b/gu,
+        (full, prefix, singleCh, nextWord) => {
+          const sLower = singleCh.toLocaleLowerCase('tr-TR');
+          const wLower = nextWord.charAt(0).toLocaleLowerCase('tr-TR');
+          if (
+            sLower === wLower ||
+            ((singleCh === 'A' || singleCh === 'a') &&
+              nextWord.charAt(0) === nextWord.charAt(0).toLocaleLowerCase('tr-TR'))
+          ) {
+            const isUpper =
+              singleCh === singleCh.toLocaleUpperCase('tr-TR') &&
+              singleCh !== singleCh.toLocaleLowerCase('tr-TR');
+            if (isUpper) {
+              return `${prefix}${turkishUpperChar(nextWord.charAt(0))}${nextWord.slice(1)}`;
+            }
+            return `${prefix}${nextWord}`;
+          }
+          return full;
+        }
+      )
+      // Fix common telegraphic/broken double-verb endings (cümle düşüklüğü kalıpları)
+      .replace(/\bsöyledi\s+konuştu\b/gi, 'belirtti')
+      .replace(/\bdedi\s+konuştu\b/gi, 'ifade etti')
+      .replace(/\bdedi\s+söyledi\b/gi, 'belirtti')
+      .replace(/\banlattı\s+konuştu\b/gi, 'anlattı')
+      .replace(/\boldu\s+gibi\s+dedi\b/gi, 'olduğunu ifade etti')
       .replace(/\s+([.,!?;:])/g, '$1')
       .replace(/([.,!?;:])(?=[^\s.,!?;:\d])/g, '$1 ')
       .replace(/\s+\n/g, '\n')
@@ -1107,6 +1140,68 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     return { correctedText, correctedTitle };
   };
 
+  // Helper that calls /api/gemini/proofread-note using a CORS-safelisted GET request first (survives 302 auth redirects)
+  // and falls back to a CORS-safelisted text/plain POST request for longer payloads
+  const requestAiProofread = async (params: {
+    text: string;
+    phaseTitle?: string;
+    clientName: string;
+    sessionDate?: string;
+    mode: 'session_note' | 'summary';
+  }): Promise<{ correctedText: string; correctedTitle: string }> => {
+    const queryParams = new URLSearchParams({
+      text: params.text,
+      phaseTitle: params.phaseTitle || '',
+      clientName: params.clientName || '',
+      sessionDate: params.sessionDate || '',
+      mode: params.mode,
+      _t: String(Date.now())
+    });
+
+    // 1. Simple GET request (no custom headers -> never blocked by CORS preflight on 302 redirects)
+    if (params.text.length < 1800) {
+      try {
+        const getRes = await fetch(`/api/gemini/proofread-note?${queryParams.toString()}`, {
+          method: 'GET',
+          cache: 'no-store'
+        });
+        const ct = getRes.headers.get('content-type') || '';
+        if (getRes.ok && ct.includes('application/json')) {
+          const data = await getRes.json();
+          const cText = String(data?.correctedText || '').trim();
+          const cTitle = cleanPhaseTitle(String(data?.correctedTitle || '').trim());
+          if (cText) {
+            return { correctedText: cText, correctedTitle: cTitle };
+          }
+        }
+      } catch (getErr) {
+        console.warn('GET /api/gemini/proofread-note retry via POST:', getErr);
+      }
+    }
+
+    // 2. Fallback: Simple POST request with text/plain (CORS-safelisted header)
+    try {
+      const postRes = await fetch(`/api/gemini/proofread-note?${queryParams.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(params),
+        cache: 'no-store'
+      });
+      const ct = postRes.headers.get('content-type') || '';
+      if (postRes.ok && ct.includes('application/json')) {
+        const data = await postRes.json();
+        return {
+          correctedText: String(data?.correctedText || '').trim(),
+          correctedTitle: cleanPhaseTitle(String(data?.correctedTitle || '').trim())
+        };
+      }
+    } catch (postErr) {
+      console.warn('POST /api/gemini/proofread-note fallback to local orthography:', postErr);
+    }
+
+    return { correctedText: '', correctedTitle: '' };
+  };
+
   // Proofread a single session note using AI + guaranteed Turkish orthography/capitalization enforcement
   const handleProofreadSingleNote = async (
     sessionId: string,
@@ -1122,40 +1217,14 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     const startTime = Date.now();
 
     try {
-      let aiText = '';
-      let aiTitle = '';
       const cleanCurrentTitle = cleanPhaseTitle(currentTitleText);
-
-      try {
-        const queryParams = new URLSearchParams({
-          text: trimmed,
-          phaseTitle: cleanCurrentTitle,
-          clientName: displayTitle,
-          sessionDate: sessionDate || '',
-          mode: 'session_note'
-        });
-
-        const res = await fetch(`/api/gemini/proofread-note?${queryParams.toString()}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: trimmed,
-            phaseTitle: cleanCurrentTitle,
-            clientName: displayTitle,
-            sessionDate,
-            mode: 'session_note'
-          })
-        });
-
-        const contentType = res.headers.get('content-type') || '';
-        if (res.ok && contentType.includes('application/json')) {
-          const data = await res.json();
-          aiText = String(data?.correctedText || '').trim();
-          aiTitle = cleanPhaseTitle(String(data?.correctedTitle || '').trim());
-        }
-      } catch (networkErr) {
-        console.warn('AI proofread endpoint fallback to local Turkish orthography:', networkErr);
-      }
+      const { correctedText: aiText, correctedTitle: aiTitle } = await requestAiProofread({
+        text: trimmed,
+        phaseTitle: cleanCurrentTitle,
+        clientName: displayTitle,
+        sessionDate: sessionDate || '',
+        mode: 'session_note'
+      });
 
       // Always pass through Turkish orthography & sentence capitalization fixer so capital letters and punctuation are 100% guaranteed
       const { correctedText, correctedTitle } = correctTurkishNoteOrthography(
@@ -1204,7 +1273,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       setProofreadCompletedIds(prev => ({ ...prev, [sessionId]: true }));
       if (!silentToast && showToast) {
-        showToast('Seans notunun imla, yazım ve başlığı düzenlendi.', 'success');
+        showToast('Seans notunun imla, cümle yapısı ve başlığı düzenlendi.', 'success');
       }
       return true;
     } catch (err) {
@@ -1258,25 +1327,11 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       if (aiReport?.executiveSummary?.trim()) {
         try {
           const rawExec = aiReport.executiveSummary.trim();
-          let aiExec = '';
-          const execQuery = new URLSearchParams({
+          const { correctedText: aiExec } = await requestAiProofread({
             text: rawExec,
             clientName: displayTitle,
             mode: 'summary'
           });
-          const execRes = await fetch(`/api/gemini/proofread-note?${execQuery.toString()}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: rawExec,
-              clientName: displayTitle,
-              mode: 'summary'
-            })
-          });
-          if (execRes.ok && (execRes.headers.get('content-type') || '').includes('application/json')) {
-            const execData = await execRes.json();
-            aiExec = String(execData?.correctedText || '').trim();
-          }
           const { correctedText } = correctTurkishNoteOrthography(aiExec || rawExec);
           if (correctedText) {
             setAiReport(prev => (prev ? { ...prev, executiveSummary: correctedText } : prev));
@@ -1292,25 +1347,11 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       if (aiReport?.recommendations?.trim()) {
         try {
           const rawRec = aiReport.recommendations.trim();
-          let aiRec = '';
-          const recQuery = new URLSearchParams({
+          const { correctedText: aiRec } = await requestAiProofread({
             text: rawRec,
             clientName: displayTitle,
             mode: 'summary'
           });
-          const recRes = await fetch(`/api/gemini/proofread-note?${recQuery.toString()}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: rawRec,
-              clientName: displayTitle,
-              mode: 'summary'
-            })
-          });
-          if (recRes.ok && (recRes.headers.get('content-type') || '').includes('application/json')) {
-            const recData = await recRes.json();
-            aiRec = String(recData?.correctedText || '').trim();
-          }
           const { correctedText } = correctTurkishNoteOrthography(aiRec || rawRec);
           if (correctedText) {
             setAiReport(prev => (prev ? { ...prev, recommendations: correctedText } : prev));
@@ -1325,7 +1366,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       if (showToast) {
         showToast(
-          `${correctedCount} seans notunun imla, büyük harf ve noktalama kontrolü tek tek tamamlandı.`,
+          `${correctedCount} seans notunun imla, yazım ve cümle yapısı yapay zeka ile tek tek düzenlendi.`,
           'success'
         );
       }

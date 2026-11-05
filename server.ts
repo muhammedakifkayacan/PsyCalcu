@@ -1056,8 +1056,49 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
   });
 
   // API Route for Client Timeline & Progress Report Generation (PDF Export)
-  app.post("/api/gemini/client-progress-report", async (req, res) => {
-    const { clientName, sessions = [], stats = {} } = req.body || {};
+  app.all("/api/gemini/client-progress-report", express.text({ type: "*/*", limit: "15mb" }), async (req, res) => {
+    let parsedBody: any = {};
+    if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
+      parsedBody = req.body;
+    } else if (typeof req.body === "string" && req.body.trim().startsWith("{")) {
+      try {
+        parsedBody = JSON.parse(req.body);
+      } catch (e) {}
+    }
+    const { clientName, sessions = [], stats = {} } = parsedBody || {};
+
+    const cleanStutteredReportText = (input: string): string => {
+      if (!input) return "";
+      let s = String(input);
+      s = s.replace(/\b[Aa][.,]?\s+(anne[a-zçğıöşü]*)\b/g, (match, word) => {
+        const first = match.trim().charAt(0);
+        return first === "A" ? "A" + word.slice(1) : word;
+      });
+      s = s.replace(
+        /(^|[\s(.,;:"'“‘\-–—])([a-zçğıöşüA-ZÇĞİÖŞÜ])[.,]?\s+([a-zçğıöşüA-ZÇĞİÖŞÜ]{3,})\b/gu,
+        (full, prefix, singleCh, nextWord) => {
+          const sLower = singleCh.toLocaleLowerCase("tr-TR");
+          const wLower = nextWord.charAt(0).toLocaleLowerCase("tr-TR");
+          if (
+            sLower === wLower ||
+            ((singleCh === "A" || singleCh === "a") &&
+              nextWord.charAt(0) === nextWord.charAt(0).toLocaleLowerCase("tr-TR"))
+          ) {
+            const isUpper =
+              singleCh === singleCh.toLocaleUpperCase("tr-TR") &&
+              singleCh !== singleCh.toLocaleLowerCase("tr-TR");
+            if (isUpper) {
+              const firstW = nextWord.charAt(0);
+              const upW = firstW === "i" ? "İ" : firstW === "ı" ? "I" : firstW.toLocaleUpperCase("tr-TR");
+              return `${prefix}${upW}${nextWord.slice(1)}`;
+            }
+            return `${prefix}${nextWord}`;
+          }
+          return full;
+        }
+      );
+      return s;
+    };
 
     const buildFallbackReport = () => {
       const completed = (sessions || []).filter((s: any) => s.type !== "cancelled").length;
@@ -1077,7 +1118,7 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
           : [];
 
       const timelineItems = (sessions || []).map((s: any) => {
-        const raw = (s.rawNote || "").trim();
+        const raw = cleanStutteredReportText((s.rawNote || "").trim());
         return {
           sessionId: s.id,
           phaseTitle: "",
@@ -1129,19 +1170,21 @@ Lütfen bu şablona sadık kal ve lafı uzatmadan doğrudan bilgiye odaklan.`;
         sessionNumber: s.sessionNumber || idx + 1,
         date: s.formattedDate || s.date,
         type: s.type === "face-to-face" ? "Yüz Yüze" : s.type === "cancelled" ? "İptal" : "Online",
-        sessionNote: String(s.rawNote || "").trim()
+        sessionNote: cleanStutteredReportText(String(s.rawNote || "").trim())
       }));
 
-      const prompt = `Minimalist, sade ve anlaşılır bir "Danışan Süreç ve İlerleme Raporu" hazırlayan klinik asistansın.
+      const prompt = `Minimalist, sade ve anlaşılır bir "Danışan Süreç ve İlerleme Raporu" hazırlayan uzman klinik editörsün.
 Aşağıda "${clientName}" adlı danışanın YALNIZCA not bulunan seansları ("sessionNote") yer almaktadır.
 
-KESİN YAZIM KURALLARI:
-1. SADE VE TEKRARSIZ DİL: Metinlerde kesinlikle "takvim notuna göre", "takvim etkinlik kaydına göre", "online seans kapsamında", "50 dakikalık görüşmede" veya "X. seansta" gibi tekrar eden kalıp ibareler KULLANMA.
-2. PSİKOLOG ADI VE ÜNVANI YASAĞI: Metinlerin ("executiveSummary", "formattedReportNote", "recommendations") içinde kesinlikle psikolog adını, klinik adını veya "Uzman Psikolog & Aile Danışmanı" ünvanını YAZMA.
-3. BAŞLIKLAR ("phaseTitle"): Başlığın başına "1. Seans •" gibi numara EKLEME. Doğrudan o görüşmenin notundaki odağı anlatan 2-4 kelimelik yalın bir başlık yaz.
-4. SEANS METNİ ("formattedReportNote"): Nottaki bilgileri hiçbir detayı atlamadan, doğrudan akıcı, yalın ve profesyonel 1-3 cümlelik bir paragrafa dönüştür. Notta olmayan hayali veya kalıp cümleler EKLEME.
-5. "executiveSummary": Danışanın genel sürecini özetleyen, net ve anlaşılır 2-3 cümlelik tek bir değerlendirme paragrafı yaz.
-6. "keyThemes": Süreçte çalışılan 3-4 kısa odak başlığı (her biri 2-3 kelime).
+KESİN YAZIM VE DİL KURALLARI:
+1. İMLA, YAZIM VE CÜMLE DÜŞÜKLÜĞÜ DÜZELTME:
+   - Notlardaki tüm yazım yanlışlarını, bitişik/ayrık yazılmış kelimeleri, "A anne" gibi klavye sürçmelerini (bunları kesinlikle "A." diye kısaltma yapma, fazladan harfi silerek "Anne" / "Annesi" olarak düzelt), cümle düşüklüklerini (anlatım bozukluklarını), devrik/kopuk ifadeleri ve noktalama hatalarını tamamen düzelt.
+2. SADE VE TEKRARSIZ DİL: Metinlerde kesinlikle "takvim notuna göre", "takvim etkinlik kaydına göre", "online seans kapsamında", "50 dakikalık görüşmede" veya "X. seansta" gibi tekrar eden kalıp ibareler KULLANMA.
+3. PSİKOLOG ADI VE ÜNVANI YASAĞI: Metinlerin ("executiveSummary", "formattedReportNote", "recommendations") içinde kesinlikle psikolog adını, klinik adını veya "Uzman Psikolog & Aile Danışmanı" ünvanını YAZMA.
+4. BAŞLIKLAR ("phaseTitle"): Başlığın başına "1. Seans •" gibi numara EKLEME ve kesinlikle "Süreç Değerlendirmesi" gibi genel başlıklar KULLANMA. Doğrudan o görüşmenin notundaki spesifik konuyu anlatan 2-4 kelimelik özgün bir başlık yaz.
+5. SEANS METNİ ("formattedReportNote"): Nottaki bilgileri hiçbir detayı atlamadan, cümle düşüklüklerini gidererek doğrudan akıcı, kurallı, yalın ve profesyonel 1-3 cümlelik bir paragrafa dönüştür. Notta olmayan hayali olaylar EKLEME.
+6. "executiveSummary": Danışanın genel sürecini özetleyen, net ve anlaşılır 2-3 cümlelik tek bir değerlendirme paragrafı yaz.
+7. "keyThemes": Süreçte çalışılan 3-4 kısa odak başlığı (her biri 2-3 kelime).
 
 DANIŞAN ÖZETİ:
 - Danışan: ${clientName}
@@ -1175,7 +1218,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                 sessionId: { type: Type.STRING },
                 phaseTitle: {
                   type: Type.STRING,
-                  description: "Seans numarası içermeyen, 2-4 kelimelik yalın odak başlığı."
+                  description: "Seans numarası ve 'Süreç Değerlendirmesi' içermeyen, 2-4 kelimelik nota özel odak başlığı."
                 },
                 progressBadge: {
                   type: Type.STRING,
@@ -1183,7 +1226,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
                 },
                 formattedReportNote: {
                   type: Type.STRING,
-                  description: "Tekrarsız, doğrudan notu aktaran 1-3 cümlelik seans değerlendirme notu."
+                  description: "İmla, yazım ('A anne' vb.) ve cümle düşüklüğü hataları giderilmiş, doğrudan notu aktaran 1-3 cümlelik akıcı seans değerlendirme notu."
                 },
                 keyTakeaway: {
                   type: Type.STRING,
@@ -1201,26 +1244,34 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         required: ["reportTitle", "executiveSummary", "keyThemes", "timelineItems", "recommendations"]
       };
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema
-          }
-        });
-      } catch (err0: any) {
-        console.warn("gemini-3-flash-preview failed for client-progress-report, trying gemini-3.8-flash:", err0?.message);
-        response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema
-          }
-        });
+      const candidateModels = [
+        "gemini-3-flash-preview",
+        "gemini-flash-latest",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite"
+      ];
+
+      let response: any = null;
+      let lastErr: any = null;
+      for (const m of candidateModels) {
+        try {
+          response = await ai.models.generateContent({
+            model: m,
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+          if (response && response.text) break;
+        } catch (errModel: any) {
+          lastErr = errModel;
+          console.warn(`Model ${m} failed for client-progress-report:`, errModel?.message);
+        }
+      }
+
+      if (!response || !response.text) {
+        throw lastErr || new Error("All Gemini models failed for client-progress-report");
       }
 
       const parsed = JSON.parse(response.text || "{}");
@@ -1247,7 +1298,7 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       });
 
       const mergedTimelineItems = sessions.map((s: any) => {
-        const raw = String(s.rawNote || "").trim();
+        const raw = cleanStutteredReportText(String(s.rawNote || "").trim());
         if (!raw) {
           return {
             sessionId: s.id,
@@ -1260,10 +1311,13 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
         const aiItem =
           aiMapById.get(String(s.id || "").trim()) ||
           aiMapByDate.get(String(s.formattedDate || s.date || ""));
-        const aiFormatted = String(aiItem?.formattedReportNote || "").trim();
+        const aiFormatted = cleanStutteredReportText(String(aiItem?.formattedReportNote || "").trim());
+        const aiTitle = String(aiItem?.phaseTitle || "")
+          .replace(/^(süreç değerlendirmesi|genel değerlendirme|seans değerlendirmesi|seans notu|görüşme notu)$/i, "")
+          .trim();
         return {
           sessionId: s.id,
-          phaseTitle: String(aiItem?.phaseTitle || "").trim(),
+          phaseTitle: aiTitle,
           progressBadge: String(aiItem?.progressBadge || "").trim(),
           formattedReportNote: aiFormatted || raw,
           keyTakeaway: ""
@@ -1280,12 +1334,23 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
     }
   });
 
-  // API Route for Single-Note AI Proofreading & Grammar/Spelling Correction (supports both GET query & POST body to survive 302 auth redirects)
-  app.all("/api/gemini/proofread-note", async (req, res) => {
+  // API Route for Single-Note AI Proofreading & Grammar/Spelling/Sentence-Structure Correction
+  // Supports GET query params, POST application/json, and POST text/plain (CORS-safelisted)
+  app.all("/api/gemini/proofread-note", express.text({ type: "*/*", limit: "5mb" }), async (req, res) => {
+    let parsedBody: any = {};
+    if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
+      parsedBody = req.body;
+    } else if (typeof req.body === "string" && req.body.trim().startsWith("{")) {
+      try {
+        parsedBody = JSON.parse(req.body);
+      } catch (e) {}
+    }
+
     const source: any =
-      req.body && typeof req.body === "object" && Object.keys(req.body).length > 0
-        ? req.body
+      parsedBody && Object.keys(parsedBody).length > 0
+        ? parsedBody
         : req.query || {};
+
     const {
       text = "",
       phaseTitle = "",
@@ -1293,14 +1358,49 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
       sessionDate = "",
       mode = "session_note"
     } = source;
-    const rawText = String(text || "").trim();
+
+    // Pre-clean obvious stuttered single-letter typos like "A anne", "a anne", "A., anne", "B baba", "d danışan"
+    const cleanStutteredTypos = (input: string): string => {
+      if (!input) return "";
+      let s = String(input);
+      // Fix "A., anne" or "A, anne" or "A anne" / "a anne" -> "Anne" / "anne"
+      s = s.replace(/\b[Aa][.,]?\s+(anne[a-zçğıöşü]*)\b/g, (match, word) => {
+        const first = match.trim().charAt(0);
+        const isUpper = first === "A";
+        return isUpper ? "A" + word.slice(1) : word;
+      });
+      // Fix any single letter followed by space and a word starting with the same letter (e.g., "B bugün" -> "Bugün", "d danışan" -> "danışan", "k kaygı" -> "kaygı")
+      s = s.replace(
+        /(^|[\s(.,;:"'“‘\-–—])([a-zçğıöşüA-ZÇĞİÖŞÜ])[.,]?\s+([a-zçğıöşüA-ZÇĞİÖŞÜ]{3,})\b/gu,
+        (full, prefix, singleCh, nextWord) => {
+          const sLower = singleCh.toLocaleLowerCase("tr-TR");
+          const wLower = nextWord.charAt(0).toLocaleLowerCase("tr-TR");
+          // Same starting letter stutter (e.g. "A anne", "g görüşme", "s seans") OR standalone "A"/"a" before a lowercase word
+          if (sLower === wLower || ((singleCh === "A" || singleCh === "a") && nextWord.charAt(0) === nextWord.charAt(0).toLocaleLowerCase("tr-TR"))) {
+            const isUpper =
+              singleCh === singleCh.toLocaleUpperCase("tr-TR") &&
+              singleCh !== singleCh.toLocaleLowerCase("tr-TR");
+            if (isUpper) {
+              const firstW = nextWord.charAt(0);
+              const upW = firstW === "i" ? "İ" : firstW === "ı" ? "I" : firstW.toLocaleUpperCase("tr-TR");
+              return `${prefix}${upW}${nextWord.slice(1)}`;
+            }
+            return `${prefix}${nextWord}`;
+          }
+          return full;
+        }
+      );
+      return s;
+    };
+
+    const rawText = cleanStutteredTypos(String(text || "").trim());
     const rawTitle = String(phaseTitle || "")
-      .replace(/^Süreç Değerlendirmesi$/i, "")
+      .replace(/^(süreç değerlendirmesi|genel değerlendirme|seans değerlendirmesi|seans notu|görüşme notu)$/i, "")
       .trim();
 
     const localTurkishCleanup = (input: string): string => {
       if (!input) return "";
-      let s = input
+      let s = cleanStutteredTypos(input)
         .replace(/[ \t]+/g, " ")
         .replace(/\s+([.,!?;:])/g, "$1")
         .replace(/([.,!?;:])(?=[^\s.,!?;:\d])/g, "$1 ")
@@ -1320,14 +1420,15 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
     };
 
     if (!rawText) {
-      return res.json({ correctedText: "", correctedTitle: rawTitle });
+      return res.json({ correctedText: "", correctedTitle: rawTitle, usedAi: false });
     }
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (!apiKey) {
       return res.json({
         correctedText: localTurkishCleanup(rawText),
-        correctedTitle: rawTitle
+        correctedTitle: rawTitle,
+        usedAi: false
       });
     }
 
@@ -1343,21 +1444,29 @@ ${JSON.stringify(sessionDataForPrompt, null, 2)}`;
 
       const systemInstruction =
         mode === "summary"
-          ? `Sen uzman bir Türkçe klinik metin ve imla editörüsün. Verilen değerlendirme/öneri metninin anlamını ve içeriğini değiştirmeden yanlış yazılmış kelimeleri, bitişik yazılmış kelimeleri, harf sürçmelerini, Türkçe karakter eksikliklerini, büyük-küçük harf uyumunu ve noktalama işaretlerini düzelt. Kesinlikle psikolog adı veya ünvanı ekleme.`
-          : `Sen uzman bir Türkçe klinik metin ve imla editörüsün.
-GÖREVİN: Verilen psikolojik danışmanlık seans notunun anlamını, klinik detaylarını ve bilgi içeriğini HİÇBİR ŞEKİLDE değiştirmeden veya eksiltmeden; yanlış yazılmış kelimeleri (typoları, harf yer değiştirmelerini, bitişik yazılmış kelimeleri, eksik harfleri), eksik Türkçe karakterleri (ç, ğ, ı, İ, ö, ş, ü), noktalama işaretlerini, cümle başı büyük harf uyumunu ve devrik/düşük ifadeleri düzelterek Türk Dil Kurumu (TDK) kurallarına uygun, profesyonel ve akıcı bir Türkçe metne dönüştürmek.
+          ? `Sen uzman bir Türkçe klinik metin ve dil editörüsün. Verilen değerlendirme/öneri metnindeki tüm yazım yanlışlarını, bitişik/ayrık yazım hatalarını, "A anne" gibi klavye sürçmelerini, cümle düşüklüklerini (anlatım bozukluklarını), ek eksikliklerini, Türkçe karakter eksikliklerini ve noktalama hatalarını düzelterek akıcı, kurallı ve profesyonel bir Türkçe metin haline getir. Kesinlikle psikolog adı veya ünvanı ekleme.`
+          : `Sen uzman bir Türkçe klinik metin, imla ve anlatım bozukluğu editörüsün.
+GÖREVİN: Verilen psikolojik danışmanlık seans notundaki TÜM yazım hatalarını, harf/klavye sürçmelerini, cümle düşüklüklerini (anlatım bozukluklarını), devrik/kopuk ifadeleri ve noktalama eksikliklerini kapsamlı biçimde düzelterek, notu Türk Dil Kurumu (TDK) kurallarına uygun, kurallı, akıcı ve profesyonel bir Türkçe klinik seans notuna dönüştürmek.
 
-KESİN KURALLAR:
-1. KELİME DÜZELTME: Yanlış yazılmış, harfi eksik/fazla veya bitişik yazılmış tüm kelimeleri (ör. "kelimeyanlış" -> "kelime yanlış", "göürşme" -> "görüşme", "yerindki" -> "yerindeki", "konustk" -> "konuştuk") doğru Türkçe yazılışlarıyla düzelt.
-2. İÇERİK KORUMA: Notta bulunmayan hiçbir hayali bilgi, yorum veya kalıp ifade ("bu seansta", "takvim notuna göre", "online görüşmede", psikolog adı/ünvanı vb.) EKLEME. Nottaki hiçbir klinik detayı SİLME.
-3. NOTA ÖZEL BAŞLIK ("correctedTitle"): Kesinlikle "Süreç Değerlendirmesi", "Seans Notu", "Görüşme Değerlendirmesi" gibi genel/standart başlıklar KULLANMA. Doğrudan bu notta konuşulan spesifik konuyu özetleyen, seans numarası içermeyen 2-4 kelimelik özgün bir başlık üret (ör. "Kaygı ve Uyku Düzeni", "Aile İçi İletişim", "İş Stresi ve Sınırlar", "Özgüven ve Öz Şefkat").`;
+KESİN DÜZELTME KURALLARI:
+1. KLAVYE SÜRÇMELERİ VE KOPUK HARFLER ("A anne" vb.):
+   - Kelimelerin önünde veya arasında yanlışlıkla yazılmış tek harfleri, mükerrer baş harfleri veya kopuk heceleri (örneğin "A anne" -> "Anne" veya "Annesi", "a anne" -> "anne", "B baba" -> "Baba", "d danışan" -> "danışan", "A., anne" -> "Annesi") KESİNLİKLE bir kişi adı kısaltması ("A.") sanma. Bunlar yazım hatasıdır; fazladan harfi tamamen kaldır ve kelimeyi doğru bağlamda yaz.
+2. CÜMLE DÜŞÜKLÜĞÜ VE ANLATIM BOZUKLUĞU DÜZELTME:
+   - Hızlı not alınırken oluşmuş düşük cümleleri, yarım bırakılmış ifadeleri, özne-yüklem uyumsuzluklarını, eksik hal/iyelik/tamlama eklerini ve ardışık fiil tekrarlarını (ör. "... söyledi konuştu", "... zorlanıyor anlattı", "anne ile sınır koyma zorlanıyor") düzelt.
+   - Kopuk veya telgraf tarzı notları, nottaki gerçek bilgileri koruyarak dilbilgisi açısından tam, kurallı ve akıcı Türkçe cümlelere dönüştür.
+3. YANLIŞ VE BİTİŞİK YAZILMIŞ KELİMELER:
+   - Yanlış yazılmış, harfi eksik/fazla/yer değiştirmiş veya bitişik yazılmış tüm kelimeleri (ör. "kelimeyanlış" -> "kelime yanlış", "göürşme" -> "görüşme", "yerindki" -> "yerindeki", "konustk" -> "konuştuk") ve eksik Türkçe karakterleri (ç, ğ, ı, İ, ö, ş, ü) düzelt.
+4. GERÇEK İÇERİĞE SADAKAT:
+   - Notta yer almayan hayali bir olay uydurma; "takvim notuna göre", "50 dakikalık görüşmede" veya psikolog adı/ünvanı gibi kalıp ifadeler ekleme.
+5. NOTA ÖZEL BAŞLIK ("correctedTitle"):
+   - Kesinlikle "Süreç Değerlendirmesi", "Seans Notu", "Görüşme Değerlendirmesi" gibi genel başlıklar KULLANMA. Doğrudan bu notta işlenen spesifik konuyu özetleyen 2-4 kelimelik özgün bir odak başlığı üret (ör. "Anne ile Sınır Koyma", "Kaygı ve Nefes Egzersizi", "Aile İçi İletişim", "İş Stresi ve Öz Değer").`;
 
       const prompt =
         mode === "summary"
-          ? `Düzeltilecek Metin:\n${rawText}`
+          ? `Aşağıdaki metnin imla, yazım ve cümle düşüklüğü hatalarını düzelt:\n${rawText}`
           : `Danışan: ${clientName || "Danışan"}
 Tarih: ${sessionDate || "-"}
-Düzeltilecek Seans Notu:
+Düzeltilecek Ham Seans Notu:
 ${rawText}`;
 
       const responseSchema = {
@@ -1365,7 +1474,7 @@ ${rawText}`;
         properties: {
           correctedText: {
             type: Type.STRING,
-            description: "Yanlış yazılmış kelimeleri, imla, büyük harf ve noktalama hataları düzeltilmiş, anlamı ve detayları korunmuş Türkçe metin."
+            description: "Klavye sürçmeleri ('A anne' vb.), yanlış yazılmış kelimeler, cümle düşüklükleri (anlatım bozuklukları), büyük harf ve noktalama hataları tamamen düzeltilmiş, akıcı ve kurallı Türkçe metin."
           },
           correctedTitle: {
             type: Type.STRING,
@@ -1375,48 +1484,58 @@ ${rawText}`;
         required: ["correctedText", "correctedTitle"]
       };
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema
+      const candidateModels = [
+        "gemini-3-flash-preview",
+        "gemini-flash-latest",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite"
+      ];
+
+      let response: any = null;
+      let lastModelErr: any = null;
+      for (const modelName of candidateModels) {
+        try {
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema
+            }
+          });
+          if (response && response.text) {
+            break;
           }
-        });
-      } catch (err0: any) {
-        console.warn("gemini-3-flash-preview failed for proofread-note, retrying once:", err0?.message);
-        await new Promise((r) => setTimeout(r, 400));
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema
-          }
-        });
+        } catch (errModel: any) {
+          lastModelErr = errModel;
+          console.warn(`Model ${modelName} failed for proofread-note:`, errModel?.message || errModel);
+        }
+      }
+
+      if (!response || !response.text) {
+        throw lastModelErr || new Error("All Gemini models failed for proofread-note");
       }
 
       const rawJson = (response.text || "{}").replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
       const parsed = JSON.parse(rawJson || "{}");
-      const correctedText = String(parsed?.correctedText || "").trim() || localTurkishCleanup(rawText);
+      const correctedText = localTurkishCleanup(String(parsed?.correctedText || "").trim() || rawText);
       const correctedTitle = String(parsed?.correctedTitle || "")
-        .replace(/^Süreç Değerlendirmesi$/i, "")
+        .replace(/^(süreç değerlendirmesi|genel değerlendirme|seans değerlendirmesi|seans notu|görüşme notu)$/i, "")
         .trim() || rawTitle;
 
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       return res.json({
         correctedText,
-        correctedTitle
+        correctedTitle,
+        usedAi: true
       });
     } catch (error: any) {
       console.error("Single-note AI proofread error, using local cleanup:", error);
       return res.json({
         correctedText: localTurkishCleanup(rawText),
-        correctedTitle: rawTitle
+        correctedTitle: rawTitle,
+        usedAi: false
       });
     }
   });
