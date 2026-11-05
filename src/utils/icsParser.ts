@@ -1,6 +1,7 @@
-import { Session, SessionType, ClosedMonthRecord } from '../types';
+import { Session, SessionType, ClosedMonthRecord, getNormalizedClientName } from '../types';
 import { formatLocalDate, getTodayLocalDate } from './dateUtils';
 import { isDateInClosedMonth } from './monthCloseUtils';
+import { idbGet, idbSet } from './idbStorage';
 
 interface ParsedRrule {
   freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -569,6 +570,9 @@ export function parseICS(
     }
   }
 
+  const localNotesToCache: Record<string, string> = {};
+  let hasAnyLocalNoteToCache = false;
+
   // Process raw events into sessions
   for (const raw of rawEvents) {
     if (raw.statusRaw === 'CANCELLED') continue;
@@ -576,14 +580,6 @@ export function parseICS(
     if (!raw.dtStartRaw) continue;
     const startParsed = parseIcsDateTimeToLocal(raw.dtStartRaw, calTimezone);
     if (!startParsed) continue;
-
-    // Fast-skip non-recurring events outside active window or in closed months
-    if (isInitialCalendarSyncDone && effectiveAccountingStart && !raw.rruleRaw && startParsed.dateStr < effectiveAccountingStart) {
-      continue;
-    }
-    if (!raw.rruleRaw && isDateInClosedMonth(startParsed.dateStr, closedMonths)) {
-      continue;
-    }
 
     const duration = calculateEventDuration(raw.dtStartRaw, raw.dtEndRaw, raw.durationRaw, calTimezone);
 
@@ -671,14 +667,41 @@ export function parseICS(
       ? membershipDate.split('T')[0] 
       : '');
 
+    // Pure clinical note (without generic "Konum: ..." room/platform labels) for local IndexedDB note cache
+    const cleanClinicalNote = (raw.descriptionRaw || raw.noteRaw || '').trim();
+
     for (const occ of occurrences) {
+      // Generate deterministic ID per occurrence
+      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
+      const sessionId = hasRecurrence
+        ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
+        : `ics_${raw.uid}`;
+
+      // Cache clinical notes in local-only IndexedDB BEFORE closed-month or accountingStartDate skipping
+      // so closed months' notes are always available for ClientPdfReportModal!
+      if (cleanClinicalNote) {
+        hasAnyLocalNoteToCache = true;
+        localNotesToCache[sessionId] = cleanClinicalNote;
+        localNotesToCache[`ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`] = cleanClinicalNote;
+        if (!hasRecurrence) {
+          localNotesToCache[`ics_${raw.uid}`] = cleanClinicalNote;
+        }
+        const normClient = getNormalizedClientName(raw.summary || '');
+        if (normClient && occ.dateStr) {
+          localNotesToCache[`client_d:${normClient}_${occ.dateStr}`] = cleanClinicalNote;
+          if (occ.timeStr) {
+            localNotesToCache[`client_dt:${normClient}_${occ.dateStr}_${occ.timeStr}`] = cleanClinicalNote;
+          }
+        }
+      }
+
       // 1. If initial calendar sync was already done, NEVER evaluate or import events before accounting start date
       if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) {
         continue;
       }
 
-      // 2. NEVER evaluate or import events in closed / locked months!
-      if (isDateInClosedMonth(occ.dateStr, closedMonths)) {
+      // 2. NEVER evaluate or import events in closed / locked months when closedMonths is provided!
+      if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) {
         continue;
       }
 
@@ -720,13 +743,6 @@ export function parseICS(
         officeRentFeeAmount = 0;
       }
 
-      // Generate deterministic ID per occurrence to prevent duplicate session accumulation
-      // If the event has RRULE, RECURRENCE-ID, or multiple occurrences, always append the occurrence date
-      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
-      const sessionId = hasRecurrence
-        ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
-        : `ics_${raw.uid}`;
-
       const sessionItem: Session = {
         id: sessionId,
         clientName: raw.summary || 'İsimsiz Seans',
@@ -747,6 +763,17 @@ export function parseICS(
 
       sessions.push(sessionItem);
     }
+  }
+
+  if (typeof window !== 'undefined' && hasAnyLocalNoteToCache) {
+    try {
+      idbGet<Record<string, string>>('psycalcu_local_ics_notes')
+        .then(existingMap => {
+          const merged = { ...(existingMap || {}), ...localNotesToCache };
+          return idbSet('psycalcu_local_ics_notes', merged);
+        })
+        .catch(() => {});
+    } catch (e) {}
   }
 
   return sessions;

@@ -2288,15 +2288,15 @@ export default function App() {
     }
   });
 
-  const fetchInstantCalendarNotes = async () => {
+  const fetchInstantCalendarNotes = async (silent = false) => {
     const { onlineCalendarWebcalUrl, faceToFaceCalendarWebcalUrl, calendarSyncEnabled, userRole, ownerCalendars } = settings;
     if (!calendarSyncEnabled) {
-      showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
+      if (!silent) showToast('Takvim senkronizasyonu ayarlardan devre dışı!', 'error');
       return;
     }
     const hasOwnerCalendars = userRole === 'owner' && ownerCalendars && ownerCalendars.length > 0;
     if (!onlineCalendarWebcalUrl && !faceToFaceCalendarWebcalUrl && !hasOwnerCalendars) {
-      showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
+      if (!silent) showToast('Aktif bir takvim bağlantısı bulunamadı.', 'info');
       return;
     }
 
@@ -2351,10 +2351,12 @@ export default function App() {
       const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
       safeStorage.setItem(key, 'true', user?.uid);
     } catch (e) {}
-    if (fetchedAny) {
-      showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
-    } else {
-      showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
+    if (!silent) {
+      if (fetchedAny) {
+        showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
+      } else {
+        showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
+      }
     }
   };
 

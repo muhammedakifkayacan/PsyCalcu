@@ -382,7 +382,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
               const candidateKeys = [
                 s.id,
                 baseUid && compactDate ? `ics_${baseUid}_${compactDate}` : '',
-                baseUid ? `ics_${baseUid}` : '',
+                baseUid && s.id === `ics_${baseUid}` ? `ics_${baseUid}` : '',
                 normClient && s.date && s.time ? `client_dt:${normClient}_${s.date}_${s.time}` : '',
                 normClient && s.date ? `client_d:${normClient}_${s.date}` : ''
               ].filter(Boolean);
@@ -425,12 +425,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           console.warn('Could not query targeted client calendar event IDs:', err);
         }
 
-        // 3. Client-side /api/proxy-ical + parseICS fallback (strictly filtered to ONLY this client, never touching tempNotesCache)
-        const resolvedCountSoFar = clientSessions.filter(
-          s => resolveLiveSessionNote(s, activeMap, tempNotesCache).rawNote.trim().length > 0
-        ).length;
-
-        if (calendarUrls.length > 0 && resolvedCountSoFar === 0) {
+        // 3. Client-side /api/proxy-ical + parseICS across ALL months (closedMonths=undefined, accountingStartDate=null)
+        // Strictly filtered to ONLY this client, never touching tempNotesCache
+        if (calendarUrls.length > 0) {
           for (const calUrl of calendarUrls) {
             try {
               const proxyRes = await fetch(`/api/proxy-ical?url=${encodeURIComponent(calUrl)}&_t=${Date.now()}`, {
@@ -465,8 +462,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                       activeMap[`ics_${evBaseUid}_${ev.date.replace(/-/g, '')}`] = cleanedNote;
                       activeMap[`uid:${evBaseUid}_${ev.date}`] = cleanedNote;
                     }
-                    if (!activeMap[`ics_${evBaseUid}`]) activeMap[`ics_${evBaseUid}`] = cleanedNote;
-                    if (!activeMap[`uid:${evBaseUid}`]) activeMap[`uid:${evBaseUid}`] = cleanedNote;
+                    if (ev.id === `ics_${evBaseUid}`) {
+                      if (!activeMap[`ics_${evBaseUid}`]) activeMap[`ics_${evBaseUid}`] = cleanedNote;
+                      if (!activeMap[`uid:${evBaseUid}`]) activeMap[`uid:${evBaseUid}`] = cleanedNote;
+                    }
                   }
                 }
               }
