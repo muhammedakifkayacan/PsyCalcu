@@ -12,6 +12,8 @@ function localTurkishCleanup(input) {
 
   // Capitalize first letter of text and first letter after sentence endings in Turkish
   s = s.replace(/(^|[.!?]\s+|\n\s*)([a-zçğıöşüi])/g, (_, prefix, ch) => {
+    if (ch === "i") return prefix + "İ";
+    if (ch === "ı") return prefix + "I";
     return prefix + ch.toLocaleUpperCase("tr-TR");
   });
 
@@ -35,10 +37,21 @@ export default async function handler(req, res) {
     return;
   }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-  const { text = "", phaseTitle = "", clientName = "", sessionDate = "", mode = "session_note" } = body;
+  let bodyObj = {};
+  if (typeof req.body === "string" && req.body.trim()) {
+    try {
+      bodyObj = JSON.parse(req.body);
+    } catch (e) {}
+  } else if (req.body && typeof req.body === "object") {
+    bodyObj = req.body;
+  }
+
+  const source = Object.keys(bodyObj).length > 0 ? bodyObj : req.query || {};
+  const { text = "", phaseTitle = "", clientName = "", sessionDate = "", mode = "session_note" } = source;
   const rawText = String(text || "").trim();
-  const rawTitle = String(phaseTitle || "").trim();
+  const rawTitle = String(phaseTitle || "")
+    .replace(/^Süreç Değerlendirmesi$/i, "")
+    .trim();
 
   if (!rawText) {
     return res.status(200).json({ correctedText: "", correctedTitle: rawTitle });
@@ -64,22 +77,20 @@ export default async function handler(req, res) {
 
     const systemInstruction =
       mode === "summary"
-        ? `Sen uzman bir Türkçe klinik metin editörüsün. Verilen değerlendirme/öneri metninin anlamını ve içeriğini değiştirmeden yalnızca Türkçe imla, yazım, noktalama, büyük-küçük harf ve anlatım bozukluklarını düzelt. Kesinlikle psikolog adı veya ünvanı ekleme.`
+        ? `Sen uzman bir Türkçe klinik metin ve imla editörüsün. Verilen değerlendirme/öneri metninin anlamını ve içeriğini değiştirmeden yanlış yazılmış kelimeleri, bitişik yazılmış kelimeleri, harf sürçmelerini, Türkçe karakter eksikliklerini, büyük-küçük harf uyumunu ve noktalama işaretlerini düzelt. Kesinlikle psikolog adı veya ünvanı ekleme.`
         : `Sen uzman bir Türkçe klinik metin ve imla editörüsün.
-GÖREVİN: Verilen psikolojik danışmanlık seans notunun anlamını, klinik detaylarını ve bilgi içeriğini HİÇBİR ŞEKİLDE değiştirmeden veya eksiltmeden; yalnızca Türkçe imla, yazım yanlışları, eksik Türkçe karakterler, noktalama işaretleri, cümle başı büyük harf uyumu ve cümle düşüklüklerini düzelterek profesyonel, yalın ve akıcı bir Türkçe metne dönüştürmek.
+GÖREVİN: Verilen psikolojik danışmanlık seans notunun anlamını, klinik detaylarını ve bilgi içeriğini HİÇBİR ŞEKİLDE değiştirmeden veya eksiltmeden; yanlış yazılmış kelimeleri (typoları, harf yer değiştirmelerini, bitişik yazılmış kelimeleri, eksik harfleri), eksik Türkçe karakterleri (ç, ğ, ı, İ, ö, ş, ü), noktalama işaretlerini, cümle başı büyük harf uyumunu ve devrik/düşük ifadeleri düzelterek Türk Dil Kurumu (TDK) kurallarına uygun, profesyonel ve akıcı bir Türkçe metne dönüştürmek.
 
 KESİN KURALLAR:
-1. Notta bulunmayan hiçbir hayali bilgi, yorum veya kalıp ifade ("bu seansta", "takvim notuna göre", "online görüşmede", psikolog adı/ünvanı vb.) EKLEME.
-2. Nottaki hiçbir klinik detayı veya bilgiyi SİLME, atlama.
-3. Cümle başlarını mutlaka BÜYÜK HARFLE başlat, noktalama işaretlerini ve eksik Türkçe harfleri Türk Dil Kurumu (TDK) imla kurallarına uygun biçimde düzelt.
-4. "correctedTitle" alanında, seans numarası içermeyen 2-4 kelimelik sade ve net bir odak başlığı döndür.`;
+1. KELİME DÜZELTME: Yanlış yazılmış, harfi eksik/fazla veya bitişik yazılmış tüm kelimeleri (ör. "kelimeyanlış" -> "kelime yanlış", "göürşme" -> "görüşme", "yerindki" -> "yerindeki", "konustk" -> "konuştuk") doğru Türkçe yazılışlarıyla düzelt.
+2. İÇERİK KORUMA: Notta bulunmayan hiçbir hayali bilgi, yorum veya kalıp ifade ("bu seansta", "takvim notuna göre", "online görüşmede", psikolog adı/ünvanı vb.) EKLEME. Nottaki hiçbir klinik detayı SİLME.
+3. NOTA ÖZEL BAŞLIK ("correctedTitle"): Kesinlikle "Süreç Değerlendirmesi", "Seans Notu", "Görüşme Değerlendirmesi" gibi genel/standart başlıklar KULLANMA. Doğrudan bu notta konuşulan spesifik konuyu özetleyen, seans numarası içermeyen 2-4 kelimelik özgün bir başlık üret (ör. "Kaygı ve Uyku Düzeni", "Aile İçi İletişim", "İş Stresi ve Sınırlar", "Özgüven ve Öz Şefkat").`;
 
     const prompt =
       mode === "summary"
         ? `Düzeltilecek Metin:\n${rawText}`
         : `Danışan: ${clientName || "Danışan"}
 Tarih: ${sessionDate || "-"}
-Mevcut Başlık: ${rawTitle || "(Yok)"}
 Düzeltilecek Seans Notu:
 ${rawText}`;
 
@@ -88,11 +99,11 @@ ${rawText}`;
       properties: {
         correctedText: {
           type: Type.STRING,
-          description: "İmla, yazım, büyük harf ve noktalama hataları düzeltilmiş, anlamı ve detayları korunmuş Türkçe metin."
+          description: "Yanlış yazılmış kelimeleri, imla, büyük harf ve noktalama hataları düzeltilmiş, anlamı ve detayları korunmuş Türkçe metin."
         },
         correctedTitle: {
           type: Type.STRING,
-          description: "Seans numarası içermeyen, 2-4 kelimelik imlası düzgün odak başlığı."
+          description: "Notta işlenen spesifik konuya uygun, 'Süreç Değerlendirmesi' gibi genel ifadeler içermeyen, 2-4 kelimelik özgün odak başlığı."
         }
       },
       required: ["correctedText", "correctedTitle"]
@@ -121,10 +132,14 @@ ${rawText}`;
       });
     }
 
-    const parsed = JSON.parse(response.text || "{}");
+    const rawJson = (response.text || "{}").replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+    const parsed = JSON.parse(rawJson || "{}");
     const correctedText = localTurkishCleanup(String(parsed?.correctedText || "").trim() || rawText);
-    const correctedTitle = String(parsed?.correctedTitle || "").trim() || rawTitle;
+    const correctedTitle = String(parsed?.correctedTitle || "")
+      .replace(/^Süreç Değerlendirmesi$/i, "")
+      .trim() || rawTitle;
 
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     return res.status(200).json({
       correctedText,
       correctedTitle

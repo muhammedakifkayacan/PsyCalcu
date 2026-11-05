@@ -155,11 +155,15 @@ export function resolveLiveSessionNote(
 }
 
 function cleanPhaseTitle(rawTitle: string): string {
-  if (!rawTitle) return 'Süreç Değerlendirmesi';
+  if (!rawTitle || !rawTitle.trim()) return '';
   // Remove leading "1. Seans • ", "Seans 2 - ", "1. Oturum: " etc.
-  return rawTitle
+  const cleaned = rawTitle
     .replace(/^\s*(?:seans|oturum)?\s*\d+\s*\.?\s*(?:seans|oturum)?\s*[•·\-–—:]\s*/i, '')
-    .trim() || rawTitle.trim();
+    .trim();
+  if (/^(süreç değerlendirmesi|genel değerlendirme|seans değerlendirmesi|seans notu|görüşme notu)$/i.test(cleaned)) {
+    return '';
+  }
+  return cleaned;
 }
 
 function cleanReportNote(rawText: string): string {
@@ -819,13 +823,75 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
   };
 
+  // Derive a specific 2-4 word topic title from the note's content when AI title is unavailable
+  const deriveContextualTitleFromNote = (noteText: string): string => {
+    const clean = (noteText || '').trim();
+    if (!clean) return '';
+    const lower = clean.toLocaleLowerCase('tr-TR');
+
+    const topicMatchers: Array<[RegExp, string]> = [
+      [/(ilk görüşme|tanışma|anamnez|öykü alma|başlangıç)/i, 'İlk Görüşme ve Değerlendirme'],
+      [/(uyku|uykusuzluk).*?(nefes|gevşeme)|(nefes|gevşeme).*?(uyku|uykusuzluk)/i, 'Uyku Düzeni ve Nefes Egzersizi'],
+      [/(iş yer|iş hayat|mesai|yönetici|kariyer).*?(sınır|hayır deme)|(sınır koyma|hayır diyebilme)/i, 'Sınır Koyma ve İş Yaşamı'],
+      [/(aile|anne|baba|ebeveyn).*?(suçluluk|iletişim|çatışma)/i, 'Aile İletişimi ve Duygusal Sınırlar'],
+      [/(panik|kaygı|anksiyete|endişe).*?(nefes|beden|baş etme)/i, 'Kaygı Yönetimi ve Baş Etme'],
+      [/(kaygı|anksiyete|endişe|korku|panik)/i, 'Kaygı ve Duygusal Farkındalık'],
+      [/(uyku|uykusuzluk|kabus|rüya)/i, 'Uyku Düzeni ve Rahatlama'],
+      [/(nefes egzersiz|gevşeme|mindfulness|farkındalık egzersiz)/i, 'Nefes ve Regülasyon Çalışması'],
+      [/(öfke|sinir|tahammül|gerginlik|dürtü)/i, 'Öfke Kontrolü ve Duygu Düzenleme'],
+      [/(eş|partner|evlilik|ilişki|ayrılık|kıskançlık)/i, 'İlişki Dinamikleri ve İletişim'],
+      [/(aile|anne|baba|kardeş|ebeveyn)/i, 'Aile İlişkileri ve Etkileşim'],
+      [/(çocuk|okul|sınav|ders|akran|dikkat|oyun)/i, 'Okul Uyumu ve Gelişim Takibi'],
+      [/(iş|kariyer|meslek|performans|erteleme|motivasyon)/i, 'Motivasyon ve Günlük İşlevsellik'],
+      [/(özgüven|öz değer|yetersizlik|değersizlik|suçluluk)/i, 'Öz Değer ve Bilişsel Çerçeveleme'],
+      [/(yas|kayıp|travma|geçmiş)/i, 'Kayıp Süreci ve Duygusal İşleme'],
+      [/(ödev|egzersiz|uygulama|günlük takip)/i, 'Ev Çalışması ve Davranışsal Takip'],
+      [/(düşünce|bilişsel|şema|inanç)/i, 'Bilişsel Değerlendirme ve Farkındalık']
+    ];
+
+    for (const [regex, title] of topicMatchers) {
+      if (regex.test(lower)) {
+        return title;
+      }
+    }
+
+    // Extract 2-4 meaningful words from the first clause if no preset topic matched
+    const stopWords = new Set([
+      'bugün', 'dün', 'yarın', 'bu', 'bir', 've', 'ile', 'için', 'çok', 'daha', 'gibi', 'kadar',
+      'sonra', 'önce', 'olarak', 'olan', 'oldu', 'olduğu', 'üzerine', 'üzerinde', 'hakkında',
+      'danışan', 'danışanın', 'danışanla', 'danışana', 'seansta', 'görüşmede', 'oturumda',
+      'konuştuk', 'konuşuldu', 'değerlendirildi', 'çalışıldı', 'yapıldı', 'paylaştı', 'anlattı',
+      'söyledi', 'belirtti', 'ifade', 'etti', 'edildi', 'gözlemlendi', 'ele', 'alındı'
+    ]);
+
+    const firstSentence = clean.split(/[.!?\n]/)[0] || clean;
+    const words = firstSentence
+      .replace(/[^\p{L}\s]/gu, ' ')
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length >= 3 && !stopWords.has(w.toLocaleLowerCase('tr-TR')));
+
+    if (words.length >= 2) {
+      return words
+        .slice(0, 3)
+        .map(w => {
+          const first = w.charAt(0);
+          const up = first === 'i' ? 'İ' : first === 'ı' ? 'I' : first.toLocaleUpperCase('tr-TR');
+          return up + w.slice(1).toLocaleLowerCase('tr-TR');
+        })
+        .join(' ');
+    }
+
+    return 'Görüşme Odak Notu';
+  };
+
   // Comprehensive Turkish orthography, sentence capitalization, punctuation & clinical spelling normalizer
   const correctTurkishNoteOrthography = (
     rawInput: string,
     rawTitleInput = ''
   ): { correctedText: string; correctedTitle: string } => {
     if (!rawInput || !rawInput.trim()) {
-      return { correctedText: '', correctedTitle: rawTitleInput.trim() };
+      return { correctedText: '', correctedTitle: cleanPhaseTitle(rawTitleInput) };
     }
 
     const turkishUpperChar = (ch: string): string => {
@@ -835,6 +901,70 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     };
 
     const wordReplacements: Array<[RegExp, string]> = [
+      // Common merged words & compound spacing fixes
+      [/\bkelimeyanlış\b/gi, 'kelime yanlış'],
+      [/\bkelimeyanlis\b/gi, 'kelime yanlış'],
+      [/\bbirşey\b/gi, 'bir şey'],
+      [/\bbirsey\b/gi, 'bir şey'],
+      [/\bbirşeyler\b/gi, 'bir şeyler'],
+      [/\bherşey\b/gi, 'her şey'],
+      [/\bhersey\b/gi, 'her şey'],
+      [/\bhiçbirşey\b/gi, 'hiçbir şey'],
+      [/\bhicbirsey\b/gi, 'hiçbir şey'],
+      [/\bpekçok\b/gi, 'pek çok'],
+      [/\bpekcok\b/gi, 'pek çok'],
+      [/\bbirçok\b/gi, 'birçok'],
+      [/\bbircok\b/gi, 'birçok'],
+      [/\bhiçbir\b/gi, 'hiçbir'],
+      [/\bhicbir\b/gi, 'hiçbir'],
+      [/\bherhangi\s+birşey\b/gi, 'herhangi bir şey'],
+      [/\bfarkettim\b/gi, 'fark ettim'],
+      [/\bfarketti\b/gi, 'fark etti'],
+      [/\bfarkedildi\b/gi, 'fark edildi'],
+      [/\bfarketmek\b/gi, 'fark etmek'],
+      [/\bbaşetme\b/gi, 'baş etme'],
+      [/\bbasetme\b/gi, 'baş etme'],
+      [/\bbaşetmek\b/gi, 'baş etmek'],
+      [/\bdevametti\b/gi, 'devam etti'],
+      [/\bdevamediyor\b/gi, 'devam ediyor'],
+      [/\byanısıra\b/gi, 'yanı sıra'],
+      // Common letter transpositions & missing vowels in Turkish clinical notes
+      [/\bgöürşme\b/gi, 'görüşme'],
+      [/\bgöürşmede\b/gi, 'görüşmede'],
+      [/\bgöürştük\b/gi, 'görüştük'],
+      [/\bgöürşüldü\b/gi, 'görüşüldü'],
+      [/\byerindki\b/gi, 'yerindeki'],
+      [/\bsüreçtki\b/gi, 'süreçteki'],
+      [/\bevdeki\b/gi, 'evdeki'],
+      [/\bişyerindeki\b/gi, 'iş yerindeki'],
+      [/\bişyerinde\b/gi, 'iş yerinde'],
+      [/\bkonşutuk\b/gi, 'konuştuk'],
+      [/\bkonşuuldu\b/gi, 'konuşuldu'],
+      [/\bdanıaşn\b/gi, 'danışan'],
+      [/\bdanıaşnın\b/gi, 'danışanın'],
+      [/\bdanıaşnla\b/gi, 'danışanla'],
+      [/\bdeğrelendirme\b/gi, 'değerlendirme'],
+      [/\bdeğrelendirildi\b/gi, 'değerlendirildi'],
+      [/\bdüüşnce\b/gi, 'düşünce'],
+      [/\bdüüşnceler\b/gi, 'düşünceler'],
+      [/\bduyug\b/gi, 'duygu'],
+      [/\bduyuglar\b/gi, 'duygular'],
+      [/\bileitşim\b/gi, 'iletişim'],
+      [/\bçalışam\b/gi, 'çalışma'],
+      [/\byanlş\b/gi, 'yanlış'],
+      [/\byalnış\b/gi, 'yanlış'],
+      [/\byalnis\b/gi, 'yanlış'],
+      [/\byanlis\b/gi, 'yanlış'],
+      [/\byalnız\b/gi, 'yalnız'],
+      [/\byalniz\b/gi, 'yalnız'],
+      [/\byanlız\b/gi, 'yalnız'],
+      [/\bherkez\b/gi, 'herkes'],
+      [/\bpsikolji\b/gi, 'psikoloji'],
+      [/\bpsikoljik\b/gi, 'psikolojik'],
+      [/\banksiyte\b/gi, 'anksiyete'],
+      [/\begzerszi\b/gi, 'egzersizi'],
+      [/\begzersz\b/gi, 'egzersiz'],
+      // Missing Turkish diacritics
       [/\bbugun\b/gi, 'bugün'],
       [/\bdun\b/gi, 'dün'],
       [/\byarin\b/gi, 'yarın'],
@@ -962,6 +1092,9 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     const correctedText = lines.join('\n');
 
     let correctedTitle = cleanPhaseTitle(rawTitleInput || '');
+    if (!correctedTitle) {
+      correctedTitle = deriveContextualTitleFromNote(correctedText);
+    }
     if (correctedTitle) {
       correctedTitle = correctedTitle
         .split(/\s+/)
@@ -991,14 +1124,23 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     try {
       let aiText = '';
       let aiTitle = '';
+      const cleanCurrentTitle = cleanPhaseTitle(currentTitleText);
 
       try {
-        const res = await fetch('/api/gemini/proofread-note', {
+        const queryParams = new URLSearchParams({
+          text: trimmed,
+          phaseTitle: cleanCurrentTitle,
+          clientName: displayTitle,
+          sessionDate: sessionDate || '',
+          mode: 'session_note'
+        });
+
+        const res = await fetch(`/api/gemini/proofread-note?${queryParams.toString()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text: trimmed,
-            phaseTitle: currentTitleText,
+            phaseTitle: cleanCurrentTitle,
             clientName: displayTitle,
             sessionDate,
             mode: 'session_note'
@@ -1009,7 +1151,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           aiText = String(data?.correctedText || '').trim();
-          aiTitle = String(data?.correctedTitle || '').trim();
+          aiTitle = cleanPhaseTitle(String(data?.correctedTitle || '').trim());
         }
       } catch (networkErr) {
         console.warn('AI proofread endpoint fallback to local Turkish orthography:', networkErr);
@@ -1018,7 +1160,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       // Always pass through Turkish orthography & sentence capitalization fixer so capital letters and punctuation are 100% guaranteed
       const { correctedText, correctedTitle } = correctTurkishNoteOrthography(
         aiText || trimmed,
-        aiTitle || currentTitleText
+        aiTitle || cleanCurrentTitle
       );
 
       // Ensure visible step progression when running one-by-one
@@ -1043,7 +1185,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                 ? {
                     ...t,
                     formattedReportNote: finalTextToApply,
-                    phaseTitle: correctedTitle || t.phaseTitle
+                    phaseTitle: correctedTitle || cleanPhaseTitle(t.phaseTitle)
                   }
                 : t
             )
@@ -1062,7 +1204,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
       setProofreadCompletedIds(prev => ({ ...prev, [sessionId]: true }));
       if (!silentToast && showToast) {
-        showToast('Seans notunun imla ve yazımı düzeltildi.', 'success');
+        showToast('Seans notunun imla, yazım ve başlığı düzenlendi.', 'success');
       }
       return true;
     } catch (err) {
@@ -1101,7 +1243,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         const item = sessionsWithNotes[i];
         setProofreadProgress({ current: i + 1, total: sessionsWithNotes.length });
         const currentNote = (item.aiItem.formattedReportNote || item.rawNote || '').trim();
-        const currentTitle = (item.aiItem.phaseTitle || '').trim();
+        const currentTitle = cleanPhaseTitle(item.aiItem.phaseTitle || '');
         const ok = await handleProofreadSingleNote(
           item.session.id,
           currentNote,
@@ -1117,7 +1259,12 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         try {
           const rawExec = aiReport.executiveSummary.trim();
           let aiExec = '';
-          const execRes = await fetch('/api/gemini/proofread-note', {
+          const execQuery = new URLSearchParams({
+            text: rawExec,
+            clientName: displayTitle,
+            mode: 'summary'
+          });
+          const execRes = await fetch(`/api/gemini/proofread-note?${execQuery.toString()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1146,7 +1293,12 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         try {
           const rawRec = aiReport.recommendations.trim();
           let aiRec = '';
-          const recRes = await fetch('/api/gemini/proofread-note', {
+          const recQuery = new URLSearchParams({
+            text: rawRec,
+            clientName: displayTitle,
+            mode: 'summary'
+          });
+          const recRes = await fetch(`/api/gemini/proofread-note?${recQuery.toString()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
