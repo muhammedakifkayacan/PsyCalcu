@@ -66,26 +66,72 @@ export function getLedgerKeysForSession(s: Pick<Session, 'id' | 'clientName' | '
   return keys;
 }
 
+export function isMeaningfulLedgerEntry(entry?: Partial<AccountingLedgerEntry> | Session | null): boolean {
+  if (!entry) return false;
+  const hasRealPayment =
+    ((entry.paymentStatus === 'paid' || entry.paymentStatus === 'partial') && (Number(entry.price) || 0) > 0) ||
+    (Number(entry.paidAmount) || 0) > 0;
+  return Boolean(hasRealPayment || entry.isManuallyEdited);
+}
+
 export function updateLocalAccountingLedger(
   userId: string | undefined,
   sessions: Session[],
-  remoteLedger?: Record<string, AccountingLedgerEntry>
+  remoteLedger?: Record<string, AccountingLedgerEntry>,
+  allowUnpaidOverwrite: boolean = false
 ): Record<string, AccountingLedgerEntry> {
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
-  let mergedLedger: Record<string, AccountingLedgerEntry> = {};
+  const rawLoadedLedger: Record<string, AccountingLedgerEntry> = {};
 
   try {
-    const rawLocal = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
-    if (rawLocal) {
-      mergedLedger = JSON.parse(rawLocal) || {};
+    if (typeof window !== 'undefined') {
+      const rawGlobal = localStorage.getItem('psycalcu_accounting_ledger');
+      if (rawGlobal) {
+        Object.assign(rawLoadedLedger, JSON.parse(rawGlobal) || {});
+      }
+      if (userId) {
+        const rawUser = localStorage.getItem(storageKey);
+        if (rawUser) {
+          Object.assign(rawLoadedLedger, JSON.parse(rawUser) || {});
+        }
+      }
     }
   } catch (e) {}
 
+  // Filter out 0-TL auto-zeroed historical entries so the ledger stays tiny and fast
+  const mergedLedger: Record<string, AccountingLedgerEntry> = {};
+  for (const [k, entry] of Object.entries(rawLoadedLedger)) {
+    if (isMeaningfulLedgerEntry(entry)) {
+      mergedLedger[k] = entry;
+    }
+  }
+
   if (remoteLedger && typeof remoteLedger === 'object') {
     for (const [k, entry] of Object.entries(remoteLedger)) {
-      if (!entry) continue;
+      if (!isMeaningfulLedgerEntry(entry)) continue;
       const existing = mergedLedger[k];
-      if (!existing || (entry.updatedAt || 0) > (existing.updatedAt || 0) || (entry.paymentStatus === 'paid' && existing.paymentStatus !== 'paid' && !existing.isManuallyEdited)) {
+      if (!existing) {
+        mergedLedger[k] = entry;
+        continue;
+      }
+      const existingIsPaid =
+        existing.paymentStatus === 'paid' ||
+        existing.paymentStatus === 'partial' ||
+        (Number(existing.paidAmount) || 0) > 0;
+      const incomingIsPaid =
+        entry.paymentStatus === 'paid' ||
+        entry.paymentStatus === 'partial' ||
+        (Number(entry.paidAmount) || 0) > 0;
+
+      // Never let a remote 'unpaid' entry overwrite a local 'paid' entry unless remote is strictly newer AND explicitly allowed
+      if (existingIsPaid && !incomingIsPaid && !allowUnpaidOverwrite) {
+        continue;
+      }
+
+      if (
+        (incomingIsPaid && !existingIsPaid) ||
+        (entry.updatedAt || 0) > (existing.updatedAt || 0)
+      ) {
         mergedLedger[k] = entry;
       }
     }
@@ -104,8 +150,16 @@ export function updateLocalAccountingLedger(
 
   (sessions || []).forEach(s => {
     if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return;
-    const hasPayment = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || (Number(s.paidAmount) || 0) > 0;
-    if (!hasPayment && !s.isManuallyEdited) return;
+    if (!isMeaningfulLedgerEntry(s)) return;
+
+    const hasPayment =
+      s.paymentStatus === 'paid' ||
+      s.paymentStatus === 'partial' ||
+      (Number(s.paidAmount) || 0) > 0;
+
+    // IMPORTANT: Never fallback to Date.now() for sessions without updatedAt, otherwise old sessions with updatedAt=0
+    // get a brand-new timestamp during sync/refresh and overwrite recent payments!
+    const sUpdatedAt = typeof s.updatedAt === 'number' && s.updatedAt > 0 ? s.updatedAt : 0;
 
     const entry: AccountingLedgerEntry = {
       id: s.id,
@@ -117,8 +171,8 @@ export function updateLocalAccountingLedger(
       babysitterFeeAmount: Number(s.babysitterFeeAmount) || 0,
       hasOfficeRentFee: s.type === 'online' ? false : Boolean(s.hasOfficeRentFee),
       officeRentFeeAmount: s.type === 'online' ? 0 : (Number(s.officeRentFeeAmount) || 0),
-      isManuallyEdited: Boolean(s.isManuallyEdited),
-      updatedAt: s.updatedAt || Date.now(),
+      isManuallyEdited: Boolean(s.isManuallyEdited || hasPayment),
+      updatedAt: sUpdatedAt,
       clientName: s.clientName,
       date: s.date,
       time: s.time
@@ -128,7 +182,30 @@ export function updateLocalAccountingLedger(
     for (const k of keys) {
       if (k.startsWith('day:') && (clientDateCounts.get(k) || 0) > 1) continue;
       const existing = mergedLedger[k];
-      if (!existing || entry.updatedAt >= (existing.updatedAt || 0) || (hasPayment && existing.paymentStatus === 'unpaid' && !existing.isManuallyEdited)) {
+      if (!existing) {
+        mergedLedger[k] = entry;
+        continue;
+      }
+
+      const existingIsPaid =
+        existing.paymentStatus === 'paid' ||
+        existing.paymentStatus === 'partial' ||
+        (Number(existing.paidAmount) || 0) > 0;
+
+      // CRITICAL PROTECTION:
+      // If ledger already records this session as PAID, never overwrite it with UNPAID unless allowUnpaidOverwrite is true
+      // (which is only set when the user explicitly clicks to cancel/unpay a session)
+      if (existingIsPaid && !hasPayment) {
+        if (allowUnpaidOverwrite && s.isManuallyEdited && sUpdatedAt >= (existing.updatedAt || 0)) {
+          mergedLedger[k] = entry;
+        }
+        continue;
+      }
+
+      if (
+        (hasPayment && !existingIsPaid) ||
+        (sUpdatedAt > 0 && sUpdatedAt >= (existing.updatedAt || 0))
+      ) {
         mergedLedger[k] = entry;
       }
     }
@@ -136,9 +213,22 @@ export function updateLocalAccountingLedger(
 
   try {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, JSON.stringify(mergedLedger));
+      const serialized = JSON.stringify(mergedLedger);
+      try {
+        localStorage.setItem(storageKey, serialized);
+        localStorage.setItem('psycalcu_accounting_ledger', serialized);
+      } catch (quotaErr) {
+        // Free up space and retry
+        try {
+          localStorage.removeItem('psycalcu_snapshots_active');
+          if (userId) localStorage.removeItem(`psycalcu_snapshots_${userId}`);
+          localStorage.setItem(storageKey, serialized);
+          localStorage.setItem('psycalcu_accounting_ledger', serialized);
+        } catch (e2) {}
+      }
     }
     idbSet(storageKey, mergedLedger).catch(() => {});
+    idbSet('psycalcu_accounting_ledger', mergedLedger).catch(() => {});
   } catch (e) {}
 
   return mergedLedger;
@@ -147,13 +237,20 @@ export function updateLocalAccountingLedger(
 export function getStoredAccountingLedger(userId?: string): Record<string, AccountingLedgerEntry> {
   if (typeof window === 'undefined') return {};
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
+  const combined: Record<string, AccountingLedgerEntry> = {};
   try {
-    const raw = localStorage.getItem(storageKey) || localStorage.getItem('psycalcu_accounting_ledger');
-    if (raw) {
-      return JSON.parse(raw) || {};
+    const rawGlobal = localStorage.getItem('psycalcu_accounting_ledger');
+    if (rawGlobal) {
+      Object.assign(combined, JSON.parse(rawGlobal) || {});
+    }
+    if (userId) {
+      const rawUser = localStorage.getItem(storageKey);
+      if (rawUser) {
+        Object.assign(combined, JSON.parse(rawUser) || {});
+      }
     }
   } catch (e) {}
-  return {};
+  return combined;
 }
 
 export function applyAccountingLedgerToSessions(
@@ -183,9 +280,16 @@ export function applyAccountingLedgerToSessions(
     let matchedEntry: AccountingLedgerEntry | undefined = undefined;
     for (const k of keys) {
       if (k.startsWith('day:') && (clientDateCounts.get(k) || 0) > 1) continue;
-      if (ledger[k]) {
-        matchedEntry = ledger[k];
-        break;
+      const candidate = ledger[k];
+      if (candidate) {
+        if (
+          !matchedEntry ||
+          ((candidate.paymentStatus === 'paid' || candidate.paymentStatus === 'partial') &&
+            matchedEntry.paymentStatus === 'unpaid') ||
+          (candidate.updatedAt || 0) > (matchedEntry.updatedAt || 0)
+        ) {
+          matchedEntry = candidate;
+        }
       }
     }
 
@@ -196,9 +300,10 @@ export function applyAccountingLedgerToSessions(
     const sTime = s.updatedAt || 0;
     const lTime = matchedEntry.updatedAt || 0;
 
-    // If session is currently unpaid (e.g. reset by calendar sync) while ledger says paid/partial,
-    // OR if ledger has a newer manual edit, restore accounting fields from ledger!
-    if ((ledgerHasPayment && !currentHasPayment && !(s.isManuallyEdited && sTime >= lTime)) ||
+    // CRITICAL GUARANTEE:
+    // If ledger says the session is PAID (or PARTIAL) and the session is currently UNPAID,
+    // ALWAYS restore the payment status from the ledger!
+    if ((ledgerHasPayment && !currentHasPayment) ||
         (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime > sTime))) {
       const isOnline = s.type === 'online';
       return {
@@ -272,8 +377,51 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
       settings.reopenedMonths = mergedMonthState.reopenedMonths;
 
       const rawSessions = (data.sessions as Session[]) || [];
-      const remoteLedger = (data.accountingLedger as Record<string, AccountingLedgerEntry>) || undefined;
-      const mergedLedger = updateLocalAccountingLedger(userId, rawSessions, remoteLedger);
+      const remoteLedger = (data.accountingLedger as Record<string, AccountingLedgerEntry>) || {};
+
+      // Also merge any IndexedDB stored accounting ledger and local sessions so offline/recent payments are never lost
+      let idbLedger: Record<string, AccountingLedgerEntry> = {};
+      let idbSessions: Session[] = [];
+      try {
+        const storedIdbLedger = await idbGet<Record<string, AccountingLedgerEntry>>(`psycalcu_accounting_ledger_${userId}`);
+        if (storedIdbLedger && typeof storedIdbLedger === 'object') {
+          idbLedger = storedIdbLedger;
+        }
+        const storedIdbSessions = await idbGet<Session[]>(`psycalcu_sessions_${userId}`);
+        if (Array.isArray(storedIdbSessions)) {
+          idbSessions = storedIdbSessions;
+        } else if (typeof storedIdbSessions === 'string') {
+          idbSessions = JSON.parse(storedIdbSessions) || [];
+        }
+      } catch (e) {}
+
+      let localCachedSessions: Session[] = [];
+      try {
+        if (typeof window !== 'undefined') {
+          const rawLocalStr = localStorage.getItem(`psycalcu_sessions_${userId}`) || localStorage.getItem('psycalcu_sessions');
+          if (rawLocalStr) {
+            localCachedSessions = JSON.parse(rawLocalStr) || [];
+          }
+        }
+      } catch (e) {}
+
+      const combinedLedgerSource: Record<string, AccountingLedgerEntry> = { ...remoteLedger };
+      for (const [k, v] of Object.entries(idbLedger)) {
+        if (!isMeaningfulLedgerEntry(v)) continue;
+        const ex = combinedLedgerSource[k];
+        const vPaid = v.paymentStatus === 'paid' || v.paymentStatus === 'partial' || (Number(v.paidAmount) || 0) > 0;
+        const exPaid = ex && (ex.paymentStatus === 'paid' || ex.paymentStatus === 'partial' || (Number(ex.paidAmount) || 0) > 0);
+        if (!ex || (vPaid && !exPaid) || (v.updatedAt || 0) >= (ex.updatedAt || 0)) {
+          combinedLedgerSource[k] = v;
+        }
+      }
+
+      const mergedLedger = updateLocalAccountingLedger(
+        userId,
+        [...rawSessions, ...idbSessions, ...localCachedSessions],
+        combinedLedgerSource,
+        false
+      );
       const healedSessions = applyAccountingLedgerToSessions(rawSessions, mergedLedger, settings.accountingStartDate);
 
       return {
@@ -336,7 +484,8 @@ export async function saveUserData(
   settings: AppSettings, 
   sessions: Session[], 
   expenses?: Expense[],
-  snapshotReason?: string
+  snapshotReason?: string,
+  allowUnpaidOverwrite: boolean = false
 ): Promise<void> {
   const cleanedSettings = JSON.parse(JSON.stringify(settings)) as AppSettings;
   const mergedMonthState = mergeClosedMonths(
@@ -361,7 +510,7 @@ export async function saveUserData(
   const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
 
   // Update persistent accounting ledger (protects paid/manual status across calendar syncs and reloads)
-  const accountingLedger = updateLocalAccountingLedger(userId, cleanedSessions);
+  const accountingLedger = updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite);
 
   // ALWAYS write to local safety emergency backup immediately and async to IndexedDB (100MB+ limit)
   try {
@@ -416,20 +565,26 @@ export async function saveUserData(
   try {
     const docRef = doc(db, 'users', userId);
 
+    // Strip bulky calendar descriptions from cloud-stored sessions (calendar notes are stored locally in IndexedDB)
+    const cloudSessions = cleanedSessions.map(s => {
+      if (s.isSyncedFromCalendar && s.notes) {
+        return { ...s, notes: '' };
+      }
+      return s;
+    });
+
     // Build a compact cloud snapshot (containing only paid/partial/manually edited sessions)
     // so Firestore document NEVER exceeds the 1MB (1,048,576 bytes) hard limit!
     const compactCloudSnapshots = (updatedSnapshots || []).slice(0, 2).map(snap => ({
       ...snap,
-      sessions: (snap.sessions || []).filter(
-        s => s && !s.isDeleted && (s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || (Number(s.paidAmount) || 0) > 0 || s.isManuallyEdited)
-      )
+      sessions: (snap.sessions || []).filter(s => s && !s.isDeleted && isMeaningfulLedgerEntry(s))
     }));
 
     const payload: any = { 
       settings: cleanedSettings,
       closedMonths: cleanedSettings.closedMonths || {},
       reopenedMonths: cleanedSettings.reopenedMonths || {},
-      sessions: cleanedSessions, 
+      sessions: cloudSessions, 
       expenses: cleanedExpenses,
       accountingLedger,
       lastUpdatedAt: new Date().toISOString()
@@ -451,11 +606,21 @@ export async function saveUserData(
       };
     }
 
-    // Safety check: if serialized payload is over 650KB, omit backupSnapshots & calendarHistory to stay well under 1MB
-    const serializedSize = JSON.stringify(payload).length;
-    if (serializedSize > 650000) {
+    const cutoffDate = (cleanedSettings.accountingStartDate || '2026-07-01').split('T')[0];
+
+    // Safety check: if serialized payload is over 600KB, omit backupSnapshots & calendarHistory to stay well under 1MB
+    let serializedSize = JSON.stringify(payload).length;
+    if (serializedSize > 600000) {
       payload.backupSnapshots = deleteField();
       payload.calendarHistory = deleteField();
+      serializedSize = JSON.stringify(payload).length;
+    }
+
+    // If still over 800KB (e.g. thousands of old pre-cutoff 0-TL calendar sessions), keep all active-period & paid/edited sessions
+    if (serializedSize > 800000) {
+      payload.sessions = cloudSessions.filter(
+        s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
+      );
     }
 
     try {
@@ -463,17 +628,23 @@ export async function saveUserData(
     } catch (writeErr: any) {
       const msg = (writeErr?.message || String(writeErr)).toLowerCase();
       if (msg.includes('size') || msg.includes('1048576') || msg.includes('longer than') || writeErr?.code === 'invalid-argument') {
-        // Document exceeded 1MB due to legacy fields in Firestore — purge heavy fields and retry immediately!
+        // Document exceeded 1MB due to legacy fields in Firestore — purge heavy fields and compact sessions, then retry immediately!
         payload.backupSnapshots = deleteField();
         payload.calendarHistory = deleteField();
+        payload.sessions = cloudSessions.filter(
+          s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
+        );
         try {
           await setDoc(docRef, payload, { merge: true });
         } catch (retryErr) {
-          // Ensure settings and closedMonths are ALWAYS persisted even if sessions/ledger are huge
+          // Even in worst-case size overflow, ALWAYS persist accountingLedger + paid/edited sessions + settings!
+          const essentialSessions = cloudSessions.filter(s => !s.isDeleted && isMeaningfulLedgerEntry(s));
           await setDoc(docRef, {
             settings: cleanedSettings,
             closedMonths: cleanedSettings.closedMonths || {},
             reopenedMonths: cleanedSettings.reopenedMonths || {},
+            sessions: essentialSessions,
+            accountingLedger,
             backupSnapshots: deleteField(),
             calendarHistory: deleteField(),
             lastUpdatedAt: new Date().toISOString()

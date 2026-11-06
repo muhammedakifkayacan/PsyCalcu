@@ -980,7 +980,19 @@ export default function App() {
           if (regCreated) {
             setRegistrationCreatedAt(regCreated);
             safeStorage.setItem('psycalcu_registration_created_at', regCreated, user.uid);
-            setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, regCreated));
+            const curSet = settingsRef.current || settings;
+            const effCutoff = curSet.accountingStartDate || regCreated;
+            setSessions(prev => autoCorrectPastSessions(
+              prev,
+              curSet.defaultSessionPrice,
+              curSet.defaultBabysitterFee,
+              curSet.defaultOfficeRentFee,
+              effCutoff,
+              curSet.defaultOnlinePrice,
+              curSet.defaultFaceToFacePrice,
+              curSet.clientCustomPrices,
+              curSet.closedMonths
+            ));
           }
           
           setRegistrationError(null);
@@ -1004,7 +1016,19 @@ export default function App() {
             }
             setRegistrationCreatedAt(newReg.createdAt);
             safeStorage.setItem('psycalcu_registration_created_at', newReg.createdAt, user.uid);
-            setSessions(prev => autoCorrectPastSessions(prev, settings.defaultSessionPrice, settings.defaultBabysitterFee, settings.defaultOfficeRentFee, newReg.createdAt));
+            const curSet = settingsRef.current || settings;
+            const effCutoff = curSet.accountingStartDate || newReg.createdAt;
+            setSessions(prev => autoCorrectPastSessions(
+              prev,
+              curSet.defaultSessionPrice,
+              curSet.defaultBabysitterFee,
+              curSet.defaultOfficeRentFee,
+              effCutoff,
+              curSet.defaultOnlinePrice,
+              curSet.defaultFaceToFacePrice,
+              curSet.clientCustomPrices,
+              curSet.closedMonths
+            ));
             setRegistrationError(null);
 
             // Notify Admin via backend API
@@ -1163,6 +1187,7 @@ export default function App() {
               reconciledMonthState.closedMonths
             );
             
+            sessionsRef.current = finalSessions;
             setSessions(finalSessions);
             setSettings(cloudData.settings);
             settingsRef.current = cloudData.settings;
@@ -1189,8 +1214,22 @@ export default function App() {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
 
-            // Also check emergency safety backups and snapshot stores
+            // Also check emergency safety backups and IndexedDB stores
             let safetyBackupSessions: Session[] = [];
+            try {
+              const idbUserSessions = await idbGet<Session[] | string>(userSessionsKey);
+              if (Array.isArray(idbUserSessions)) {
+                safetyBackupSessions.push(...idbUserSessions);
+              } else if (typeof idbUserSessions === 'string') {
+                const parsedIdb = JSON.parse(idbUserSessions);
+                if (Array.isArray(parsedIdb)) safetyBackupSessions.push(...parsedIdb);
+              }
+              const idbSafety = await idbGet<Session[]>(`psycalcu_safety_backup_${user.uid}`);
+              if (Array.isArray(idbSafety)) {
+                safetyBackupSessions.push(...idbSafety);
+              }
+            } catch (e) {}
+
             try {
               const safetyStr = localStorage.getItem(`psycalcu_safety_backup_${user.uid}`) || localStorage.getItem('psycalcu_safety_backup');
               if (safetyStr) {
@@ -1222,20 +1261,54 @@ export default function App() {
             } catch (e) {}
 
             const localMap = new Map<string, Session>();
-            localSessions.forEach(s => { if (s && s.id) localMap.set(s.id, s); });
-            safetyBackupSessions.forEach(s => {
-              if (s && s.id) {
-                const existing = localMap.get(s.id);
-                if (!existing || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited) || (existing.paymentStatus !== 'paid' && s.paymentStatus === 'paid')) {
-                  localMap.set(s.id, s);
+            const localByUidDate = new Map<string, Session>();
+            const localBySlot = new Map<string, Session>();
+
+            const registerLocalCandidate = (s: Session) => {
+              if (!s || !s.id) return;
+              const existing = localMap.get(s.id);
+              const sPaid = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || (Number(s.paidAmount) || 0) > 0;
+              const exPaid = existing && (existing.paymentStatus === 'paid' || existing.paymentStatus === 'partial' || (Number(existing.paidAmount) || 0) > 0);
+              if (!existing || (sPaid && !exPaid) || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited)) {
+                localMap.set(s.id, s);
+              }
+              if (!s.isDeleted && s.id.startsWith('ics_') && s.date) {
+                const uidKey = `${extractBaseCalendarUid(s.id)}_${s.date}`;
+                const prevUid = localByUidDate.get(uidKey);
+                const prevUidPaid = prevUid && (prevUid.paymentStatus === 'paid' || prevUid.paymentStatus === 'partial' || (Number(prevUid.paidAmount) || 0) > 0);
+                if (!prevUid || (sPaid && !prevUidPaid) || ((s.updatedAt || 0) > (prevUid.updatedAt || 0))) {
+                  localByUidDate.set(uidKey, s);
                 }
               }
-            });
+              if (!s.isDeleted && s.clientName && s.date && s.time) {
+                const norm = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
+                if (norm) {
+                  const slotKey = `${norm}_${s.date}_${s.time}`;
+                  const prevSlot = localBySlot.get(slotKey);
+                  const prevSlotPaid = prevSlot && (prevSlot.paymentStatus === 'paid' || prevSlot.paymentStatus === 'partial' || (Number(prevSlot.paidAmount) || 0) > 0);
+                  if (!prevSlot || (sPaid && !prevSlotPaid) || ((s.updatedAt || 0) > (prevSlot.updatedAt || 0))) {
+                    localBySlot.set(slotKey, s);
+                  }
+                }
+              }
+            };
+
+            localSessions.forEach(registerLocalCandidate);
+            safetyBackupSessions.forEach(registerLocalCandidate);
 
             let hasNewerLocalEdits = false;
+            const matchedLocalIds = new Set<string>();
             const mergedSessions = cloudSessions.map(cs => {
-              const ls = localMap.get(cs.id);
+              let ls = localMap.get(cs.id);
+              if (!ls && cs.id && cs.id.startsWith('ics_') && cs.date) {
+                ls = localByUidDate.get(`${extractBaseCalendarUid(cs.id)}_${cs.date}`);
+              }
+              if (!ls && cs.clientName && cs.date && cs.time) {
+                const norm = toTurkishAscii(getNormalizedClientName(cs.clientName)).toLowerCase().trim();
+                if (norm) ls = localBySlot.get(`${norm}_${cs.date}_${cs.time}`);
+              }
               if (!ls) return cs;
+              matchedLocalIds.add(ls.id);
 
               const localTime = ls.updatedAt || 0;
               const cloudTime = cs.updatedAt || 0;
@@ -1249,15 +1322,16 @@ export default function App() {
                 return {
                   ...cs,
                   ...ls,
+                  id: cs.id,
                   // Keep calendar event fields but preserve user accounting data
                   clientName: cs.clientName || ls.clientName,
                   date: cs.date || ls.date,
                   time: cs.time || ls.time,
                   type: (ls.isManuallyEdited || localIsPaid) ? ls.type : cs.type,
-                  price: ls.price,
-                  paymentStatus: ls.paymentStatus,
-                  paidAmount: ls.paidAmount,
-                  paymentMethod: ls.paymentMethod,
+                  price: ls.price > 0 ? ls.price : cs.price,
+                  paymentStatus: (localIsPaid && !cloudIsPaid) ? ls.paymentStatus : (localTime >= cloudTime ? ls.paymentStatus : cs.paymentStatus),
+                  paidAmount: (localIsPaid && !cloudIsPaid) ? ls.paidAmount : (localTime >= cloudTime ? ls.paidAmount : cs.paidAmount),
+                  paymentMethod: ls.paymentMethod || cs.paymentMethod,
                   hasBabysitterFee: ls.hasBabysitterFee,
                   babysitterFeeAmount: ls.babysitterFeeAmount,
                   hasOfficeRentFee: ls.hasOfficeRentFee,
@@ -1271,7 +1345,9 @@ export default function App() {
 
             // Also keep local-only sessions not yet in cloud (e.g. offline created sessions)
             const cloudIds = new Set(cloudSessions.map(s => s.id));
-            const localOnly = Array.from(localMap.values()).filter(s => !cloudIds.has(s.id) && s.id && !s.id.startsWith('mock_'));
+            const localOnly = Array.from(localMap.values()).filter(
+              s => !cloudIds.has(s.id) && !matchedLocalIds.has(s.id) && s.id && !s.id.startsWith('mock_')
+            );
             if (localOnly.length > 0) {
               hasNewerLocalEdits = true;
             }
@@ -1288,6 +1364,7 @@ export default function App() {
               reconciledMonthState.closedMonths
             );
 
+            sessionsRef.current = finalSessions;
             setSessions(finalSessions);
             setSettings(cloudData.settings);
             settingsRef.current = cloudData.settings;
@@ -1396,6 +1473,7 @@ export default function App() {
           
           if (hasRealLocalSessions) {
             await saveUserData(user.uid, settingsToSave, correctedSessions, expenses);
+            sessionsRef.current = correctedSessions;
             setSessions(correctedSessions);
             setSettings(settingsToSave);
             lastSavedRef.current = {
@@ -1406,6 +1484,7 @@ export default function App() {
             showToast('Mevcut seanslarınız ve ayarlarınız bulut hesabınıza başarıyla kaydedildi!', 'success');
           } else {
             await saveUserData(user.uid, settingsToSave, [], []);
+            sessionsRef.current = [];
             setSessions([]);
             setSettings(settingsToSave);
             lastSavedRef.current = {
@@ -1487,12 +1566,12 @@ export default function App() {
 
   // Real-time live multi-device listener: instant updates when changes occur on another device
   useEffect(() => {
-    if (!user || registrationStatus !== 'approved' || isQuotaExceeded) return;
+    if (!user || registrationStatus !== 'approved' || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) return;
 
     const userDocRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      // Ignore local optimistic writes to prevent loops
-      if (docSnap.metadata.hasPendingWrites) {
+      // Ignore local optimistic writes or when a local save is currently in flight to prevent race loops
+      if (docSnap.metadata.hasPendingWrites || activeSavesCountRef.current > 0) {
         return;
       }
 
@@ -1515,8 +1594,14 @@ export default function App() {
           newExpensesStr !== lastSavedRef.current.expenses
         ) {
           // Reconcile with local session state and persistent accountingLedger so local payments & manual prices are never lost
-          const currentLocal = sessionsRef.current || [];
-          const mergedLedger = updateLocalAccountingLedger(user.uid, currentLocal, data.accountingLedger);
+          let currentLocal = sessionsRef.current || [];
+          if (currentLocal.length === 0) {
+            try {
+              const savedStr = safeStorage.getItem(`psycalcu_sessions_${user.uid}`) || safeStorage.getItem('psycalcu_sessions');
+              if (savedStr) currentLocal = JSON.parse(savedStr) || [];
+            } catch (e) {}
+          }
+          const mergedLedger = updateLocalAccountingLedger(user.uid, currentLocal, data.accountingLedger, false);
           const localMap = new Map<string, Session>();
           const localByUidDate = new Map<string, Session>();
           const localBySlot = new Map<string, Session>();
@@ -1528,11 +1613,12 @@ export default function App() {
               localByUidDate.set(`${extractBaseCalendarUid(s.id)}_${s.date}`, s);
             }
             if (!s.isDeleted && s.clientName && s.date && s.time) {
-              const norm = getNormalizedClientName(s.clientName);
+              const norm = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
               if (norm) localBySlot.set(`${norm}_${s.date}_${s.time}`, s);
             }
           });
           const remoteIds = new Set((newSessions as Session[]).map(s => s.id));
+          let hadRescuedLocalEdits = false;
 
           const reconciledSessions = (newSessions as Session[]).map(ns => {
             let ls = localMap.get(ns.id);
@@ -1540,7 +1626,7 @@ export default function App() {
               ls = localByUidDate.get(`${extractBaseCalendarUid(ns.id)}_${ns.date}`);
             }
             if (!ls && ns.clientName && ns.date && ns.time) {
-              const norm = getNormalizedClientName(ns.clientName);
+              const norm = toTurkishAscii(getNormalizedClientName(ns.clientName)).toLowerCase().trim();
               if (norm) ls = localBySlot.get(`${norm}_${ns.date}_${ns.time}`);
             }
             if (!ls) return ns;
@@ -1556,11 +1642,12 @@ export default function App() {
 
             // Preserve local payment/price edits if local was updated more recently OR if local has financial data and remote is missing it
             const localIsNewer = lsTime > nsTime;
-            const localHasPaymentData = lsHasPayment && !nsHasPayment && !(ns.isManuallyEdited && nsTime > lsTime);
+            const localHasPaymentData = lsHasPayment && !nsHasPayment;
             const localHasPriceData = lsPrice > 0 && nsPrice === 0 && !(ns.isManuallyEdited && nsTime > lsTime);
             const localIsManuallyEdited = ls.isManuallyEdited && !ns.isManuallyEdited;
 
             if (localIsNewer || localHasPaymentData || localHasPriceData || localIsManuallyEdited) {
+              hadRescuedLocalEdits = true;
               return {
                 ...ns,
                 ...ls,
@@ -1609,6 +1696,7 @@ export default function App() {
             setSettings(mergedSettings);
             settingsRef.current = mergedSettings;
           }
+          sessionsRef.current = finalSessions;
           setSessions(finalSessions);
           setExpenses(newExpenses);
 
@@ -1628,11 +1716,11 @@ export default function App() {
           safeStorage.setItem(userSessionsKey, finalSessionsStr, user.uid);
           safeStorage.setItem(userExpensesKey, newExpensesStr, user.uid);
 
-          // If local had closed months that were missing from the remote document, sync them back to Firestore
+          // If local had closed months or rescued payments that were missing from the remote document, sync them back to Firestore
           const remoteClosedCount = Object.keys(newSettings?.closedMonths || {}).length;
           const mergedClosedCount = Object.keys(reconciledMonthState.closedMonths).length;
-          if (mergedSettings && mergedClosedCount > remoteClosedCount && !isFirestoreQuotaExceeded && !isQuotaExceeded) {
-            saveUserData(user.uid, mergedSettings, finalSessions, newExpenses).catch(() => {});
+          if ((hadRescuedLocalEdits || (mergedSettings && mergedClosedCount > remoteClosedCount)) && !isFirestoreQuotaExceeded && !isQuotaExceeded) {
+            saveUserData(user.uid, mergedSettings || settingsRef.current, finalSessions, newExpenses).catch(() => {});
           }
 
           showToast('Diğer cihazınızdan yapılan değişiklikler canlı olarak güncellendi.', 'info');
@@ -1645,7 +1733,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [user, registrationStatus, isQuotaExceeded]);
+  }, [user, registrationStatus, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
 
   // Refs to track latest values for safe unmount/unload saving
   const sessionsRef = useRef(sessions);
@@ -2966,6 +3054,52 @@ export default function App() {
     };
   }, [filteredSessions]);
 
+  // Synchronously commits session changes to memory ref, React state, localStorage/IndexedDB, local accounting ledger, and Firestore
+  // so that marking a session as paid/unpaid or editing it is immediately persisted even if the user refreshes or calendar sync is running.
+  const commitSessionsImmediately = (
+    updater: (prev: Session[]) => Session[],
+    snapshotReason?: string,
+    allowUnpaidOverwrite: boolean = false
+  ) => {
+    const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const nextSessions = updater(baseList);
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+
+    try {
+      const sessionsStr = JSON.stringify(nextSessions);
+      safeStorage.setItem('psycalcu_sessions', sessionsStr, user?.uid);
+      if (user?.uid) {
+        safeStorage.setItem(`psycalcu_sessions_${user.uid}`, sessionsStr, user.uid);
+      }
+      updateLocalAccountingLedger(user?.uid, nextSessions, undefined, allowUnpaidOverwrite);
+      if (user?.uid && isInitialSyncDone && !isAuthSyncing && registrationStatus === 'approved') {
+        activeSavesCountRef.current += 1;
+        const curSettings = settingsRef.current || settings;
+        const curExpenses = expensesRef.current || expenses;
+        saveUserData(user.uid, curSettings, nextSessions, curExpenses, snapshotReason, allowUnpaidOverwrite)
+          .then(() => {
+            lastSavedRef.current = {
+              settings: JSON.stringify(curSettings),
+              sessions: sessionsStr,
+              expenses: JSON.stringify(curExpenses)
+            };
+          })
+          .catch(err => {
+            console.error("Immediate session save error:", err);
+          })
+          .finally(() => {
+            setTimeout(() => {
+              activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
+            }, 500);
+          });
+      }
+    } catch (e) {
+      console.warn("Error in commitSessionsImmediately:", e);
+    }
+    return nextSessions;
+  };
+
   // CRUD actions
   const handleSaveSession = (savedSession: Session) => {
     const existing = sessions.find(s => s.id === savedSession.id);
@@ -3013,7 +3147,7 @@ export default function App() {
       }
     }
     const withTimestamp = { ...savedSession, updatedAt: Date.now(), isManuallyEdited: true };
-    setSessions(prev => {
+    commitSessionsImmediately(prev => {
       let updatedList: Session[];
       const exists = prev.some(s => s.id === savedSession.id);
       if (exists) {
@@ -3026,8 +3160,8 @@ export default function App() {
 
       // If price > 0, propagate this price to future sessions of this client MATCHING the session type
       if (withTimestamp.price > 0 && withTimestamp.type !== 'cancelled' && withTimestamp.type !== 'non-session') {
-        const targetNorm = getNormalizedClientName(withTimestamp.clientName).toLocaleLowerCase('tr-TR');
-        const cutoffDate = registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '';
+        const effectiveCutoffStr = settings.accountingStartDate || registrationCreatedAt;
+        const cutoffDate = effectiveCutoffStr ? effectiveCutoffStr.split('T')[0] : '';
         const effectiveClosed = getEffectiveClosedMonths(settingsRef.current?.closedMonths || settings.closedMonths, user?.uid);
         updatedList = updatedList.map(s => {
           const isWithinAccounting = !cutoffDate || (s.date && s.date >= cutoffDate);
@@ -3067,6 +3201,7 @@ export default function App() {
             [targetKey]: updatedRule
           };
           const newSettings = { ...prevSettings, clientCustomPrices: newCustomPrices };
+          settingsRef.current = newSettings;
           try {
             safeStorage.setItem('psycalcu_settings', JSON.stringify(newSettings), user?.uid);
           } catch (e) {}
@@ -3079,13 +3214,13 @@ export default function App() {
         settings.defaultSessionPrice,
         settings.defaultBabysitterFee,
         settings.defaultOfficeRentFee,
-        registrationCreatedAt,
+        settings.accountingStartDate || registrationCreatedAt,
         settings.defaultOnlinePrice,
         settings.defaultFaceToFacePrice,
         settings.clientCustomPrices,
         settings.closedMonths
       );
-    });
+    }, undefined, withTimestamp.paymentStatus === 'unpaid');
   };
 
   const handleDeleteSession = (id: string) => {
@@ -3103,7 +3238,7 @@ export default function App() {
       'Bu seans Geri Dönüşüm Kutusu\'na taşınacak ve 30 gün boyunca istediğiniz zaman geri yükleyebileceksiniz. Emin misiniz?',
       () => {
         if (!session) return;
-        setSessions(prev => prev.map(s => {
+        commitSessionsImmediately(prev => prev.map(s => {
           if (s.id === id) {
             return {
               ...s,
@@ -3122,7 +3257,7 @@ export default function App() {
         }
 
         const undoFn = () => {
-          setSessions(prev => prev.map(s => {
+          commitSessionsImmediately(prev => prev.map(s => {
             if (s.id === id) {
               return {
                 ...s,
@@ -3143,7 +3278,7 @@ export default function App() {
   };
 
   const handleRestoreSession = (sessionToRestore: Session) => {
-    setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(prev => prev.map(s => {
       if (s.id === sessionToRestore.id) {
         return {
           ...s,
@@ -3159,7 +3294,7 @@ export default function App() {
   };
 
   const handleRestoreAllDeleted = () => {
-    setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(prev => prev.map(s => {
       if (s.isDeleted) {
         return {
           ...s,
@@ -3176,17 +3311,18 @@ export default function App() {
   };
 
   const handlePermanentDeleteSession = (sessionId: string) => {
-    setSessions(prev => prev.filter(s => s.id !== sessionId));
+    commitSessionsImmediately(prev => prev.filter(s => s.id !== sessionId));
     showToast('Seans kalıcı olarak silindi.', 'info');
   };
 
   const handleEmptyTrash = () => {
-    setSessions(prev => prev.filter(s => !s.isDeleted));
+    commitSessionsImmediately(prev => prev.filter(s => !s.isDeleted));
     showToast('Çöp kutusu tamamen temizlendi.', 'info');
     setIsTrashBinOpen(false);
   };
 
   const handleClearAllSessions = () => {
+    sessionsRef.current = [];
     setSessions([]);
     safeStorage.setItem('psycalcu_sessions', JSON.stringify([]));
   };
@@ -3211,7 +3347,7 @@ export default function App() {
       'cancelled': 'online'
     };
     const nextType = nextTypeMap[currentType];
-    setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(prev => prev.map(s => {
       if (s.id === id) {
         const updated = { ...s, type: nextType, updatedAt: Date.now(), isManuallyEdited: true };
         if (nextType === 'online') {
@@ -3238,7 +3374,7 @@ export default function App() {
   };
 
   const handleToggleBabysitter = (id: string) => {
-    setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(prev => prev.map(s => {
       if (s.id === id) {
         const hasFee = !s.hasBabysitterFee;
         return {
@@ -3254,7 +3390,8 @@ export default function App() {
   };
 
   const handleTogglePaymentStatus = (id: string) => {
-    const found = sessions.find(s => s.id === id);
+    const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const found = baseList.find(s => s.id === id) || sessions.find(s => s.id === id);
     if (!found) return;
 
     const isClosedMonth = isDateInClosedMonth(found.date, settings.closedMonths);
@@ -3263,32 +3400,40 @@ export default function App() {
     const nextStatus = prevStatus === 'paid' ? 'unpaid' : 'paid';
     const priceVal = Number(found.price) || 0;
 
-    setSessions(prev => prev.map(s => {
-      if (s.id === id) {
-        return {
-          ...s,
-          paymentStatus: nextStatus,
-          paidAmount: nextStatus === 'paid' ? priceVal : 0,
-          updatedAt: Date.now(),
-          isManuallyEdited: true
-        };
-      }
-      return s;
-    }));
-
-    const undoFn = () => {
-      setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(
+      prev => prev.map(s => {
         if (s.id === id) {
           return {
             ...s,
-            paymentStatus: prevStatus,
-            paidAmount: prevPaidAmount,
+            paymentStatus: nextStatus,
+            paidAmount: nextStatus === 'paid' ? priceVal : 0,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
         }
         return s;
-      }));
+      }),
+      undefined,
+      nextStatus === 'unpaid'
+    );
+
+    const undoFn = () => {
+      commitSessionsImmediately(
+        prev => prev.map(s => {
+          if (s.id === id) {
+            return {
+              ...s,
+              paymentStatus: prevStatus,
+              paidAmount: prevPaidAmount,
+              updatedAt: Date.now(),
+              isManuallyEdited: true
+            };
+          }
+          return s;
+        }),
+        undefined,
+        prevStatus === 'unpaid'
+      );
       showToast('İşlem geri alındı.', 'info');
     };
 
@@ -3319,7 +3464,8 @@ export default function App() {
   };
 
   const handleMarkSessionAsPaid = (id: string) => {
-    const found = sessions.find(s => s.id === id);
+    const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const found = baseList.find(s => s.id === id) || sessions.find(s => s.id === id);
     if (!found) return;
 
     const isClosedMonth = isDateInClosedMonth(found.date, settings.closedMonths);
@@ -3327,32 +3473,40 @@ export default function App() {
     const prevPaidAmount = found.paidAmount;
     const priceVal = Number(found.price) || 0;
 
-    setSessions(prev => prev.map(s => {
-      if (s.id === id) {
-        return {
-          ...s,
-          paymentStatus: 'paid',
-          paidAmount: priceVal,
-          updatedAt: Date.now(),
-          isManuallyEdited: true
-        };
-      }
-      return s;
-    }));
-
-    const undoFn = () => {
-      setSessions(prev => prev.map(s => {
+    commitSessionsImmediately(
+      prev => prev.map(s => {
         if (s.id === id) {
           return {
             ...s,
-            paymentStatus: prevStatus,
-            paidAmount: prevPaidAmount,
+            paymentStatus: 'paid',
+            paidAmount: priceVal,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
         }
         return s;
-      }));
+      }),
+      undefined,
+      false
+    );
+
+    const undoFn = () => {
+      commitSessionsImmediately(
+        prev => prev.map(s => {
+          if (s.id === id) {
+            return {
+              ...s,
+              paymentStatus: prevStatus,
+              paidAmount: prevPaidAmount,
+              updatedAt: Date.now(),
+              isManuallyEdited: true
+            };
+          }
+          return s;
+        }),
+        undefined,
+        prevStatus === 'unpaid'
+      );
       showToast('Tahsilat geri alındı.', 'info');
     };
 
@@ -3406,8 +3560,8 @@ export default function App() {
       };
     });
 
-    setSessions(prev => {
-      return prev.map(s => {
+    commitSessionsImmediately(
+      prev => prev.map(s => {
         if (targetIds.has(s.id)) {
           return {
             ...s,
@@ -3419,23 +3573,29 @@ export default function App() {
           };
         }
         return s;
-      });
-    });
+      }),
+      undefined,
+      false
+    );
 
     const undoFn = () => {
-      setSessions(prev => prev.map(s => {
-        if (modifiedPreviousStates[s.id]) {
-          return {
-            ...s,
-            paymentStatus: modifiedPreviousStates[s.id].status,
-            paidAmount: modifiedPreviousStates[s.id].paidAmount,
-            paymentMethod: modifiedPreviousStates[s.id].paymentMethod,
-            updatedAt: Date.now(),
-            isManuallyEdited: true
-          };
-        }
-        return s;
-      }));
+      commitSessionsImmediately(
+        prev => prev.map(s => {
+          if (modifiedPreviousStates[s.id]) {
+            return {
+              ...s,
+              paymentStatus: modifiedPreviousStates[s.id].status,
+              paidAmount: modifiedPreviousStates[s.id].paidAmount,
+              paymentMethod: modifiedPreviousStates[s.id].paymentMethod,
+              updatedAt: Date.now(),
+              isManuallyEdited: true
+            };
+          }
+          return s;
+        }),
+        undefined,
+        true
+      );
       showToast(`${clientName} için toplu ödeme işlemi geri alındı.`, 'info');
     };
 
@@ -3485,10 +3645,12 @@ export default function App() {
         return s;
       });
       updatedSessionsList = updated;
+      sessionsRef.current = updated;
       return updated;
     });
 
     const newSettings = { ...settings, accountingStartDate: cutoffDateStr };
+    settingsRef.current = newSettings;
     setSettings(newSettings);
     if (user) {
       const userSettingsKey = `psycalcu_settings_${user.uid}`;
@@ -3509,7 +3671,7 @@ export default function App() {
     }
 
     const undoFn = () => {
-      setSessions(prev => prev.map(s => {
+      commitSessionsImmediately(prev => prev.map(s => {
         if (modifiedPreviousStates[s.id]) {
           return {
             ...s,
@@ -3521,7 +3683,7 @@ export default function App() {
           };
         }
         return s;
-      }));
+      }), undefined, true);
       showToast('Eski seansları temizleme işlemi geri alındı.', 'info');
     };
 
@@ -3645,8 +3807,9 @@ export default function App() {
   };
 
   const handleUpdateSingleSessionPrice = (sessionId: string, newPrice: number) => {
-    const session = sessions.find(s => s.id === sessionId);
-    setSessions(prev => prev.map(s => {
+    const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const session = baseList.find(s => s.id === sessionId) || sessions.find(s => s.id === sessionId);
+    commitSessionsImmediately(prev => prev.map(s => {
       if (s.id !== sessionId) return s;
       const shouldUpdatePaidAmount = s.paymentStatus === 'paid' && (!s.paidAmount || s.paidAmount === s.price);
       return {
@@ -3656,23 +3819,28 @@ export default function App() {
         isManuallyEdited: true,
         updatedAt: Date.now()
       };
-    }));
+    }), undefined, false);
     if (session) {
       showToast(`${session.clientName} seans ücreti ${formatMoney(newPrice)} olarak güncellendi.`, 'success');
     }
   };
 
   const handleUpdateSingleSessionPaymentStatus = (sessionId: string, newStatus: 'paid' | 'unpaid' | 'partial') => {
-    const session = sessions.find(s => s.id === sessionId);
+    const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const session = baseList.find(s => s.id === sessionId) || sessions.find(s => s.id === sessionId);
     if (!session) return;
     const isClosed = isDateInClosedMonth(session.date, settings.closedMonths);
-    setSessions(prev => prev.map(s => s.id === sessionId ? { 
-      ...s, 
-      paymentStatus: newStatus, 
-      paidAmount: newStatus === 'paid' ? s.price : (newStatus === 'unpaid' ? 0 : s.paidAmount),
-      isManuallyEdited: true, 
-      updatedAt: Date.now() 
-    } : s));
+    commitSessionsImmediately(
+      prev => prev.map(s => s.id === sessionId ? { 
+        ...s, 
+        paymentStatus: newStatus, 
+        paidAmount: newStatus === 'paid' ? s.price : (newStatus === 'unpaid' ? 0 : s.paidAmount),
+        isManuallyEdited: true, 
+        updatedAt: Date.now() 
+      } : s),
+      undefined,
+      newStatus === 'unpaid'
+    );
     if (isClosed && newStatus === 'paid') {
       showToast(`${session.clientName} ödemesi kaydedildi (Geçmiş Ay Borcu Kapatıldı).`, 'success');
     }
@@ -3839,6 +4007,24 @@ export default function App() {
       ? activeSettings.accountingStartDate.split('T')[0]
       : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
 
+    // Heal effectiveSessions against local accounting ledger before matching so any paid status is 100% present
+    const localLedgerForImport = getStoredAccountingLedger(user?.uid);
+    if (effectiveSessions.length > 0 && Object.keys(localLedgerForImport).length > 0) {
+      effectiveSessions = applyAccountingLedgerToSessions(effectiveSessions, localLedgerForImport, effectiveAccountingStartDate);
+    }
+
+    // Deduplicate incoming calendar events so duplicate VEVENTs or identical Online/Face-to-Face URLs
+    // never cause the second occurrence of the same event to bypass matchedExistingIds and overwrite a paid session with 'unpaid'!
+    const dedupedNewSessionsMap = new Map<string, Session>();
+    newSessions.forEach(ns => {
+      if (!ns || !ns.id) return;
+      const existingInBatch = dedupedNewSessionsMap.get(ns.id);
+      if (!existingInBatch || (ns.notes && !existingInBatch.notes)) {
+        dedupedNewSessionsMap.set(ns.id, ns);
+      }
+    });
+    const uniqueNewSessions = Array.from(dedupedNewSessionsMap.values());
+
     // Track if complete calendar sync has been performed at least once
     const isInitialCalendarSyncDone = Boolean(
       activeSettings.hasCompletedInitialCalendarSync ||
@@ -3874,7 +4060,7 @@ export default function App() {
     };
 
     // Track incoming IDs for fast direct lookups
-    const incomingIds = new Set(newSessions.map(ns => ns.id));
+    const incomingIds = new Set(uniqueNewSessions.map(ns => ns.id));
 
     // CRITICAL QUOTA & DATA LOSS SHIELD:
     // If existing sessions have not been loaded into state or local cache yet and initial sync is pending,
@@ -3886,7 +4072,7 @@ export default function App() {
         addedCount: 0,
         updatedCount: 0,
         deletedCount: 0,
-        totalParsed: newSessions.length,
+        totalParsed: uniqueNewSessions.length,
         addedList: [],
         updatedList: [],
         deletedList: []
@@ -3920,7 +4106,7 @@ export default function App() {
           existingByUidAndDate.set(baseUid, s);
         }
       }
-      const normName = getNormalizedClientName(s.clientName);
+      const normName = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
       if (normName && s.date) {
         const slotKey = `${normName}_${s.date}_${s.time}`;
         const prevSlot = existingByClientDateTime.get(slotKey);
@@ -3937,7 +4123,7 @@ export default function App() {
 
     // PASS 1: Pre-reserve all exact ID and exact BaseUID+Date matches so recurring event fallback never steals a future/past occurrence's session!
     const preReservedExistingIds = new Set<string>();
-    newSessions.forEach(ns => {
+    uniqueNewSessions.forEach(ns => {
       const exactIdMatch = existingById.get(ns.id);
       if (exactIdMatch && !exactIdMatch.isDeleted) {
         preReservedExistingIds.add(exactIdMatch.id);
@@ -3985,7 +4171,7 @@ export default function App() {
     try {
       const incomingNotesMap: Record<string, string> = {};
       let hasAnyIncomingNote = false;
-      newSessions.forEach(ns => {
+      uniqueNewSessions.forEach(ns => {
         if (!ns || !ns.notes || !ns.notes.trim()) return;
         const lines = ns.notes
           .split('\n')
@@ -4027,7 +4213,7 @@ export default function App() {
       }
     } catch (e) {}
 
-    newSessions.forEach(ns => {
+    uniqueNewSessions.forEach(ns => {
       // 1. CLOSED / LOCKED MONTH PROTECTION:
       // Kitlenen ayın etkinliklerini kesinlikle kontrol etme / eşitleme!
       if (isDateInClosedMonth(ns.date, activeClosedMonths)) {
@@ -4085,7 +4271,7 @@ export default function App() {
       }
 
       // 3. Normalized clientName + Date + Time
-      const normClient = getNormalizedClientName(ns.clientName);
+      const normClient = toTurkishAscii(getNormalizedClientName(ns.clientName)).toLowerCase().trim();
       if (!existing && normClient && ns.date) {
         const candidate = existingByClientDateTime.get(`${normClient}_${ns.date}_${ns.time}`);
         if (candidate && !matchedExistingIds.has(candidate.id) && !preReservedExistingIds.has(candidate.id)) {
@@ -4296,7 +4482,7 @@ export default function App() {
       !isDateInClosedMonth(s.date, activeClosedMonths)
     ).length;
 
-    const isSuspiciousZeroData = activeCalendarSyncedCount >= 3 && newSessions.length === 0;
+    const isSuspiciousZeroData = activeCalendarSyncedCount >= 3 && uniqueNewSessions.length === 0;
     if (isSuspiciousZeroData) {
       showToast('Dış takvimden (Google/Apple) boş veri döndü. Mevcut seanslarınız korundu.', 'info');
     }
@@ -4389,19 +4575,21 @@ export default function App() {
 
     if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
       setSessions(prev => {
-        // Build lookup maps from the latest `prev` state so any payment or manual edit made while
+        // Build lookup maps from the latest `prev` state (healed with local ledger) so any payment or manual edit made while
         // the calendar sync request was in flight is 100% preserved!
+        const latestLedger = getStoredAccountingLedger(user?.uid);
+        const healedPrev = applyAccountingLedgerToSessions(prev || [], latestLedger, effectiveAccountingStartDate);
         const latestById = new Map<string, Session>();
         const latestByUidDate = new Map<string, Session>();
         const latestBySlot = new Map<string, Session>();
-        (prev || []).forEach(ps => {
+        healedPrev.forEach(ps => {
           if (!ps) return;
           latestById.set(ps.id, ps);
           if (!ps.isDeleted && ps.id && ps.id.startsWith('ics_') && ps.date) {
             latestByUidDate.set(`${extractBaseUid(ps.id)}_${ps.date}`, ps);
           }
           if (!ps.isDeleted && ps.clientName && ps.date && ps.time) {
-            const norm = getNormalizedClientName(ps.clientName);
+            const norm = toTurkishAscii(getNormalizedClientName(ps.clientName)).toLowerCase().trim();
             if (norm) latestBySlot.set(`${norm}_${ps.date}_${ps.time}`, ps);
           }
         });
@@ -4412,7 +4600,7 @@ export default function App() {
             latest = latestByUidDate.get(`${extractBaseUid(candidate.id)}_${candidate.date}`);
           }
           if (!latest && candidate.clientName && candidate.date && candidate.time) {
-            const norm = getNormalizedClientName(candidate.clientName);
+            const norm = toTurkishAscii(getNormalizedClientName(candidate.clientName)).toLowerCase().trim();
             if (norm) latest = latestBySlot.get(`${norm}_${candidate.date}_${candidate.time}`);
           }
           if (!latest) return candidate;
@@ -4454,7 +4642,7 @@ export default function App() {
         });
 
         // Also preserve any brand-new manually created sessions in `prev` that were added while sync was running
-        (prev || []).forEach(ps => {
+        healedPrev.forEach(ps => {
           if (ps && !sessionsMap.has(ps.id) && !replacedOldIds.has(ps.id) && !ps.id.startsWith('ics_')) {
             sessionsMap.set(ps.id, ps);
           }
@@ -4462,17 +4650,21 @@ export default function App() {
 
         const curSettings = settingsRef.current || activeSettings;
         const latestClosedMonths = getEffectiveClosedMonths(curSettings.closedMonths, user?.uid);
-        return autoCorrectPastSessions(
+        const correctedList = autoCorrectPastSessions(
           Array.from(sessionsMap.values()),
           curSettings.defaultSessionPrice,
           curSettings.defaultBabysitterFee,
           curSettings.defaultOfficeRentFee,
-          registrationCreatedAt,
+          curSettings.accountingStartDate || registrationCreatedAt,
           curSettings.defaultOnlinePrice,
           curSettings.defaultFaceToFacePrice,
           curSettings.clientCustomPrices,
           latestClosedMonths
         );
+        const finalMerged = applyAccountingLedgerToSessions(correctedList, latestLedger, effectiveAccountingStartDate);
+        sessionsRef.current = finalMerged;
+        updateLocalAccountingLedger(user?.uid, finalMerged);
+        return finalMerged;
       });
     }
 
@@ -4498,7 +4690,7 @@ export default function App() {
       addedCount, 
       updatedCount, 
       deletedCount,
-      totalParsed: newSessions.length, 
+      totalParsed: uniqueNewSessions.length, 
       addedList, 
       updatedList, 
       deletedList 
@@ -4592,8 +4784,8 @@ export default function App() {
       }
     }
 
-    // Sync Face-to-Face Calendar
-    if (faceToFaceCalendarWebcalUrl) {
+    // Sync Face-to-Face Calendar (skip if identical to onlineCalendarWebcalUrl)
+    if (faceToFaceCalendarWebcalUrl && faceToFaceCalendarWebcalUrl.trim() !== (onlineCalendarWebcalUrl || '').trim()) {
       try {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(faceToFaceCalendarWebcalUrl)}&_t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
@@ -4825,11 +5017,42 @@ export default function App() {
             effectiveCutoff = safeStorage.getItem('psycalcu_registration_created_at');
           }
 
-          // Reconcile cloud sessions with current local sessions so any recent payment / manual edit is never lost on refresh
-          const currentLocal = sessionsRef.current || [];
-          const localMap = new Map(currentLocal.map(s => [s.id, s]));
+          // Reconcile cloud sessions with current local sessions (and local ledger) so any recent payment / manual edit is never lost on refresh
+          const localLedger = getStoredAccountingLedger(user.uid);
+          const currentLocal = applyAccountingLedgerToSessions(sessionsRef.current || [], localLedger, effectiveCutoff);
+          const extractRefreshBaseUid = (id: string) => {
+            if (!id || !id.startsWith('ics_')) return id;
+            const withoutPrefix = id.slice(4);
+            const lastUnderscore = withoutPrefix.lastIndexOf('_');
+            if (lastUnderscore !== -1 && /^\d{8}$/.test(withoutPrefix.slice(lastUnderscore + 1))) {
+              return withoutPrefix.slice(0, lastUnderscore);
+            }
+            return withoutPrefix;
+          };
+          const localById = new Map<string, Session>();
+          const localByUidDate = new Map<string, Session>();
+          const localBySlot = new Map<string, Session>();
+          currentLocal.forEach(s => {
+            if (!s) return;
+            localById.set(s.id, s);
+            if (!s.isDeleted && s.id && s.id.startsWith('ics_') && s.date) {
+              localByUidDate.set(`${extractRefreshBaseUid(s.id)}_${s.date}`, s);
+            }
+            if (!s.isDeleted && s.clientName && s.date && s.time) {
+              const norm = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
+              if (norm) localBySlot.set(`${norm}_${s.date}_${s.time}`, s);
+            }
+          });
+
           const reconciledRaw = (cloudData.sessions || []).map(cs => {
-            const ls = localMap.get(cs.id);
+            let ls = localById.get(cs.id);
+            if (!ls && cs.id && cs.id.startsWith('ics_') && cs.date) {
+              ls = localByUidDate.get(`${extractRefreshBaseUid(cs.id)}_${cs.date}`);
+            }
+            if (!ls && cs.clientName && cs.date && cs.time) {
+              const norm = toTurkishAscii(getNormalizedClientName(cs.clientName)).toLowerCase().trim();
+              if (norm) ls = localBySlot.get(`${norm}_${cs.date}_${cs.time}`);
+            }
             if (!ls) return cs;
             const lsHasPayment = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
             const csHasPayment = cs.paymentStatus === 'paid' || cs.paymentStatus === 'partial' || (Number(cs.paidAmount) || 0) > 0;
@@ -4837,6 +5060,7 @@ export default function App() {
               return {
                 ...cs,
                 ...ls,
+                id: cs.id,
                 paymentStatus: ls.paymentStatus,
                 paidAmount: ls.paidAmount,
                 paymentMethod: ls.paymentMethod || cs.paymentMethod,
@@ -4863,7 +5087,7 @@ export default function App() {
             };
           }
 
-          const cloudSessions = autoCorrectPastSessions(
+          const correctedSessions = autoCorrectPastSessions(
             reconciledRaw,
             cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
             cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
@@ -4874,6 +5098,8 @@ export default function App() {
             cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
             reconciledMonthState.closedMonths
           );
+          const cloudSessions = applyAccountingLedgerToSessions(correctedSessions, localLedger, effectiveCutoff);
+          sessionsRef.current = cloudSessions;
           setSessions(cloudSessions);
           setSettings(cloudData.settings);
           settingsRef.current = cloudData.settings;
@@ -4882,6 +5108,7 @@ export default function App() {
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
           safeStorage.setItem(userSessionsKey, JSON.stringify(cloudSessions), user.uid);
           safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
+          updateLocalAccountingLedger(user.uid, cloudSessions);
         }
       }
       await handleManualCalendarSyncRef.current(false);

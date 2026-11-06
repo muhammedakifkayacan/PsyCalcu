@@ -66,6 +66,38 @@ export function pruneStorage(currentUserId?: string): void {
         // ignore
       }
     }
+
+    // Compact accounting ledger keys by removing 0-TL unedited historical entries
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('psycalcu_accounting_ledger')) {
+        try {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              let changed = false;
+              for (const [entryKey, entryVal] of Object.entries(parsed as Record<string, any>)) {
+                if (
+                  !entryVal ||
+                  ((Number(entryVal.price) || 0) === 0 &&
+                    (Number(entryVal.paidAmount) || 0) === 0 &&
+                    !entryVal.isManuallyEdited)
+                ) {
+                  delete parsed[entryKey];
+                  changed = true;
+                }
+              }
+              if (changed) {
+                localStorage.setItem(k, JSON.stringify(parsed));
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
   } catch (err) {
     console.warn(`${LOG_PREFIX} Storage prune warning:`, err);
   }
