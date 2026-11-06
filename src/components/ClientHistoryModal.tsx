@@ -578,7 +578,13 @@ export const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({
                         </div>
                       </div>
 
-                      {/* 3. NOTES (If present) */}
+                      {/* 3. CALENDAR SYNC LOCK NOTICE & NOTES */}
+                      {session.calendarSyncNotice && (
+                        <div className="text-[11px] text-amber-900 bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl leading-relaxed font-medium">
+                          {session.calendarSyncNotice}
+                        </div>
+                      )}
+
                       {session.notes && (
                         <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-1">
                           "{session.notes}"

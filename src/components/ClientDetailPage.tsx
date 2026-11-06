@@ -908,7 +908,20 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                   </div>
                 </div>
 
-                {/* 3. NOTES (If manually entered in session) */}
+                {/* 3. CALENDAR SYNC LOCK NOTICE & NOTES */}
+                {session.calendarSyncNotice && (
+                  <div className="text-[11px] text-amber-900 bg-amber-50/90 border border-amber-200/90 p-2.5 rounded-xl flex items-start justify-between gap-2">
+                    <span className="leading-relaxed font-medium">{session.calendarSyncNotice}</span>
+                    <button
+                      type="button"
+                      onClick={() => onSaveSession({ ...session, calendarSyncNotice: undefined })}
+                      className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg shrink-0 cursor-pointer"
+                    >
+                      Anladım
+                    </button>
+                  </div>
+                )}
+
                 {session.notes && (
                   <p className="text-xs text-slate-600 italic bg-slate-50/80 border-l-2 border-slate-300 px-2.5 py-1 rounded-r-md line-clamp-2">
                     "{session.notes}"
@@ -1082,6 +1095,20 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                         </button>
                       )}
                     </div>
+
+                    {/* Calendar Sync Lock Notice */}
+                    {session.calendarSyncNotice && (
+                      <div className="text-[11px] text-amber-900 bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl flex items-start justify-between gap-2 max-w-xl">
+                        <span className="leading-relaxed font-medium">{session.calendarSyncNotice}</span>
+                        <button
+                          type="button"
+                          onClick={() => onSaveSession({ ...session, calendarSyncNotice: undefined })}
+                          className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg shrink-0 cursor-pointer"
+                        >
+                          Anladım
+                        </button>
+                      </div>
+                    )}
 
                     {/* Session Notes snippet */}
                     {session.notes && (

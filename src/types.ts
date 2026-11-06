@@ -31,6 +31,8 @@ export interface Session {
   isDeleted?: boolean; // Soft delete flag (retained in Trash Bin for 30 days)
   deletedAt?: number; // timestamp in ms when session was moved to trash bin
   originalDate?: string; // If session was rescheduled from a previous date via RECURRENCE-ID
+  isPaymentLocked?: boolean; // Locked once marked as paid/partial unless user explicitly reverts to unpaid
+  calendarSyncNotice?: string; // Information note if calendar date/time/status changed while session was payment-locked
 }
 
 export interface Room {

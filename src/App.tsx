@@ -3389,6 +3389,14 @@ export default function App() {
     }));
   };
 
+  const handleDismissCalendarSyncNotice = (id: string) => {
+    commitSessionsImmediately(
+      prev => prev.map(s => s.id === id ? { ...s, calendarSyncNotice: undefined, updatedAt: Date.now() } : s),
+      undefined,
+      false
+    );
+  };
+
   const handleTogglePaymentStatus = (id: string) => {
     const baseList = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
     const found = baseList.find(s => s.id === id) || sessions.find(s => s.id === id);
@@ -3397,6 +3405,7 @@ export default function App() {
     const isClosedMonth = isDateInClosedMonth(found.date, settings.closedMonths);
     const prevStatus = found.paymentStatus;
     const prevPaidAmount = found.paidAmount;
+    const prevNotice = found.calendarSyncNotice;
     const nextStatus = prevStatus === 'paid' ? 'unpaid' : 'paid';
     const priceVal = Number(found.price) || 0;
 
@@ -3407,6 +3416,8 @@ export default function App() {
             ...s,
             paymentStatus: nextStatus,
             paidAmount: nextStatus === 'paid' ? priceVal : 0,
+            isPaymentLocked: nextStatus === 'paid',
+            calendarSyncNotice: nextStatus === 'unpaid' ? undefined : s.calendarSyncNotice,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -3425,6 +3436,8 @@ export default function App() {
               ...s,
               paymentStatus: prevStatus,
               paidAmount: prevPaidAmount,
+              isPaymentLocked: prevStatus === 'paid' || prevStatus === 'partial',
+              calendarSyncNotice: prevNotice,
               updatedAt: Date.now(),
               isManuallyEdited: true
             };
@@ -3445,13 +3458,13 @@ export default function App() {
         'success',
         {
           title: isClosedMonth ? 'Geçmiş Ay Borcu Tahsil Edildi' : 'Ödeme Alındı',
-          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
+          message: `${found.clientName} danışanının ${found.date} tarihli seans ödemesi (${formatMoney(priceVal)}) başarıyla tahsil edildi ve kilitlendi.`
         },
         undoFn
       );
     } else {
       showToast(
-        `${found.clientName} ödemesi iptal edildi.`, 
+        `${found.clientName} ödemesi iptal edildi ve seans kilidi açıldı.`, 
         'info',
         {
           title: 'Ödeme İptal Edildi',
@@ -3480,6 +3493,7 @@ export default function App() {
             ...s,
             paymentStatus: 'paid',
             paidAmount: priceVal,
+            isPaymentLocked: true,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -3498,6 +3512,7 @@ export default function App() {
               ...s,
               paymentStatus: prevStatus,
               paidAmount: prevPaidAmount,
+              isPaymentLocked: prevStatus === 'paid' || prevStatus === 'partial',
               updatedAt: Date.now(),
               isManuallyEdited: true
             };
@@ -3517,7 +3532,7 @@ export default function App() {
       'success',
       {
         title: isClosedMonth ? 'Geçmiş Ay Borcu Tahsil Edildi' : 'Ödeme Alındı',
-        message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (${formatMoney(priceVal)}) başarıyla tahsil edildi.`
+        message: `${found.clientName} danışanının ${found.date} tarihli seans ücreti (${formatMoney(priceVal)}) başarıyla tahsil edildi ve kilitlendi.`
       },
       undoFn
     );
@@ -3568,6 +3583,7 @@ export default function App() {
             paymentStatus: 'paid',
             paidAmount: Number(s.price) || 0,
             paymentMethod: paymentMethod || s.paymentMethod,
+            isPaymentLocked: true,
             updatedAt: Date.now(),
             isManuallyEdited: true
           };
@@ -3582,11 +3598,13 @@ export default function App() {
       commitSessionsImmediately(
         prev => prev.map(s => {
           if (modifiedPreviousStates[s.id]) {
+            const st = modifiedPreviousStates[s.id].status;
             return {
               ...s,
-              paymentStatus: modifiedPreviousStates[s.id].status,
+              paymentStatus: st,
               paidAmount: modifiedPreviousStates[s.id].paidAmount,
               paymentMethod: modifiedPreviousStates[s.id].paymentMethod,
+              isPaymentLocked: st === 'paid' || st === 'partial',
               updatedAt: Date.now(),
               isManuallyEdited: true
             };
@@ -3835,6 +3853,8 @@ export default function App() {
         ...s, 
         paymentStatus: newStatus, 
         paidAmount: newStatus === 'paid' ? s.price : (newStatus === 'unpaid' ? 0 : s.paidAmount),
+        isPaymentLocked: newStatus === 'paid' || newStatus === 'partial',
+        calendarSyncNotice: newStatus === 'unpaid' ? undefined : s.calendarSyncNotice,
         isManuallyEdited: true, 
         updatedAt: Date.now() 
       } : s),
@@ -4297,10 +4317,6 @@ export default function App() {
           return;
         }
 
-        if (existing.id !== ns.id) {
-          replacedOldIds.add(existing.id);
-        }
-
         // Determine if the incoming session is cancelled, non-session, or strictly before 2026-07-01
         const regCutoff = (registrationCreatedAt && registrationCreatedAt < '2026-07-01') ? registrationCreatedAt.split('T')[0] : '';
         const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff && ns.date < '2026-07-01');
@@ -4312,11 +4328,14 @@ export default function App() {
         // For calendar-synced sessions, do not save calendar descriptions in persistent storage (KVKK)
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
-        // CRITICAL DATA PROTECTION:
-        // A user's payment records ('paid', 'partial', or paidAmount > 0) and manual edits MUST NEVER be lost!
+        // CRITICAL DATA PROTECTION & PAID SESSION LOCK:
+        // Once a user marks a session as 'paid' or 'partial', it is LOCKED until the user explicitly changes it back to 'unpaid'.
+        // Even if the calendar event's date, time, or status changes in Google/Apple Calendar, we preserve all payment, price, and date/time fields
+        // and attach a helpful information note (`calendarSyncNotice`) so the user never loses accounting data!
         const hasPaymentRecorded = existing.paymentStatus === 'paid' || 
                                    existing.paymentStatus === 'partial' || 
-                                   (Number(existing.paidAmount) || 0) > 0;
+                                   (Number(existing.paidAmount) || 0) > 0 ||
+                                   Boolean(existing.isPaymentLocked && existing.paymentStatus !== 'unpaid');
         const isAccountingProtected = hasPaymentRecorded || Boolean(existing.isManuallyEdited);
 
         // Resolve session type: calendar event type takes precedence unless manually locked by user
@@ -4336,6 +4355,71 @@ export default function App() {
           } else {
             effectivePrice = 0;
           }
+        }
+
+        if (hasPaymentRecorded) {
+          const fmtShortDate = (d: string) => (d && d.includes('-') ? d.split('-').reverse().join('.') : d);
+          const isCalendarDateOrTimeChanged = existing.date !== ns.date || existing.time !== ns.time;
+          const isCalendarCancelled = ns.type === 'cancelled' && existing.type !== 'cancelled';
+          let syncNotice = existing.calendarSyncNotice;
+          if (isCalendarDateOrTimeChanged) {
+            syncNotice = `🔒 Bu seans "Ödendi" olarak işaretlendiği için kilitlenmiştir. Takvimde gün/saat değişmiş (${fmtShortDate(ns.date)} ${ns.time}) görünüyor; ancak ödeme ve fiyat bilgilerinizin kaybolmaması için mevcut kaydınız (${fmtShortDate(existing.date)} ${existing.time}) korundu.`;
+          } else if (isCalendarCancelled) {
+            syncNotice = `🔒 Bu seans "Ödendi" olarak işaretlendiği için kilitlenmiştir. Takvimde iptal edilmiş görünüyor; ancak ödeme ve fiyat bilgilerinizin kaybolmaması için mevcut kaydınız korundu.`;
+          }
+
+          const keepOriginalId = existing.date !== ns.date;
+          if (!keepOriginalId && existing.id !== ns.id) {
+            replacedOldIds.add(existing.id);
+          }
+
+          const lockedUpdated: Session = {
+            ...existing,
+            id: keepOriginalId ? existing.id : ns.id,
+            clientName: existing.clientName || ns.clientName,
+            type: existing.type,
+            date: existing.date,
+            time: existing.time,
+            duration: existing.duration || ns.duration,
+            notes: persistentNotes || existing.notes || "",
+            roomId: existing.roomId || matchedRoomId,
+            price: existing.price > 0 ? existing.price : effectivePrice,
+            paymentStatus: existing.paymentStatus,
+            paidAmount: existing.paidAmount ?? (existing.price > 0 ? existing.price : effectivePrice),
+            paymentMethod: existing.paymentMethod || ns.paymentMethod,
+            hasBabysitterFee: existing.hasBabysitterFee,
+            babysitterFeeAmount: existing.babysitterFeeAmount,
+            hasOfficeRentFee: existing.hasOfficeRentFee,
+            officeRentFeeAmount: existing.officeRentFeeAmount,
+            isSyncedFromCalendar: true,
+            syncedCalendarType: existing.syncedCalendarType || ns.syncedCalendarType,
+            isManuallyEdited: true,
+            isPaymentLocked: true,
+            calendarSyncNotice: syncNotice
+          };
+
+          if (
+            existing.id !== lockedUpdated.id ||
+            existing.calendarSyncNotice !== lockedUpdated.calendarSyncNotice ||
+            !existing.isPaymentLocked ||
+            (existing.price || 0) !== (lockedUpdated.price || 0)
+          ) {
+            lockedUpdated.updatedAt = Date.now();
+            toUpdate.push(lockedUpdated);
+            updatedList.push({
+              id: lockedUpdated.id,
+              clientName: lockedUpdated.clientName,
+              date: lockedUpdated.date,
+              time: lockedUpdated.time,
+              type: lockedUpdated.type
+            });
+            updatedCount++;
+          }
+          return;
+        }
+
+        if (existing.id !== ns.id) {
+          replacedOldIds.add(existing.id);
         }
 
         // Preserve payment status if user marked it paid or recorded accounting
@@ -4543,12 +4627,21 @@ export default function App() {
           // Financial Ledger Safeguard: A paid or partially paid session must NEVER be deleted by calendar sync!
           const hasRecordedPayment = s.paymentStatus === 'paid' || 
                                      s.paymentStatus === 'partial' || 
-                                     (Number(s.paidAmount) || 0) > 0;
+                                     (Number(s.paidAmount) || 0) > 0 ||
+                                     Boolean(s.isPaymentLocked && s.paymentStatus !== 'unpaid');
           if (hasRecordedPayment) {
-            sessionsToKeep.push({
+            const decoupledNotice = s.calendarSyncNotice || '🔒 Bu seans "Ödendi" olarak işaretlendiği için kilitlenmiştir. Takvimde gün/saati değişmiş veya takvimden kaldırılmış görünüyor; ancak ödeme ve fiyat bilgilerinizin kaybolmaması için mevcut kaydınız korundu.';
+            const lockedPaidSession: Session = {
               ...s,
-              isSyncedFromCalendar: false // Decouple from calendar to keep permanently in accounting ledger
-            });
+              isSyncedFromCalendar: false, // Decouple from calendar to keep permanently in accounting ledger
+              isManuallyEdited: true,
+              isPaymentLocked: true,
+              calendarSyncNotice: decoupledNotice
+            };
+            sessionsToKeep.push(lockedPaidSession);
+            if (!s.calendarSyncNotice || s.isSyncedFromCalendar) {
+              toUpdate.push(lockedPaidSession);
+            }
             return;
           }
 
@@ -6794,9 +6887,19 @@ export default function App() {
                                   </span>
                                 )}
 
+                                {/* Payment Locked Indicator for Paid/Partial Sessions */}
+                                {(session.paymentStatus === 'paid' || session.paymentStatus === 'partial' || session.isPaymentLocked) && session.paymentStatus !== 'unpaid' && (session.isSyncedFromCalendar || session.isPaymentLocked) && (
+                                  <span
+                                    className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5 shadow-3xs"
+                                    title="Bu seans Ödendi olarak işaretlendiği için kilitlenmiştir. Takvim senkronizasyonunda gün/saat değişse bile ödeme durumu ve fiyat bilgileriniz korunur."
+                                  >
+                                    🔒 Ödeme Kilitli
+                                  </span>
+                                )}
+
                                 {/* Price Hike Badge */}
                                 {!isCancelled && session.type !== 'non-session' && session.type !== 'rent-income' && session.price > (session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200))) && (
-                                  <span className="text-[9px] bg-amber-500 text-white border border-amber-600 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-xs animate-pulse" title={`Varsayılan seans fiyatından (₺${session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)}) daha yüksek bir fiyata sahiptir.`}>
+                                  <span className="text-[9px] bg-amber-500 text-white border border-amber-600 px-2 py-0.5 rounded-full font-bold tracking-wider flex items-center gap-0.5 shadow-xs animate-pulse" title={`Varsayılan seans fiyatından (₺${session.type === 'online' ? (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200) : (session.type === 'face-to-face' ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200) : (settings.defaultSessionPrice ?? 1200))}) daha yüksek bir fiyata sahiptir.`}>
                                     <Sparkles className="w-2.5 h-2.5 text-white animate-spin" style={{ animationDuration: '3s' }} /> ZAMLI SEANS
                                   </span>
                                 )}
@@ -6811,6 +6914,24 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
+
+                              {/* Calendar Sync Lock Notice Banner */}
+                              {session.calendarSyncNotice && (
+                                <div className="mt-2 text-[11px] text-amber-900 bg-amber-50/90 border border-amber-200/90 p-2.5 rounded-xl flex items-start justify-between gap-2 shadow-3xs">
+                                  <span className="leading-relaxed font-medium">{session.calendarSyncNotice}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDismissCalendarSyncNotice(session.id);
+                                    }}
+                                    className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200/80 px-2 py-0.5 rounded-lg shrink-0 transition-colors cursor-pointer"
+                                    title="Bilgi notunu kapat"
+                                  >
+                                    Anladım
+                                  </button>
+                                </div>
+                              )}
 
                               {/* Session Notes display in daily agenda */}
                               {showNotes && (
@@ -8525,6 +8646,11 @@ export default function App() {
                                         ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
                                         : 'ÖDENMEDİ'}
                                   </span>
+                                  {(isPaid || session.paymentStatus === 'partial' || session.isPaymentLocked) && session.paymentStatus !== 'unpaid' && (session.isSyncedFromCalendar || session.isPaymentLocked) && (
+                                    <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Ödeme durumu ve fiyat takvim senkronizasyonuna karşı kilitlendi">
+                                      🔒 KİLİTLİ
+                                    </span>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold font-mono">
@@ -8534,6 +8660,19 @@ export default function App() {
                                   <span>•</span>
                                   <span className="text-[#cb997e] font-bold">{formatMoney(session.price)}</span>
                                 </div>
+
+                                {session.calendarSyncNotice && (
+                                  <div className="text-[11px] text-amber-900 bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl flex items-start justify-between gap-2 max-w-full">
+                                    <span className="leading-relaxed font-medium">{session.calendarSyncNotice}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDismissCalendarSyncNotice(session.id)}
+                                      className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200/80 px-2 py-0.5 rounded-lg shrink-0 cursor-pointer"
+                                    >
+                                      Anladım
+                                    </button>
+                                  </div>
+                                )}
 
                                 {showNotes && (
                                   <p className="text-xs text-slate-600 italic font-medium bg-[#fdfbf7] p-2.5 rounded-xl border border-slate-100/60 max-w-full">

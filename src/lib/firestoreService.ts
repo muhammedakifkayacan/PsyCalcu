@@ -15,6 +15,8 @@ export interface AccountingLedgerEntry {
   hasOfficeRentFee?: boolean;
   officeRentFeeAmount?: number;
   isManuallyEdited?: boolean;
+  isPaymentLocked?: boolean;
+  calendarSyncNotice?: string;
   updatedAt: number;
   clientName: string;
   date: string;
@@ -172,6 +174,8 @@ export function updateLocalAccountingLedger(
       hasOfficeRentFee: s.type === 'online' ? false : Boolean(s.hasOfficeRentFee),
       officeRentFeeAmount: s.type === 'online' ? 0 : (Number(s.officeRentFeeAmount) || 0),
       isManuallyEdited: Boolean(s.isManuallyEdited || hasPayment),
+      isPaymentLocked: hasPayment ? true : false,
+      calendarSyncNotice: s.calendarSyncNotice,
       updatedAt: sUpdatedAt,
       clientName: s.clientName,
       date: s.date,
@@ -206,7 +210,10 @@ export function updateLocalAccountingLedger(
         (hasPayment && !existingIsPaid) ||
         (sUpdatedAt > 0 && sUpdatedAt >= (existing.updatedAt || 0))
       ) {
-        mergedLedger[k] = entry;
+        mergedLedger[k] = {
+          ...entry,
+          calendarSyncNotice: entry.calendarSyncNotice || existing.calendarSyncNotice
+        };
       }
     }
   });
@@ -317,6 +324,8 @@ export function applyAccountingLedgerToSessions(
         hasOfficeRentFee: isOnline ? false : (matchedEntry.hasOfficeRentFee ?? s.hasOfficeRentFee),
         officeRentFeeAmount: isOnline ? 0 : (matchedEntry.hasOfficeRentFee ? (matchedEntry.officeRentFeeAmount || s.officeRentFeeAmount) : 0),
         isManuallyEdited: true,
+        isPaymentLocked: ledgerHasPayment ? true : s.isPaymentLocked,
+        calendarSyncNotice: s.calendarSyncNotice || matchedEntry.calendarSyncNotice,
         updatedAt: Math.max(sTime, lTime)
       };
     }
