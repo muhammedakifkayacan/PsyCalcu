@@ -266,19 +266,18 @@ export default function StatsDashboard({
     return list;
   }, [monthSessions, filter, searchQuery]);
 
-  // Grouped clients for the hierarchical accordion view using equivalence rules
+  // Grouped clients for the hierarchical accordion view using fast O(1) indexed lookup
   const groupedClients = useMemo<StatsClientGroup[]>(() => {
     const groups: StatsClientGroup[] = [];
+    const groupByKey = new Map<string, StatsClientGroup>();
 
     filteredSessions.forEach(s => {
       const rawName = (s.clientName || 'İsimsiz / Kişisel').trim();
       const normName = getNormalizedClientName(rawName) || rawName;
+      const lookupKey = toTurkishAscii(normName).toLowerCase().trim();
       const canonicalDisplay = rawName === 'İsimsiz / Kişisel' ? rawName : (getCanonicalClientDisplayName(rawName) || normName);
 
-      let group = groups.find(g => 
-        areClientNamesEquivalent(g.clientName, rawName) ||
-        areClientNamesEquivalent(g.clientKey, normName)
-      );
+      let group = groupByKey.get(lookupKey);
 
       if (!group) {
         group = {
@@ -294,6 +293,7 @@ export default function StatsDashboard({
           hasZeroPrice: false,
         };
         groups.push(group);
+        groupByKey.set(lookupKey, group);
       } else {
         const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);
         const hasTurkishCharsExisting = /[çğıöşüÇĞİÖŞÜ]/.test(group.clientName);

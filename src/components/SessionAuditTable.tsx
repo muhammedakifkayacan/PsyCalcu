@@ -39,7 +39,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Session, AppSettings, SessionType, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent } from '../types';
+import { Session, AppSettings, SessionType, getNormalizedClientName, getCanonicalClientDisplayName, areClientNamesEquivalent, toTurkishAscii } from '../types';
 import { getAccountingDateRange, getTodayLocalDate, formatLocalDate } from '../utils/dateUtils';
 import { isDateInClosedMonth } from '../utils/monthCloseUtils';
 
@@ -437,23 +437,24 @@ export const SessionAuditTable: React.FC<SessionAuditTableProps> = ({
   // Grouped Clients Computation (Danışan bazlı gruplanmış seanslar & toplamlar)
   const groupedClients = useMemo<ClientAuditGroup[]>(() => {
     const groupedBuckets: { displayName: string; normName: string; sessions: Session[] }[] = [];
+    const bucketMap = new Map<string, { displayName: string; normName: string; sessions: Session[] }>();
     
     for (const s of filteredSessions) {
       const rawName = s.clientName?.trim() || 'İsimsiz / Kişisel';
       const normName = getNormalizedClientName(rawName) || rawName;
+      const lookupKey = toTurkishAscii(normName).toLowerCase().trim();
       const canonicalDisplay = rawName === 'İsimsiz / Kişisel' ? rawName : (getCanonicalClientDisplayName(rawName) || normName);
 
-      let existing = groupedBuckets.find(b => 
-        areClientNamesEquivalent(b.displayName, rawName) ||
-        areClientNamesEquivalent(b.normName, normName)
-      );
+      let existing = bucketMap.get(lookupKey);
 
       if (!existing) {
-        groupedBuckets.push({
+        existing = {
           displayName: canonicalDisplay,
           normName,
           sessions: [s]
-        });
+        };
+        groupedBuckets.push(existing);
+        bucketMap.set(lookupKey, existing);
       } else {
         existing.sessions.push(s);
         const hasTurkishCharsNew = /[çğıöşüÇĞİÖŞÜ]/.test(canonicalDisplay);

@@ -104,6 +104,7 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
   // Extract unique clients and their latest session info using equivalence rules
   const clientList = useMemo(() => {
     const clients: ClientItem[] = [];
+    const clientMap = new Map<string, ClientItem>();
 
     sessions.forEach(s => {
       if (s.isDeleted || s.type === 'non-session') return;
@@ -111,23 +112,22 @@ export const ClientDirectoryPage: React.FC<ClientDirectoryPageProps> = ({
       if (!rawName) return;
 
       const normName = getNormalizedClientName(rawName) || rawName;
+      const lookupKey = toTurkishAscii(normName).toLowerCase().trim();
       const canonicalDisplay = getCanonicalClientDisplayName(rawName) || normName;
 
-      // Find existing client in list that matches using equivalence rules (case-insensitivity, additions, suffixes, accent tolerance)
-      let existing = clients.find(c => 
-        areClientNamesEquivalent(c.originalName, rawName) ||
-        areClientNamesEquivalent(c.normalizedName, normName)
-      );
+      let existing = clientMap.get(lookupKey);
 
       if (!existing) {
-        clients.push({
+        existing = {
           originalName: canonicalDisplay,
           normalizedName: normName,
           latestSessionDate: s.date || '',
           latestSessionTime: s.time || '',
           latestSessionType: s.type,
           totalSessions: 1
-        });
+        };
+        clients.push(existing);
+        clientMap.set(lookupKey, existing);
       } else {
         existing.totalSessions += 1;
         const isLater = (s.date > existing.latestSessionDate) || 

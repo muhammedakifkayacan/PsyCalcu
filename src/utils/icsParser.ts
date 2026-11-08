@@ -22,6 +22,26 @@ function parseISO8601Duration(durationStr: string): number | null {
   return total > 0 ? total : null;
 }
 
+// Cached formatter map to eliminate expensive Intl.DateTimeFormat constructions in hot loops
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+function getCachedFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = formatterCache.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    formatterCache.set(tz, fmt);
+  }
+  return fmt;
+}
+
 /**
  * Converts any ICS date/time string into a local YYYY-MM-DD and HH:mm object,
  * properly converting UTC (Z) or TZID times into local Turkey / target timezone time!
@@ -63,21 +83,28 @@ function parseIcsDateTimeToLocal(
 
   if (isUtc) {
     const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
-    const dateObj = new Date(utcMs);
+
+    // Instant zero-cost mathematical conversion for Turkey (Europe/Istanbul):
+    // Turkey is permanently UTC+3 with no daylight saving time.
+    const effectiveTz = (targetTimezone || 'Europe/Istanbul').toLowerCase();
+    if (effectiveTz === 'europe/istanbul' || effectiveTz === 'asia/istanbul' || effectiveTz === 'turkey' || effectiveTz === 'utc+3' || effectiveTz === 'gmt+3') {
+      const turkeyMs = utcMs + (3 * 60 * 60 * 1000);
+      const tDate = new Date(turkeyMs);
+      const y = tDate.getUTCFullYear();
+      const m = String(tDate.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(tDate.getUTCDate()).padStart(2, '0');
+      const h = String(tDate.getUTCHours()).padStart(2, '0');
+      const min = String(tDate.getUTCMinutes()).padStart(2, '0');
+      return {
+        dateStr: `${y}-${m}-${d}`,
+        timeStr: `${h}:${min}`,
+        utcMs
+      };
+    }
 
     try {
-      // Format to target local timezone (Europe/Istanbul UTC+3)
-      const formatter = new Intl.DateTimeFormat('en-CA', {
-        timeZone: targetTimezone || 'Europe/Istanbul',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
-      const parts = formatter.formatToParts(dateObj);
+      const formatter = getCachedFormatter(targetTimezone || 'Europe/Istanbul');
+      const parts = formatter.formatToParts(new Date(utcMs));
       const partMap: Record<string, string> = {};
       for (const p of parts) {
         partMap[p.type] = p.value;
@@ -115,22 +142,28 @@ function parseIcsDateTimeToLocal(
 
     if (!isLocalTz && tzid) {
       try {
-        // Convert from foreign TZID to target timezone
         const tempUtc = Date.UTC(year, month - 1, day, hour, minute, second);
         const invDate = new Date(new Date(tempUtc).toLocaleString('en-US', { timeZone: tzid }));
         const offsetDiff = tempUtc - invDate.getTime();
         const actualUtcMs = tempUtc + offsetDiff;
 
-        const formatter = new Intl.DateTimeFormat('en-CA', {
-          timeZone: targetTimezone || 'Europe/Istanbul',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        });
+        const effectiveTz = (targetTimezone || 'Europe/Istanbul').toLowerCase();
+        if (effectiveTz === 'europe/istanbul' || effectiveTz === 'asia/istanbul' || effectiveTz === 'turkey') {
+          const turkeyMs = actualUtcMs + (3 * 60 * 60 * 1000);
+          const tDate = new Date(turkeyMs);
+          const y = tDate.getUTCFullYear();
+          const m = String(tDate.getUTCMonth() + 1).padStart(2, '0');
+          const d = String(tDate.getUTCDate()).padStart(2, '0');
+          const h = String(tDate.getUTCHours()).padStart(2, '0');
+          const min = String(tDate.getUTCMinutes()).padStart(2, '0');
+          return {
+            dateStr: `${y}-${m}-${d}`,
+            timeStr: `${h}:${min}`,
+            utcMs: actualUtcMs
+          };
+        }
+
+        const formatter = getCachedFormatter(targetTimezone || 'Europe/Istanbul');
         const parts = formatter.formatToParts(new Date(actualUtcMs));
         const partMap: Record<string, string> = {};
         for (const p of parts) {
@@ -231,9 +264,15 @@ function generateOccurrences(
   const [sY, sM, sD] = startParsed.dateStr.split('-').map(Number);
   let currDate = new Date(sY, sM - 1, sD);
   let countProcessed = 0;
-  const maxSafety = 2500; // Safe guard for infinite loop prevention while supporting multi-year histories
+  let totalIterations = 0;
+  const maxIterations = 5000; // Absolute safety cap to prevent CPU lockup
+  const maxSafety = 2500; // Safety guard for multi-year recurrence history
+  const interval = Math.max(1, Number(rrule.interval) || 1);
 
-  while (countProcessed < maxSafety) {
+  while (countProcessed < maxSafety && totalIterations < maxIterations) {
+    totalIterations++;
+    if (isNaN(currDate.getTime())) break;
+
     const currYear = currDate.getFullYear();
     const currMonth = String(currDate.getMonth() + 1).padStart(2, '0');
     const currDay = String(currDate.getDate()).padStart(2, '0');
@@ -262,17 +301,17 @@ function generateOccurrences(
 
     // Step to next candidate date
     if (rrule.freq === 'DAILY') {
-      currDate.setDate(currDate.getDate() + rrule.interval);
+      currDate.setDate(currDate.getDate() + interval);
     } else if (rrule.freq === 'WEEKLY') {
-      if (rrule.byDay && rrule.byDay.length > 1) {
+      if (rrule.byDay && rrule.byDay.length > 0) {
         currDate.setDate(currDate.getDate() + 1);
       } else {
-        currDate.setDate(currDate.getDate() + (7 * rrule.interval));
+        currDate.setDate(currDate.getDate() + (7 * interval));
       }
     } else if (rrule.freq === 'MONTHLY') {
-      currDate.setMonth(currDate.getMonth() + rrule.interval);
+      currDate.setMonth(currDate.getMonth() + interval);
     } else if (rrule.freq === 'YEARLY') {
-      currDate.setFullYear(currDate.getFullYear() + rrule.interval);
+      currDate.setFullYear(currDate.getFullYear() + interval);
     } else {
       break;
     }

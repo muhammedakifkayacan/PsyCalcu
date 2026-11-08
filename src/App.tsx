@@ -610,6 +610,8 @@ export default function App() {
   const [isInitialAuthCheckDone, setIsInitialAuthCheckDone] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthSyncing, setIsAuthSyncing] = useState(false);
+  const isAuthSyncingRef = useRef(false);
+  useEffect(() => { isAuthSyncingRef.current = isAuthSyncing; }, [isAuthSyncing]);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(isFirestoreQuotaExceeded);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
@@ -1684,14 +1686,18 @@ export default function App() {
     performSync();
   }, [user, registrationStatus]);
 
-  const isInitialSnapshotHandledRef = useRef(false);
+  const handledSnapshotUserUidRef = useRef<string | null>(null);
 
   // Real-time live multi-device listener: instant updates when changes occur on another device
   useEffect(() => {
-    if (!user || registrationStatus !== 'approved' || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) return;
+    if (!user || registrationStatus !== 'approved' || !isInitialSyncDone || isQuotaExceeded) return;
 
+    let isSnapshotActive = true;
     const userDocRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (!isSnapshotActive) return;
+      if (isAuthSyncingRef.current) return;
+
       // Ignore local optimistic writes, active local saves, or snapshots triggered by this tab's own recent writes
       if (
         docSnap.metadata.hasPendingWrites ||
@@ -1702,8 +1708,8 @@ export default function App() {
       }
 
       // Skip the very first snapshot on mount because performSync already fetched and reconciled the latest cloud state
-      if (!isInitialSnapshotHandledRef.current) {
-        isInitialSnapshotHandledRef.current = true;
+      if (handledSnapshotUserUidRef.current !== user.uid) {
+        handledSnapshotUserUidRef.current = user.uid;
         return;
       }
 
@@ -1857,8 +1863,11 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
-  }, [user, registrationStatus, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
+    return () => {
+      isSnapshotActive = false;
+      unsubscribe();
+    };
+  }, [user?.uid, registrationStatus, isInitialSyncDone, isQuotaExceeded]);
 
   // Refs to track latest values for safe unmount/unload saving
   const sessionsRef = useRef(sessions);
@@ -1913,7 +1922,7 @@ export default function App() {
       }
       safeStorage.setItem(localExpensesKey, currentExpensesStr, user ? user.uid : undefined);
 
-      if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
+      if (!user || !isInitialSyncDone || isAuthSyncingRef.current || isQuotaExceeded) {
         return;
       }
 
@@ -1957,7 +1966,7 @@ export default function App() {
     return () => {
       clearTimeout(timer);
     };
-  }, [settings, sessions, expenses, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
+  }, [settings, sessions, expenses, user, isInitialSyncDone, isQuotaExceeded]);
 
   // Offline Mutation Queue Flusher
   const flushPendingMutations = useCallback(async () => {
