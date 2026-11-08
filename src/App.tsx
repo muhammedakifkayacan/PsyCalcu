@@ -199,8 +199,8 @@ const autoCorrectPastSessions = (
       return s;
     }
 
-    // 0b. Prune obsolete recurring calendar events from before 2025 to prevent memory explosion
-    if (s.id && s.id.startsWith('ics_') && s.date && s.date < '2025-01-01') {
+    // Only prune invalid Unix epoch (1970) corrupt artifacts, fully preserving genuine 2015+ sessions
+    if (s.id && s.id.startsWith('ics_') && s.date && s.date < '2010-01-01') {
       return null;
     }
 
@@ -4124,9 +4124,7 @@ export default function App() {
       effectiveSessions.length > 0
     );
 
-    const cutOffDateStr = effectiveAccountingStartDate
-      ? (effectiveAccountingStartDate > '2025-01-01' ? effectiveAccountingStartDate : '2025-01-01')
-      : '2025-01-01';
+    const cutOffDateStr = effectiveAccountingStartDate || '2010-01-01';
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched

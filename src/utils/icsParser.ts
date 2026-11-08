@@ -433,10 +433,10 @@ export function parseICS(
   // DATE WINDOW:
   // KURAL: Takvim eşitleme tamamını bir kere yaptıktan sonra,
   // muhasebe başlangıç tarihinden öncekini bir daha kontrol etmeyecek!
-  // Seanslar hiçbir koşulda 2025-01-01 öncesine çekilmez; böylece 1970'den gelen tekrarlayan etkinlikler belleği şişirmez.
-  const windowStart = effectiveAccountingStart
-    ? (effectiveAccountingStart > '2025-01-01' ? effectiveAccountingStart : '2025-01-01')
-    : '2025-01-01';
+  // Unix epoch (1970) hatalı saat kalıntıları hariç, kullanıcının 2010 ve 2015 gibi tüm geçmiş takvim kayıtları eksiksiz içeri aktarılır.
+  const windowStart = (isInitialCalendarSyncDone && effectiveAccountingStart)
+    ? effectiveAccountingStart
+    : (effectiveAccountingStart || '2010-01-01');
 
   const todayObj = new Date();
   const future365Days = new Date();
@@ -678,8 +678,8 @@ export function parseICS(
         ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
         : `ics_${raw.uid}`;
 
-    // Cache clinical notes in local-only IndexedDB only for recent/active occurrences (2025-01-01 onwards) with minimal keys
-      if (cleanClinicalNote && occ.dateStr >= '2025-01-01') {
+    // Cache clinical notes in local-only IndexedDB for all valid occurrences (2010-01-01 onwards) with minimal keys
+      if (cleanClinicalNote && occ.dateStr >= '2010-01-01') {
         hasAnyLocalNoteToCache = true;
         localNotesToCache[sessionId] = cleanClinicalNote;
         const normClient = getNormalizedClientName(raw.summary || '');
