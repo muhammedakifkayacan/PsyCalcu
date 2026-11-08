@@ -677,21 +677,13 @@ export function parseICS(
         ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
         : `ics_${raw.uid}`;
 
-      // Cache clinical notes in local-only IndexedDB BEFORE closed-month or accountingStartDate skipping
-      // so closed months' notes are always available for ClientPdfReportModal!
-      if (cleanClinicalNote) {
+    // Cache clinical notes in local-only IndexedDB only for recent/active occurrences (2025-01-01 onwards) with minimal keys
+      if (cleanClinicalNote && occ.dateStr >= '2025-01-01') {
         hasAnyLocalNoteToCache = true;
         localNotesToCache[sessionId] = cleanClinicalNote;
-        localNotesToCache[`ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`] = cleanClinicalNote;
-        if (!hasRecurrence) {
-          localNotesToCache[`ics_${raw.uid}`] = cleanClinicalNote;
-        }
         const normClient = getNormalizedClientName(raw.summary || '');
         if (normClient && occ.dateStr) {
           localNotesToCache[`client_d:${normClient}_${occ.dateStr}`] = cleanClinicalNote;
-          if (occ.timeStr) {
-            localNotesToCache[`client_dt:${normClient}_${occ.dateStr}_${occ.timeStr}`] = cleanClinicalNote;
-          }
         }
       }
 

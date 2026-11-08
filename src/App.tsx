@@ -146,6 +146,22 @@ const autoCorrectPastSessions = (
     } catch (e) {}
   }
 
+  const isRealPaidSession = (s: Session | null | undefined, cutoffStr?: string): boolean => {
+    if (!s || s.isDeleted) return false;
+    if (s.type === 'cancelled' || s.type === 'non-session') return false;
+    const effectiveCutoff = (cutoffStr && cutoffStr.trim()) ? cutoffStr.split('T')[0] : '2026-07-01';
+    if (s.date && s.date < effectiveCutoff) return false;
+    const price = Number(s.price) || 0;
+    const paidAmt = Number(s.paidAmount) || 0;
+    if (price <= 0 && paidAmt <= 0) return false;
+    return (
+      s.paymentStatus === 'paid' ||
+      s.paymentStatus === 'partial' ||
+      paidAmt > 0 ||
+      Boolean(s.isPaymentLocked && s.paymentStatus !== 'unpaid')
+    );
+  };
+
   // Cutoff date is the user's accounting & debt tracking start date (defaults to 2026-07-01 if not configured)
   const cutoffDate = (effectiveStartDate && effectiveStartDate.trim()) 
     ? effectiveStartDate.split('T')[0] 
@@ -153,12 +169,24 @@ const autoCorrectPastSessions = (
 
   const effectiveClosedMonths = getEffectiveClosedMonths(closedMonths, auth.currentUser?.uid);
 
-  // Apply stored accounting ledger FIRST so any session marked paid/locked is immediately flagged as isManuallyEdited
-  // before cutoff date checks or smart price healing run.
-  const initialLedger = getStoredAccountingLedger(auth.currentUser?.uid);
-  const preRestoredList = applyAccountingLedgerToSessions(sessionList, initialLedger, cutoffDate);
+  // Deduplicate incoming sessions by id and heal any calendar session that had isSyncedFromCalendar accidentally cleared
+  const dedupedById = new Map<string, Session>();
+  for (let i = 0; i < sessionList.length; i++) {
+    const rawS = sessionList[i];
+    if (!rawS || !rawS.id) continue;
+    const s = (rawS.id.startsWith('ics_') && !rawS.isSyncedFromCalendar)
+      ? { ...rawS, isSyncedFromCalendar: true }
+      : rawS;
+    const prev = dedupedById.get(s.id);
+    if (!prev || ((s.updatedAt || 0) >= (prev.updatedAt || 0)) || (isRealPaidSession(s, cutoffDate) && !isRealPaidSession(prev, cutoffDate))) {
+      dedupedById.set(s.id, s);
+    }
+  }
+  const uniqueSessionList = Array.from(dedupedById.values());
 
-  const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
+  // Apply stored accounting ledger FIRST so any real paid/locked session (>= cutoffDate, price > 0) is restored
+  const initialLedger = getStoredAccountingLedger(auth.currentUser?.uid);
+  const preRestoredList = applyAccountingLedgerToSessions(uniqueSessionList, initialLedger, cutoffDate);
 
   const healedAndRestored = preRestoredList.map(s => {
     if (!s) return null;
@@ -177,11 +205,20 @@ const autoCorrectPastSessions = (
       return s;
     }
 
-    // 1. Sessions before accounting start cutoff date:
-    // Any session strictly before cutoffDate must be 0 TL, paymentStatus: 'paid', paidAmount: 0, and no expenses (unless manually edited)!
-    // This ensures historical/pre-accounting calendar sessions are never tracked as unpaid debt.
-    if (s.date && s.date < cutoffDate && !s.isManuallyEdited) {
-      if (s.price !== 0 || s.paymentStatus !== 'paid' || s.hasOfficeRentFee || s.hasBabysitterFee || (s.paidAmount && s.paidAmount > 0)) {
+    // 1. Sessions strictly before accounting start cutoff date:
+    // Any session before cutoffDate must ALWAYS be 0 TL, paymentStatus: 'paid', paidAmount: 0, no expenses, and unlocked!
+    // This heals any historical sessions that were mistakenly stamped with price/lock during previous syncs.
+    if (s.date && s.date < cutoffDate) {
+      if (
+        s.price !== 0 ||
+        s.paymentStatus !== 'paid' ||
+        s.hasOfficeRentFee ||
+        s.hasBabysitterFee ||
+        (s.paidAmount && s.paidAmount > 0) ||
+        s.isManuallyEdited ||
+        s.isPaymentLocked ||
+        s.calendarSyncNotice
+      ) {
         return {
           ...s,
           price: 0,
@@ -191,6 +228,36 @@ const autoCorrectPastSessions = (
           babysitterFeeAmount: 0,
           hasOfficeRentFee: false,
           officeRentFeeAmount: 0,
+          isManuallyEdited: false,
+          isPaymentLocked: false,
+          calendarSyncNotice: undefined,
+          updatedAt: s.updatedAt || 0
+        };
+      }
+      return s;
+    }
+
+    // 1b. Cancelled or non-session events must ALWAYS be 0 TL and unlocked
+    if (s.type === 'cancelled' || s.type === 'non-session') {
+      if (
+        s.price !== 0 ||
+        (s.paidAmount && s.paidAmount > 0) ||
+        s.hasBabysitterFee ||
+        s.hasOfficeRentFee ||
+        s.isPaymentLocked ||
+        s.calendarSyncNotice
+      ) {
+        return {
+          ...s,
+          price: 0,
+          paidAmount: 0,
+          hasBabysitterFee: false,
+          babysitterFeeAmount: 0,
+          hasOfficeRentFee: false,
+          officeRentFeeAmount: 0,
+          isManuallyEdited: false,
+          isPaymentLocked: false,
+          calendarSyncNotice: undefined,
           updatedAt: s.updatedAt || 0
         };
       }
@@ -198,63 +265,65 @@ const autoCorrectPastSessions = (
     }
 
     // 2. FOR ACTIVE SESSIONS (on or after cutoffDate):
-    // AUTO-REPAIR / HEAL any session where price was zeroed out or fees were stripped (unless manually edited to 0 TL)!
     let updated = { ...s };
     let changed = false;
 
-    if (s.type !== 'cancelled' && s.type !== 'non-session') {
-      const typeDefault = s.type === 'online'
-        ? (defaultOnlinePrice || defaultPrice)
-        : (s.type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
-
-      // Check client custom rule
-      const customRule = findClientCustomRule(clientCustomPrices, s.clientName);
-
-      // Repair price if zero or missing (respect manual 0 TL edits such as free initial consultations)
-      if ((typeof updated.price !== 'number' || updated.price === 0) && !updated.isManuallyEdited) {
-        const normKey = `${getNormalizedClientName(s.clientName)}_${s.type}`;
-        let smartCosts = repairCostCache.get(normKey);
-        if (!smartCosts) {
-          smartCosts = getSmartClientCosts(s.clientName, s.date, sessionList, typeDefault, defaultBabysitterFee, defaultOfficeRentFee, clientCustomPrices, s.type);
-          repairCostCache.set(normKey, smartCosts);
-        }
-        updated.price = smartCosts.price || typeDefault || 1200;
+    // Clear stale payment lock if session is unpaid or has 0 price/paidAmount
+    if (updated.paymentStatus === 'unpaid' || ((Number(updated.price) || 0) <= 0 && (Number(updated.paidAmount) || 0) <= 0)) {
+      if (updated.isPaymentLocked || updated.calendarSyncNotice) {
+        updated.isPaymentLocked = false;
+        updated.calendarSyncNotice = undefined;
         changed = true;
       }
+    }
 
-      // Repair babysitter fee
-      if (customRule && customRule.hasBabysitterFee === false && !updated.isManuallyEdited) {
-        if (updated.hasBabysitterFee || updated.babysitterFeeAmount > 0) {
-          updated.hasBabysitterFee = false;
-          updated.babysitterFeeAmount = 0;
-          changed = true;
-        }
-      } else if (defaultBabysitterFee > 0 && !updated.isManuallyEdited) {
-        if (!updated.hasBabysitterFee || typeof updated.babysitterFeeAmount !== 'number' || updated.babysitterFeeAmount === 0) {
-          updated.hasBabysitterFee = true;
-          updated.babysitterFeeAmount = customRule?.babysitterFeeAmount ?? defaultBabysitterFee;
-          changed = true;
-        }
+    const typeDefault = s.type === 'online'
+      ? (defaultOnlinePrice || defaultPrice)
+      : (s.type === 'face-to-face' ? (defaultFaceToFacePrice || defaultPrice) : defaultPrice);
+
+    // Check client custom rule
+    const customRule = findClientCustomRule(clientCustomPrices, s.clientName);
+
+    // Repair price if zero or missing (O(1) assignment; autoHealSmartClientPrices below handles O(N) smart client history matching)
+    if ((typeof updated.price !== 'number' || updated.price === 0) && !updated.isManuallyEdited) {
+      const rulePrice = customRule
+        ? (s.type === 'online' && customRule.onlinePrice ? customRule.onlinePrice : (s.type === 'face-to-face' && customRule.faceToFacePrice ? customRule.faceToFacePrice : customRule.price))
+        : 0;
+      updated.price = rulePrice || typeDefault || 1200;
+      changed = true;
+    }
+
+    // Repair babysitter fee
+    if (customRule && customRule.hasBabysitterFee === false && !updated.isManuallyEdited) {
+      if (updated.hasBabysitterFee || updated.babysitterFeeAmount > 0) {
+        updated.hasBabysitterFee = false;
+        updated.babysitterFeeAmount = 0;
+        changed = true;
       }
+    } else if (defaultBabysitterFee > 0 && !updated.isManuallyEdited) {
+      if (!updated.hasBabysitterFee || typeof updated.babysitterFeeAmount !== 'number' || updated.babysitterFeeAmount === 0) {
+        updated.hasBabysitterFee = true;
+        updated.babysitterFeeAmount = customRule?.babysitterFeeAmount ?? defaultBabysitterFee;
+        changed = true;
+      }
+    }
 
-      // Repair office rent fee (strictly never applied to online sessions)
-      if (updated.type === 'online' || (customRule && customRule.hasOfficeRentFee === false && !updated.isManuallyEdited)) {
-        if (updated.hasOfficeRentFee || updated.officeRentFeeAmount > 0) {
-          updated.hasOfficeRentFee = false;
-          updated.officeRentFeeAmount = 0;
-          changed = true;
-        }
-      } else if (defaultOfficeRentFee > 0 && updated.type === 'face-to-face' && !updated.isManuallyEdited) {
-        if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
-          updated.hasOfficeRentFee = true;
-          updated.officeRentFeeAmount = customRule?.officeRentFeeAmount ?? defaultOfficeRentFee;
-          changed = true;
-        }
+    // Repair office rent fee (strictly never applied to online sessions)
+    if (updated.type === 'online' || (customRule && customRule.hasOfficeRentFee === false && !updated.isManuallyEdited)) {
+      if (updated.hasOfficeRentFee || updated.officeRentFeeAmount > 0) {
+        updated.hasOfficeRentFee = false;
+        updated.officeRentFeeAmount = 0;
+        changed = true;
+      }
+    } else if (defaultOfficeRentFee > 0 && updated.type === 'face-to-face' && !updated.isManuallyEdited) {
+      if (!updated.hasOfficeRentFee || typeof updated.officeRentFeeAmount !== 'number' || updated.officeRentFeeAmount === 0) {
+        updated.hasOfficeRentFee = true;
+        updated.officeRentFeeAmount = customRule?.officeRentFeeAmount ?? defaultOfficeRentFee;
+        changed = true;
       }
     }
 
     if (changed) {
-      // Preserve original updatedAt so auto-repair of cloud sessions never creates an artificially newer timestamp than local manual edits
       updated.updatedAt = s.updatedAt || 0;
       return updated;
     }
@@ -1231,69 +1300,44 @@ export default function App() {
             if (savedSessionsStr) {
               try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
             }
-
-            // Also check emergency safety backups and IndexedDB stores
-            let safetyBackupSessions: Session[] = [];
-            try {
-              const idbUserSessions = await idbGet<Session[] | string>(userSessionsKey);
-              if (Array.isArray(idbUserSessions)) {
-                safetyBackupSessions.push(...idbUserSessions);
-              } else if (typeof idbUserSessions === 'string') {
-                const parsedIdb = JSON.parse(idbUserSessions);
-                if (Array.isArray(parsedIdb)) safetyBackupSessions.push(...parsedIdb);
-              }
-              const idbSafety = await idbGet<Session[]>(`psycalcu_safety_backup_${user.uid}`);
-              if (Array.isArray(idbSafety)) {
-                safetyBackupSessions.push(...idbSafety);
-              }
-            } catch (e) {}
-
-            try {
-              const safetyStr = localStorage.getItem(`psycalcu_safety_backup_${user.uid}`) || localStorage.getItem('psycalcu_safety_backup');
-              if (safetyStr) {
-                const parsedSafety = JSON.parse(safetyStr);
-                if (Array.isArray(parsedSafety)) safetyBackupSessions.push(...parsedSafety);
-              }
-              // Scan snapshots in localStorage to recover any user-edited prices or paid statuses
-              for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && (key.includes('snapshot') || key.includes('backup'))) {
-                  const raw = localStorage.getItem(key);
-                  if (raw) {
-                    try {
-                      const parsed = JSON.parse(raw);
-                      if (Array.isArray(parsed)) {
-                        parsed.forEach(item => {
-                          const candidateList = Array.isArray(item) ? item : (item && Array.isArray(item.sessions) ? item.sessions : []);
-                          candidateList.forEach((s: Session) => {
-                            if (s && s.id && (s.isManuallyEdited || s.paymentStatus === 'paid' || (Number(s.paidAmount) || 0) > 0)) {
-                              safetyBackupSessions.push(s);
-                            }
-                          });
-                        });
-                      }
-                    } catch (e) {}
-                  }
+            if (localSessions.length === 0) {
+              try {
+                const idbUserSessions = await idbGet<Session[] | string>(userSessionsKey);
+                if (Array.isArray(idbUserSessions)) {
+                  localSessions = idbUserSessions;
+                } else if (typeof idbUserSessions === 'string') {
+                  const parsedIdb = JSON.parse(idbUserSessions);
+                  if (Array.isArray(parsedIdb)) localSessions = parsedIdb;
                 }
-              }
-            } catch (e) {}
+              } catch (e) {}
+            }
 
             const localMap = new Map<string, Session>();
             const localByUidDate = new Map<string, Session>();
             const localBySlot = new Map<string, Session>();
 
+            const isPaidActiveSession = (s: Session | null | undefined): boolean => {
+              if (!s || s.isDeleted) return false;
+              if (s.type === 'cancelled' || s.type === 'non-session') return false;
+              if (effectiveCutoff && s.date && s.date < effectiveCutoff) return false;
+              const price = Number(s.price) || 0;
+              const paidAmt = Number(s.paidAmount) || 0;
+              if (price <= 0 && paidAmt <= 0) return false;
+              return s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || paidAmt > 0;
+            };
+
             const registerLocalCandidate = (s: Session) => {
               if (!s || !s.id) return;
               const existing = localMap.get(s.id);
-              const sPaid = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || (Number(s.paidAmount) || 0) > 0;
-              const exPaid = existing && (existing.paymentStatus === 'paid' || existing.paymentStatus === 'partial' || (Number(existing.paidAmount) || 0) > 0);
-              if (!existing || (sPaid && !exPaid) || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited)) {
+              const sPaid = isPaidActiveSession(s);
+              const exPaid = isPaidActiveSession(existing);
+              if (!existing || (sPaid && !exPaid) || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited && (!effectiveCutoff || s.date >= effectiveCutoff))) {
                 localMap.set(s.id, s);
               }
               if (!s.isDeleted && s.id.startsWith('ics_') && s.date) {
                 const uidKey = `${extractBaseCalendarUid(s.id)}_${s.date}`;
                 const prevUid = localByUidDate.get(uidKey);
-                const prevUidPaid = prevUid && (prevUid.paymentStatus === 'paid' || prevUid.paymentStatus === 'partial' || (Number(prevUid.paidAmount) || 0) > 0);
+                const prevUidPaid = isPaidActiveSession(prevUid);
                 if (!prevUid || (sPaid && !prevUidPaid) || ((s.updatedAt || 0) > (prevUid.updatedAt || 0))) {
                   localByUidDate.set(uidKey, s);
                 }
@@ -1303,7 +1347,7 @@ export default function App() {
                 if (norm) {
                   const slotKey = `${norm}_${s.date}_${s.time}`;
                   const prevSlot = localBySlot.get(slotKey);
-                  const prevSlotPaid = prevSlot && (prevSlot.paymentStatus === 'paid' || prevSlot.paymentStatus === 'partial' || (Number(prevSlot.paidAmount) || 0) > 0);
+                  const prevSlotPaid = isPaidActiveSession(prevSlot);
                   if (!prevSlot || (sPaid && !prevSlotPaid) || ((s.updatedAt || 0) > (prevSlot.updatedAt || 0))) {
                     localBySlot.set(slotKey, s);
                   }
@@ -1312,7 +1356,6 @@ export default function App() {
             };
 
             localSessions.forEach(registerLocalCandidate);
-            safetyBackupSessions.forEach(registerLocalCandidate);
 
             let hasNewerLocalEdits = false;
             const matchedLocalIds = new Set<string>();
@@ -1328,20 +1371,24 @@ export default function App() {
               if (!ls) return cs;
               matchedLocalIds.add(ls.id);
 
+              // Never override historical pre-cutoff sessions with local edits
+              if (effectiveCutoff && cs.date && cs.date < effectiveCutoff) {
+                return cs;
+              }
+
               const localTime = ls.updatedAt || 0;
               const cloudTime = cs.updatedAt || 0;
-              const localIsPaid = ls.paymentStatus === 'paid' || ls.paymentStatus === 'partial' || (Number(ls.paidAmount) || 0) > 0;
-              const cloudIsPaid = cs.paymentStatus === 'paid' || cs.paymentStatus === 'partial' || (Number(cs.paidAmount) || 0) > 0;
+              const localIsPaid = isPaidActiveSession(ls);
+              const cloudIsPaid = isPaidActiveSession(cs);
 
               // CRITICAL ACCOUNTING PRESERVATION:
-              // If local has payment recorded or local is newer than cloud or manually edited:
-              if ((localIsPaid && !cloudIsPaid) || (ls.isManuallyEdited && !cs.isManuallyEdited) || (localTime > cloudTime)) {
+              // Only for active sessions: if local has real payment recorded or local is newer manual edit than cloud:
+              if ((localIsPaid && !cloudIsPaid) || (ls.isManuallyEdited && !cs.isManuallyEdited && (Number(ls.price) || 0) > 0) || (localTime > cloudTime && (ls.isManuallyEdited || localIsPaid))) {
                 hasNewerLocalEdits = true;
                 return {
                   ...cs,
                   ...ls,
                   id: cs.id,
-                  // Keep calendar event fields but preserve user accounting data
                   clientName: cs.clientName || ls.clientName,
                   date: cs.date || ls.date,
                   time: cs.time || ls.time,
@@ -1355,7 +1402,8 @@ export default function App() {
                   hasOfficeRentFee: ls.hasOfficeRentFee,
                   officeRentFeeAmount: ls.officeRentFeeAmount,
                   isManuallyEdited: true,
-                  updatedAt: Math.max(localTime, cloudTime, Date.now())
+                  isPaymentLocked: localIsPaid ? true : cs.isPaymentLocked,
+                  updatedAt: Math.max(localTime, cloudTime)
                 };
               }
               return cs;
@@ -4130,8 +4178,25 @@ export default function App() {
     const replacedOldIds = new Set<string>();
     const existingById = new Map<string, Session>();
     const existingByUidAndDate = new Map<string, Session>();
+    const existingByBaseUid = new Map<string, Session[]>();
     const existingByClientDateTime = new Map<string, Session>();
     const existingByClientDate = new Map<string, Session[]>();
+
+    const isExistingRealPaid = (s: Session | null | undefined): boolean => {
+      if (!s || s.isDeleted) return false;
+      if (s.type === 'cancelled' || s.type === 'non-session') return false;
+      const cutoff = effectiveAccountingStartDate || '2026-07-01';
+      if (s.date && s.date < cutoff) return false;
+      const price = Number(s.price) || 0;
+      const paidAmt = Number(s.paidAmount) || 0;
+      if (price <= 0 && paidAmt <= 0) return false;
+      return (
+        s.paymentStatus === 'paid' ||
+        s.paymentStatus === 'partial' ||
+        paidAmt > 0 ||
+        Boolean(s.isPaymentLocked && s.paymentStatus !== 'unpaid')
+      );
+    };
 
     // Index non-deleted sessions first so active paid sessions always take priority over soft-deleted items
     const sortedForIndexing = [...effectiveSessions].sort((a, b) => (a.isDeleted ? 1 : 0) - (b.isDeleted ? 1 : 0));
@@ -4144,21 +4209,24 @@ export default function App() {
         const baseUid = extractBaseUid(s.id);
         const uidDateKey = `${baseUid}_${s.date}`;
         const prevUidDate = existingByUidAndDate.get(uidDateKey);
-        const sPaid = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || s.isManuallyEdited;
-        const prevPaid = prevUidDate && (prevUidDate.paymentStatus === 'paid' || prevUidDate.paymentStatus === 'partial' || prevUidDate.isManuallyEdited);
+        const sPaid = isExistingRealPaid(s);
+        const prevPaid = isExistingRealPaid(prevUidDate);
         if (!prevUidDate || (sPaid && !prevPaid)) {
           existingByUidAndDate.set(uidDateKey, s);
         }
         if (!existingByUidAndDate.has(baseUid)) {
           existingByUidAndDate.set(baseUid, s);
         }
+        const uidList = existingByBaseUid.get(baseUid) || [];
+        uidList.push(s);
+        existingByBaseUid.set(baseUid, uidList);
       }
       const normName = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
       if (normName && s.date) {
         const slotKey = `${normName}_${s.date}_${s.time}`;
         const prevSlot = existingByClientDateTime.get(slotKey);
-        const sPaid = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || s.isManuallyEdited;
-        const prevPaid = prevSlot && (prevSlot.paymentStatus === 'paid' || prevSlot.paymentStatus === 'partial' || prevSlot.isManuallyEdited);
+        const sPaid = isExistingRealPaid(s);
+        const prevPaid = isExistingRealPaid(prevSlot);
         if (!prevSlot || (sPaid && !prevPaid)) {
           existingByClientDateTime.set(slotKey, s);
         }
@@ -4191,74 +4259,76 @@ export default function App() {
     const addedList: any[] = [];
     const updatedList: any[] = [];
 
-    // Cache smart costs per client+type to prevent freezing the main thread on large imports
+    // Pre-build O(N) smart client costs map once instead of scanning effectiveSessions per client in O(N^2)
+    const clientCostsByTypeMap = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number; date: string; priority: number }>();
+    const clientCostsAnyMap = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number; date: string; priority: number }>();
+    const cutoffForSmartCosts = effectiveAccountingStartDate || '2026-07-01';
+    for (let i = 0; i < effectiveSessions.length; i++) {
+      const s = effectiveSessions[i];
+      if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') continue;
+      if (s.date && s.date < cutoffForSmartCosts) continue;
+      if (!s.price || s.price <= 0) continue;
+      const norm = getNormalizedClientName(s.clientName);
+      if (!norm) continue;
+      const priority = (s.isManuallyEdited || s.paymentStatus === 'paid') ? 2 : 1;
+      const typeKey = `${norm}_${s.type}`;
+      const prevType = clientCostsByTypeMap.get(typeKey);
+      if (!prevType || priority > prevType.priority || (priority === prevType.priority && s.date >= prevType.date)) {
+        clientCostsByTypeMap.set(typeKey, {
+          price: s.price,
+          babysitterFeeAmount: s.hasBabysitterFee ? s.babysitterFeeAmount : activeSettings.defaultBabysitterFee,
+          officeRentFeeAmount: (s.type !== 'online' && s.hasOfficeRentFee) ? s.officeRentFeeAmount : (s.type === 'online' ? 0 : activeSettings.defaultOfficeRentFee),
+          date: s.date,
+          priority
+        });
+      }
+      const prevAny = clientCostsAnyMap.get(norm);
+      if (!prevAny || priority > prevAny.priority || (priority === prevAny.priority && s.date >= prevAny.date)) {
+        clientCostsAnyMap.set(norm, {
+          price: s.price,
+          babysitterFeeAmount: s.hasBabysitterFee ? s.babysitterFeeAmount : activeSettings.defaultBabysitterFee,
+          officeRentFeeAmount: (s.type !== 'online' && s.hasOfficeRentFee) ? s.officeRentFeeAmount : (s.type === 'online' ? 0 : activeSettings.defaultOfficeRentFee),
+          date: s.date,
+          priority
+        });
+      }
+    }
+
     const clientCostsCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
-    const getCachedClientCosts = (clientName: string, date: string, type: SessionType, defPrice: number) => {
+    const getCachedClientCosts = (clientName: string, _date: string, type: SessionType, defPrice: number) => {
       const norm = getNormalizedClientName(clientName);
       const cacheKey = `${norm}_${type}`;
       if (clientCostsCache.has(cacheKey)) {
         return clientCostsCache.get(cacheKey)!;
       }
-      const costs = getSmartClientCosts(
-        clientName,
-        date,
-        effectiveSessions,
-        defPrice,
-        activeSettings.defaultBabysitterFee,
-        activeSettings.defaultOfficeRentFee,
-        activeSettings.clientCustomPrices,
-        type
-      );
-      clientCostsCache.set(cacheKey, costs);
-      return costs;
-    };
-
-    // Preserve incoming .ics / calendar notes in local-only IndexedDB (never sent to Firestore, never in tempNotesCache)
-    // so ClientPdfReportModal can retrieve a client's notes even when sessions were imported via .ics file upload.
-    try {
-      const incomingNotesMap: Record<string, string> = {};
-      let hasAnyIncomingNote = false;
-      uniqueNewSessions.forEach(ns => {
-        if (!ns || !ns.notes || !ns.notes.trim()) return;
-        const lines = ns.notes
-          .split('\n')
-          .map(l => l.trim())
-          .filter(Boolean);
-        const withoutGenericKonum =
-          lines.length > 1
-            ? lines.filter(l => !/^Konum:\s*/i.test(l)).join('\n').trim()
-            : lines.length === 1 && /^Konum:\s*/i.test(lines[0])
-            ? ''
-            : lines.join('\n').trim();
-        if (!withoutGenericKonum) return;
-        hasAnyIncomingNote = true;
-        if (ns.id) incomingNotesMap[ns.id] = withoutGenericKonum;
-        if (ns.id?.startsWith('ics_')) {
-          const baseUid = extractBaseUid(ns.id);
-          if (baseUid) {
-            incomingNotesMap[`ics_${baseUid}`] = withoutGenericKonum;
-            if (ns.date) {
-              incomingNotesMap[`ics_${baseUid}_${ns.date.replace(/-/g, '')}`] = withoutGenericKonum;
-            }
-          }
-        }
-        const normClient = getNormalizedClientName(ns.clientName);
-        if (normClient && ns.date) {
-          incomingNotesMap[`client_d:${normClient}_${ns.date}`] = withoutGenericKonum;
-          if (ns.time) {
-            incomingNotesMap[`client_dt:${normClient}_${ns.date}_${ns.time}`] = withoutGenericKonum;
-          }
-        }
-      });
-      if (hasAnyIncomingNote) {
-        idbGet<Record<string, string>>('psycalcu_local_ics_notes')
-          .then(existingMap => {
-            const merged = { ...(existingMap || {}), ...incomingNotesMap };
-            return idbSet('psycalcu_local_ics_notes', merged);
-          })
-          .catch(() => {});
+      const customRule = findClientCustomRule(activeSettings.clientCustomPrices, clientName);
+      if (customRule) {
+        const rulePrice = (type === 'online' && customRule.onlinePrice)
+          ? customRule.onlinePrice
+          : ((type === 'face-to-face' && customRule.faceToFacePrice) ? customRule.faceToFacePrice : (customRule.price || defPrice));
+        const res = {
+          price: rulePrice,
+          babysitterFeeAmount: customRule.hasBabysitterFee === false ? 0 : (customRule.babysitterFeeAmount ?? activeSettings.defaultBabysitterFee),
+          officeRentFeeAmount: (type === 'online' || customRule.hasOfficeRentFee === false) ? 0 : (customRule.officeRentFeeAmount ?? activeSettings.defaultOfficeRentFee)
+        };
+        clientCostsCache.set(cacheKey, res);
+        return res;
       }
-    } catch (e) {}
+      const matched = clientCostsByTypeMap.get(cacheKey) || clientCostsAnyMap.get(norm);
+      const res = matched
+        ? {
+            price: matched.price,
+            babysitterFeeAmount: matched.babysitterFeeAmount,
+            officeRentFeeAmount: type === 'online' ? 0 : matched.officeRentFeeAmount
+          }
+        : {
+            price: defPrice,
+            babysitterFeeAmount: activeSettings.defaultBabysitterFee,
+            officeRentFeeAmount: type === 'online' ? 0 : activeSettings.defaultOfficeRentFee
+          };
+      clientCostsCache.set(cacheKey, res);
+      return res;
+    };
 
     uniqueNewSessions.forEach(ns => {
       // 1. CLOSED / LOCKED MONTH PROTECTION:
@@ -4292,27 +4362,28 @@ export default function App() {
           existing = uidDateCandidate;
         }
         if (!existing) {
-          // Rescheduled/postponed session with same base UID (within 14 days proximity and not pre-reserved by another occurrence)
-          const MAX_RESCHEDULE_DIFF_MS = 14 * 24 * 60 * 60 * 1000;
-          const nsDateMs = new Date(ns.date).getTime();
-          const candidatesWithBaseUid = effectiveSessions.filter(s => 
-            !s.isDeleted &&
-            s.id.startsWith('ics_') && 
-            extractBaseUid(s.id) === nsBaseUid && 
-            !matchedExistingIds.has(s.id) &&
-            !preReservedExistingIds.has(s.id) &&
-            !isDateInClosedMonth(s.date, activeClosedMonths) &&
-            Math.abs(new Date(s.date).getTime() - nsDateMs) <= MAX_RESCHEDULE_DIFF_MS
-          );
-          if (candidatesWithBaseUid.length === 1) {
-            existing = candidatesWithBaseUid[0];
-          } else if (candidatesWithBaseUid.length > 1) {
-            const sortedByProximity = [...candidatesWithBaseUid].sort((a, b) => {
-              const diffA = Math.abs(new Date(a.date).getTime() - nsDateMs);
-              const diffB = Math.abs(new Date(b.date).getTime() - nsDateMs);
-              return diffA - diffB;
-            });
-            existing = sortedByProximity[0];
+          // Rescheduled/postponed session with same base UID (O(1) lookup from existingByBaseUid)
+          const baseUidList = existingByBaseUid.get(nsBaseUid);
+          if (baseUidList && baseUidList.length > 0) {
+            const MAX_RESCHEDULE_DIFF_MS = 14 * 24 * 60 * 60 * 1000;
+            const nsDateMs = new Date(ns.date).getTime();
+            const candidatesWithBaseUid = baseUidList.filter(s =>
+              !s.isDeleted &&
+              !matchedExistingIds.has(s.id) &&
+              !preReservedExistingIds.has(s.id) &&
+              !isDateInClosedMonth(s.date, activeClosedMonths) &&
+              Math.abs(new Date(s.date).getTime() - nsDateMs) <= MAX_RESCHEDULE_DIFF_MS
+            );
+            if (candidatesWithBaseUid.length === 1) {
+              existing = candidatesWithBaseUid[0];
+            } else if (candidatesWithBaseUid.length > 1) {
+              const sortedByProximity = [...candidatesWithBaseUid].sort((a, b) => {
+                const diffA = Math.abs(new Date(a.date).getTime() - nsDateMs);
+                const diffB = Math.abs(new Date(b.date).getTime() - nsDateMs);
+                return diffA - diffB;
+              });
+              existing = sortedByProximity[0];
+            }
           }
         }
       }
@@ -4344,9 +4415,9 @@ export default function App() {
           return;
         }
 
-        // Determine if the incoming session is cancelled, non-session, or strictly before 2026-07-01
-        const regCutoff = (registrationCreatedAt && registrationCreatedAt < '2026-07-01') ? registrationCreatedAt.split('T')[0] : '';
-        const isBeforeRegistration = Boolean(regCutoff && ns.date && ns.date < regCutoff && ns.date < '2026-07-01');
+        // Determine if the incoming session is cancelled, non-session, or strictly before cutoff
+        const cutoffStr = effectiveAccountingStartDate || '2026-07-01';
+        const isBeforeRegistration = Boolean(ns.date && ns.date < cutoffStr);
         const isCancelledOrNonSessionOrBefore = ns.type === 'cancelled' || ns.type === 'non-session' || isBeforeRegistration;
 
         // Auto-match room if not manually edited/set using temp notes
@@ -4356,24 +4427,20 @@ export default function App() {
         const persistentNotes = ns.isSyncedFromCalendar ? "" : (ns.notes || existing.notes || "");
 
         // CRITICAL DATA PROTECTION & PAID SESSION LOCK:
-        // Once a user marks a session as 'paid' or 'partial', it is LOCKED until the user explicitly changes it back to 'unpaid'.
-        // Even if the calendar event's date, time, or status changes in Google/Apple Calendar, we preserve all payment, price, and date/time fields
-        // and attach a helpful information note (`calendarSyncNotice`) so the user never loses accounting data!
-        const hasPaymentRecorded = existing.paymentStatus === 'paid' || 
-                                   existing.paymentStatus === 'partial' || 
-                                   (Number(existing.paidAmount) || 0) > 0 ||
-                                   Boolean(existing.isPaymentLocked && existing.paymentStatus !== 'unpaid');
-        const isAccountingProtected = hasPaymentRecorded || Boolean(existing.isManuallyEdited);
+        // Strictly only for REAL active-period paid sessions (date >= cutoff, non-cancelled, price > 0)!
+        // Historical 0-TL sessions and cancelled sessions must NEVER match hasPaymentRecorded!
+        const hasPaymentRecorded = !isBeforeRegistration && isExistingRealPaid(existing);
+        const isAccountingProtected = hasPaymentRecorded || Boolean(!isBeforeRegistration && existing.isManuallyEdited && (Number(existing.price) || 0) > 0);
 
         // Resolve session type: calendar event type takes precedence unless manually locked by user
         const resolvedType = (ns.type === 'cancelled' || ns.type === 'non-session')
           ? (isAccountingProtected && existing.type !== 'non-session' && existing.type !== 'cancelled' ? existing.type : ns.type)
-          : (existing.isManuallyEdited ? existing.type : ns.type);
+          : (isAccountingProtected ? existing.type : ns.type);
 
         // Smart price lookup: if session type changed (e.g. from face-to-face to online), recalculate appropriate rate
         const isTypeChanged = existing.type !== resolvedType;
         let effectivePrice = existing.price;
-        if ((isTypeChanged && !existing.isManuallyEdited) || effectivePrice === 0 || !effectivePrice) {
+        if ((isTypeChanged && !isAccountingProtected) || effectivePrice === 0 || !effectivePrice) {
           if (!isCancelledOrNonSessionOrBefore) {
             const fallbackTypePrice = resolvedType === 'face-to-face'
               ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
@@ -4478,19 +4545,17 @@ export default function App() {
           ? (existing.officeRentFeeAmount || ns.officeRentFeeAmount || settings.defaultOfficeRentFee || 200)
           : 0;
 
-        // Merge changed calendar fields (clientName, date, time, duration, type), 
-        // while safely preserving custom user accounting edits on price, paymentStatus, paidAmount, paymentMethod!
         const updated: Session = {
           ...existing,
-          id: ns.id, // Migrate to incoming ID to ensure future syncs and lookups match seamlessly
-          clientName: ns.clientName, // Always accept latest event name from calendar (e.g. Ahmet -> Ahmet 1)
+          id: ns.id,
+          clientName: ns.clientName,
           type: resolvedType,
           date: ns.date,
           time: ns.time,
           duration: ns.duration,
           notes: persistentNotes,
           roomId: matchedRoomId,
-          price: effectivePrice,
+          price: isCancelledOrNonSessionOrBefore ? 0 : effectivePrice,
           paymentStatus: effectivePaymentStatus,
           paidAmount: effectivePaidAmount,
           paymentMethod: effectivePaymentMethod,
@@ -4500,7 +4565,9 @@ export default function App() {
           officeRentFeeAmount: effectiveOfficeRentFeeAmount,
           isSyncedFromCalendar: true,
           syncedCalendarType: ns.syncedCalendarType || existing.syncedCalendarType,
-          isManuallyEdited: existing.isManuallyEdited
+          isManuallyEdited: isCancelledOrNonSessionOrBefore ? false : existing.isManuallyEdited,
+          isPaymentLocked: false,
+          calendarSyncNotice: undefined
         };
         
         // Semantic equality check to avoid redundant updates and protect save quota
@@ -4521,7 +4588,7 @@ export default function App() {
           (existing.officeRentFeeAmount || 0) !== (updated.officeRentFeeAmount || 0);
 
         if (hasSemanticDifference) {
-          updated.updatedAt = Date.now(); // Mark as updated since the calendar event changed
+          updated.updatedAt = Date.now();
           toUpdate.push(updated);
           updatedList.push({
             id: updated.id,
@@ -4533,13 +4600,15 @@ export default function App() {
           updatedCount++;
         }
       } else {
+        const cutoffStr = effectiveAccountingStartDate || '2026-07-01';
+        const isBeforeCutoff = Boolean(ns.date && ns.date < cutoffStr);
         const defaultTypePrice = ns.type === 'face-to-face'
           ? (settings.defaultFaceToFacePrice ?? settings.defaultSessionPrice ?? 1200)
           : (settings.defaultOnlinePrice ?? settings.defaultSessionPrice ?? 1200);
-        let finalPrice = ns.price || defaultTypePrice;
-        let finalBabysitterFee = ns.babysitterFeeAmount;
-        let finalOfficeRentFee = ns.officeRentFeeAmount;
-        if (featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled' && ns.type !== 'non-session') {
+        let finalPrice = isBeforeCutoff || ns.type === 'cancelled' || ns.type === 'non-session' ? 0 : (ns.price || defaultTypePrice);
+        let finalBabysitterFee = isBeforeCutoff || ns.type === 'cancelled' || ns.type === 'non-session' ? 0 : ns.babysitterFeeAmount;
+        let finalOfficeRentFee = isBeforeCutoff || ns.type === 'cancelled' || ns.type === 'non-session' ? 0 : ns.officeRentFeeAmount;
+        if (!isBeforeCutoff && featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching && ns.type !== 'cancelled' && ns.type !== 'non-session') {
           const matchedCosts = getCachedClientCosts(
             ns.clientName,
             ns.date,
@@ -4583,9 +4652,6 @@ export default function App() {
     const sessionsToKeep: Session[] = [];
     const isSingleCalendarMode = !activeSettings.faceToFaceCalendarWebcalUrl || !activeSettings.onlineCalendarWebcalUrl;
 
-    // EXTERNAL CALENDAR ZERO-DATA / OUTAGE SAFETY GUARD:
-    // If incoming calendar feed returned 0 events while user had active calendar sessions,
-    // do NOT wipe sessions. This indicates an external network timeout or calendar service outage.
     const activeCalendarSyncedCount = effectiveSessions.filter(s => 
       !s.isDeleted &&
       (s.isSyncedFromCalendar || (s.id && s.id.startsWith('ics_'))) && 
@@ -4614,7 +4680,7 @@ export default function App() {
           type: s.type
         });
         deletedCount++;
-        return; // Remove dummy mock session
+        return;
       }
 
       // 3. PERIOD LOCKING PROTECTION:
@@ -4651,22 +4717,19 @@ export default function App() {
             return;
           }
 
-          // Financial Ledger Safeguard: A paid or partially paid session must NEVER be deleted by calendar sync!
-          const hasRecordedPayment = s.paymentStatus === 'paid' || 
-                                     s.paymentStatus === 'partial' || 
-                                     (Number(s.paidAmount) || 0) > 0 ||
-                                     Boolean(s.isPaymentLocked && s.paymentStatus !== 'unpaid');
+          // Financial Ledger Safeguard: Strictly only for REAL active-period paid sessions (date >= cutoff, non-cancelled, price > 0)!
+          const hasRecordedPayment = isExistingRealPaid(s);
           if (hasRecordedPayment) {
             const decoupledNotice = s.calendarSyncNotice || '🔒 Bu seans "Ödendi" olarak işaretlendiği için kilitlenmiştir. Takvimde gün/saati değişmiş veya takvimden kaldırılmış görünüyor; ancak ödeme ve fiyat bilgilerinizin kaybolmaması için mevcut kaydınız korundu.';
             const lockedPaidSession: Session = {
               ...s,
-              isSyncedFromCalendar: false, // Decouple from calendar to keep permanently in accounting ledger
+              isSyncedFromCalendar: true,
               isManuallyEdited: true,
               isPaymentLocked: true,
               calendarSyncNotice: decoupledNotice
             };
             sessionsToKeep.push(lockedPaidSession);
-            if (!s.calendarSyncNotice || s.isSyncedFromCalendar) {
+            if (!s.calendarSyncNotice || !s.isPaymentLocked) {
               toUpdate.push(lockedPaidSession);
             }
             return;
@@ -4695,8 +4758,6 @@ export default function App() {
 
     if (toUpdate.length > 0 || deletedCount > 0 || replacedOldIds.size > 0) {
       setSessions(prev => {
-        // Build lookup maps from the latest `prev` state (healed with local ledger) so any payment or manual edit made while
-        // the calendar sync request was in flight is 100% preserved!
         const latestLedger = getStoredAccountingLedger(user?.uid);
         const healedPrev = applyAccountingLedgerToSessions(prev || [], latestLedger, effectiveAccountingStartDate);
         const latestById = new Map<string, Session>();
@@ -4725,10 +4786,10 @@ export default function App() {
           }
           if (!latest) return candidate;
 
-          const latestHasPayment = latest.paymentStatus === 'paid' || latest.paymentStatus === 'partial' || (Number(latest.paidAmount) || 0) > 0;
-          const candHasPayment = candidate.paymentStatus === 'paid' || candidate.paymentStatus === 'partial' || (Number(candidate.paidAmount) || 0) > 0;
+          const latestHasPayment = isExistingRealPaid(latest);
+          const candHasPayment = isExistingRealPaid(candidate);
 
-          if ((latestHasPayment && !candHasPayment) || (latest.isManuallyEdited && !candidate.isManuallyEdited) || ((latest.updatedAt || 0) > (candidate.updatedAt || 0) && latest.isManuallyEdited)) {
+          if ((latestHasPayment && !candHasPayment) || (!candHasPayment && latestHasPayment && (latest.updatedAt || 0) >= (candidate.updatedAt || 0))) {
             const isOnline = candidate.type === 'online';
             return {
               ...candidate,
@@ -4740,8 +4801,10 @@ export default function App() {
               babysitterFeeAmount: latest.babysitterFeeAmount,
               hasOfficeRentFee: isOnline ? false : latest.hasOfficeRentFee,
               officeRentFeeAmount: isOnline ? 0 : latest.officeRentFeeAmount,
-              isManuallyEdited: Boolean(latest.isManuallyEdited || latestHasPayment),
-              isDeleted: latestHasPayment ? false : candidate.isDeleted,
+              isManuallyEdited: true,
+              isPaymentLocked: true,
+              calendarSyncNotice: latest.calendarSyncNotice || candidate.calendarSyncNotice,
+              isDeleted: false,
               updatedAt: Math.max(latest.updatedAt || 0, candidate.updatedAt || 0)
             };
           }
@@ -5067,10 +5130,13 @@ export default function App() {
     }
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, featuresCalendarAllowed]);
 
-  // 1. Immediate automatic sync as soon as initial cloud/local data loads or calendar links change
+  // 1. Deferred automatic sync after initial cloud/local data loads (delayed so initial UI renders smoothly without blocking)
   useEffect(() => {
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
-    triggerAutoCalendarSync(0);
+    const timer = setTimeout(() => {
+      triggerAutoCalendarSync(30000);
+    }, 2500);
+    return () => clearTimeout(timer);
   }, [
     isInitialSyncDone,
     isAuthLoading,
@@ -5081,20 +5147,14 @@ export default function App() {
     triggerAutoCalendarSync
   ]);
 
-  // 2. Automatic sync when navigating between pages/tabs or changing agenda date/view mode
-  useEffect(() => {
-    if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
-    triggerAutoCalendarSync(15000); // 15-second throttle so page transitions always keep calendar events fresh
-  }, [activeTab, selectedDate, agendaViewMode, isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
-
-  // 3. Periodic automatic sync heartbeat (checks every 60 seconds in background)
+  // 2. Periodic automatic sync heartbeat (checks every 120 seconds in background)
   useEffect(() => {
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        triggerAutoCalendarSync(45000);
+        triggerAutoCalendarSync(90000);
       }
-    }, 60000);
+    }, 120000);
     return () => clearInterval(interval);
   }, [isInitialSyncDone, isAuthLoading, isAuthSyncing, triggerAutoCalendarSync]);
 

@@ -74,10 +74,16 @@ export function getLedgerKeysForSession(s: Pick<Session, 'id' | 'clientName' | '
   return keys;
 }
 
-export function isMeaningfulLedgerEntry(entry?: Partial<AccountingLedgerEntry> | Session | null): boolean {
+export function isMeaningfulLedgerEntry(entry?: Partial<AccountingLedgerEntry> | Session | null, cutoffDate?: string): boolean {
   if (!entry) return false;
+  if ((entry as Session).type === 'cancelled' || (entry as Session).type === 'non-session') return false;
+  const price = Number(entry.price) || 0;
+  if (price <= 0) return false;
+  const minCutoff = cutoffDate || '2026-07-01';
+  if (entry.date && entry.date < minCutoff) return false;
   const hasRealPayment =
-    ((entry.paymentStatus === 'paid' || entry.paymentStatus === 'partial') && (Number(entry.price) || 0) > 0) ||
+    entry.paymentStatus === 'paid' ||
+    entry.paymentStatus === 'partial' ||
     (Number(entry.paidAmount) || 0) > 0;
   return Boolean(hasRealPayment || entry.isManuallyEdited);
 }
@@ -91,7 +97,7 @@ export function updateLocalAccountingLedger(
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
   const rawLoadedLedger = getStoredAccountingLedger(userId);
 
-  // Filter out 0-TL auto-zeroed historical entries so the ledger stays tiny and fast
+  // Filter out 0-TL or pre-cutoff historical entries so the ledger stays tiny and fast
   const mergedLedger: Record<string, AccountingLedgerEntry> = {};
   for (const [k, entry] of Object.entries(rawLoadedLedger)) {
     if (isMeaningfulLedgerEntry(entry)) {
@@ -246,21 +252,21 @@ export function updateLocalAccountingLedger(
 }
 
 export function getStoredAccountingLedger(userId?: string): Record<string, AccountingLedgerEntry> {
-  if (cachedMemoryLedger && Object.keys(cachedMemoryLedger).length > 0) {
+  if (cachedMemoryLedger) {
     return cachedMemoryLedger;
   }
   if (typeof window === 'undefined') return {};
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
-  const combined: Record<string, AccountingLedgerEntry> = {};
+  const rawCombined: Record<string, AccountingLedgerEntry> = {};
   try {
     const rawGlobal = localStorage.getItem('psycalcu_accounting_ledger');
     if (rawGlobal) {
-      Object.assign(combined, JSON.parse(rawGlobal) || {});
+      Object.assign(rawCombined, JSON.parse(rawGlobal) || {});
     }
     if (userId) {
       const rawUser = localStorage.getItem(storageKey);
       if (rawUser) {
-        Object.assign(combined, JSON.parse(rawUser) || {});
+        Object.assign(rawCombined, JSON.parse(rawUser) || {});
       }
     } else {
       for (let i = 0; i < localStorage.length; i++) {
@@ -269,23 +275,32 @@ export function getStoredAccountingLedger(userId?: string): Record<string, Accou
           const raw = localStorage.getItem(k);
           if (raw) {
             try {
-              Object.assign(combined, JSON.parse(raw) || {});
+              Object.assign(rawCombined, JSON.parse(raw) || {});
             } catch (e) {}
           }
         }
       }
     }
   } catch (e) {}
-  cachedMemoryLedger = combined;
-  return combined;
+  const cleaned: Record<string, AccountingLedgerEntry> = {};
+  for (const [k, v] of Object.entries(rawCombined)) {
+    if (isMeaningfulLedgerEntry(v)) {
+      cleaned[k] = v;
+    }
+  }
+  cachedMemoryLedger = cleaned;
+  return cleaned;
 }
 
 export function applyAccountingLedgerToSessions(
   sessions: Session[],
   ledger?: Record<string, AccountingLedgerEntry>,
-  _accountingStartDate?: string | null
+  accountingStartDate?: string | null
 ): Session[] {
   if (!Array.isArray(sessions) || !ledger || Object.keys(ledger).length === 0) return sessions;
+  const cutoff = (accountingStartDate && accountingStartDate.trim())
+    ? accountingStartDate.split('T')[0]
+    : '2026-07-01';
 
   // Count sessions per client+day to avoid ambiguous `day:` matches when a client has 2 sessions on the same day
   const clientDateCounts = new Map<string, number>();
@@ -300,6 +315,7 @@ export function applyAccountingLedgerToSessions(
 
   return sessions.map(s => {
     if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return s;
+    if (cutoff && s.date && s.date < cutoff) return s;
 
     const keys = getLedgerKeysForSession(s);
     let matchedEntry: AccountingLedgerEntry | undefined = undefined;

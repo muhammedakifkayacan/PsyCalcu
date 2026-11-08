@@ -208,58 +208,68 @@ export function getCanonicalClientDisplayName(name: string): string {
   return toTurkishTitleCase(norm);
 }
 
+const MODALITY_PATTERN_STR = '(?:online seans|online görüşme|online gorusme|online terapi|online|yüz yüze seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|google meet|gmeet|g meet|meet|zoom|skype|facetime|face to face|whatsapp|watsap|wp\\.|wp|wa|ms teams|teams|telegram|tg|duo|botim|telefon|tel|görüntülü görüşme|goruntulu gorusme|görüntülü|goruntulu|video|sesli|arama|çağrı|cagri|linki|link)';
+const CLINICAL_PATTERN_STR = '(?:ilk görüşme|ilk gorusme|ilk seans|ön görüşme|on görüşme|on gorusme|değerlendirme|degerlendirme|takip|bireysel|çift terapisi|cift terapisi|çift|cift|aile terapisi|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|yetkinlik|seansı|seansi|seans|görüşmesi|gorusmesi|görüşme|gorusme|terapisi|terapi|randevusu|randevu|oturumu|oturum)';
+
+const RE_LEADING_LABEL = /^(?:seans|danışan|danisan|randevu|terapi|oturum|görüşme|gorusme)\s*[:\-–]\s*/i;
+const RE_LEADING_EMOJI = /^[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+/gu;
+const RE_TRAILING_EMOJI = /[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+$/gu;
+const RE_LEADING_NUM = /^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i;
+const RE_LEADING_HASH_NUM = /^#\s*\d+\s*(?:[\-\:\/]\s*)?/i;
+const RE_LEADING_TIME = /^[\(\[\{]*\b\d{1,2}[:.]\d{2}\b[\)\}\]]*[\s\-\:\.\)\(\[\{]+/i;
+const RE_TRAILING_TIME = /[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i;
+const RE_MODALITY_END = new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${MODALITY_PATTERN_STR}[\\)\\}\\]]*$`, 'i');
+const RE_MODALITY_START = new RegExp(`^${MODALITY_PATTERN_STR}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i');
+const RE_CLINICAL_END = new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${CLINICAL_PATTERN_STR}[\\)\\}\\]]*$`, 'i');
+const RE_CLINICAL_START = new RegExp(`^${CLINICAL_PATTERN_STR}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i');
+const RE_TRAILING_SEANS_NUM = /[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i;
+const RE_TRAILING_DIGITS = /[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i;
+const RE_ATTACHED_DIGIT = /([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i;
+const RE_HONORIFIC = /\b(?:hanım|bey|hn\.?|by\.?)\b/gi;
+const RE_PUNCT_EDGES = /^[\s\-_:.,;()/[\]{}#~|•·]+|[\s\-_:.,;()/[\]{}#~|•·]+$/g;
+
+const normalizedClientNameCache = new Map<string, string>();
+const turkishAsciiCache = new Map<string, string>();
+
 export function getNormalizedClientName(name: string): string {
   if (!name) return "";
-  // Normalize all whitespace characters (including non-breaking spaces, tabs, multiple spaces)
+  const cached = normalizedClientNameCache.get(name);
+  if (cached !== undefined) return cached;
+
   let clean = name.replace(/[\s\u00A0]+/g, ' ').trim();
+  clean = clean.replace(RE_LEADING_LABEL, '');
+  clean = clean.replace(RE_LEADING_EMOJI, '');
+  clean = clean.replace(RE_TRAILING_EMOJI, '');
+  clean = clean.replace(RE_LEADING_NUM, '');
+  clean = clean.replace(RE_LEADING_HASH_NUM, '');
+  clean = clean.replace(RE_LEADING_TIME, '');
+  clean = clean.replace(RE_TRAILING_TIME, '');
 
-  // 1. Remove leading calendar / clinical event labels
-  // e.g. "Seans: Zeynep", "Danışan - Zeynep", "Randevu: Zeynep", "Terapi: Zeynep", "Görüşme: Zeynep", "Oturum - Zeynep"
-  clean = clean.replace(/^(?:seans|danışan|danisan|randevu|terapi|oturum|görüşme|gorusme)\s*[:\-–]\s*/i, '');
-
-  // 2. Remove leading/trailing emojis and calendar symbols
-  clean = clean.replace(/^[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+/gu, '');
-  clean = clean.replace(/[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}•·*\-–|~#]+$/gu, '');
-
-  // 3. Remove leading session numbering or order prefixes
-  // e.g. "1. Ahmet", "1- Ahmet", "1) Ahmet", "01. Ahmet", "1. seans Ahmet", "#1 Ahmet", "Seans 1: Ahmet"
-  clean = clean.replace(/^(?:(?:seans|seansı|oturum|görüşme|gorusme|no|no:)\s*)?\d+[\.\-\s\)\:\/]+(?:(?:seans|seansı|oturum|görüşme|gorusme)\s*(?:[\-\:\/]\s*)?)?/i, '');
-  clean = clean.replace(/^#\s*\d+\s*(?:[\-\:\/]\s*)?/i, '');
-
-  // 4. Remove leading time stamps e.g. "14:00 Ahmet" or "(14:00) Ahmet"
-  clean = clean.replace(/^[\(\[\{]*\b\d{1,2}[:.]\d{2}\b[\)\}\]]*[\s\-\:\.\)\(\[\{]+/i, '');
-
-  // 5. Remove trailing time stamps e.g. "Ahmet 14:00" or "Ahmet (14:00)"
-  clean = clean.replace(/[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i, '');
-
-  // 6. Remove session type / modality markers at start or end
-  // e.g. "Wp", "Wp.", "WA", "Google meet", "Gmeet", "(Online)", "(Yüz Yüze)", "[Ofis]", "(Zoom)", "(Skype)", "(Meet)", "(Face to face)"
-  const modalityPattern = '(?:online seans|online görüşme|online gorusme|online terapi|online|yüz yüze seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|google meet|gmeet|g meet|meet|zoom|skype|facetime|face to face|whatsapp|watsap|wp\\.|wp|wa|ms teams|teams|telegram|tg|duo|botim|telefon|tel|görüntülü görüşme|goruntulu gorusme|görüntülü|goruntulu|video|sesli|arama|çağrı|cagri|linki|link)';
-  const clinicalPattern = '(?:ilk görüşme|ilk gorusme|ilk seans|ön görüşme|on görüşme|on gorusme|değerlendirme|degerlendirme|takip|bireysel|çift terapisi|cift terapisi|çift|cift|aile terapisi|aile|ergen|çocuk|cocuk|süpervizyon|supervizyon|yetkinlik|seansı|seansi|seans|görüşmesi|gorusmesi|görüşme|gorusme|terapisi|terapi|randevusu|randevu|oturumu|oturum)';
-
-  // Repeatedly clean trailing/leading suffixes until stable
   let prev = '';
-  let maxPasses = 6;
+  let maxPasses = 5;
   while (clean !== prev && maxPasses > 0) {
     prev = clean;
     maxPasses--;
 
-    clean = clean.replace(/[\s\-\(\[\{,#/]+\b\d{1,2}[:.]\d{2}\b[\)\}\]]*$/i, '');
-    clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${modalityPattern}[\\)\\}\\]]*$`, 'i'), '');
-    clean = clean.replace(new RegExp(`^${modalityPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
-
-    clean = clean.replace(new RegExp(`[\\s\\-\\(\\[\\{,#\\/]+${clinicalPattern}[\\)\\}\\]]*$`, 'i'), '');
-    clean = clean.replace(new RegExp(`^${clinicalPattern}[\\s\\-\\:\\.\\)\\(\\[\\{]+`, 'i'), '');
-
-    clean = clean.replace(/[\s\-\(\[\{,#/]+(?:seans|seansı|oturum|görüşme|gorusme|no|no:)?\s*\d+[\.\s]*(?:seans|seansı|oturum|görüşme|gorusme)?[\)\}\]]*$/i, '');
-    clean = clean.replace(/[\s\-\(\[\{,#/]+(?:\d+[\s,\.\-\/]*)+[\)\}\]]*$/i, '');
-    clean = clean.replace(/([a-zA-ZçğıöşüÇĞİÖŞÜ])\d+$/i, '$1');
-    clean = clean.replace(/\b(?:hanım|bey|hn\.?|by\.?)\b/gi, '');
-    clean = clean.replace(/^[\s\-_:.,;()/[\]{}#~|•·]+|[\s\-_:.,;()/[\]{}#~|•·]+$/g, '');
+    clean = clean.replace(RE_TRAILING_TIME, '');
+    clean = clean.replace(RE_MODALITY_END, '');
+    clean = clean.replace(RE_MODALITY_START, '');
+    clean = clean.replace(RE_CLINICAL_END, '');
+    clean = clean.replace(RE_CLINICAL_START, '');
+    clean = clean.replace(RE_TRAILING_SEANS_NUM, '');
+    clean = clean.replace(RE_TRAILING_DIGITS, '');
+    clean = clean.replace(RE_ATTACHED_DIGIT, '$1');
+    clean = clean.replace(RE_HONORIFIC, '');
+    clean = clean.replace(RE_PUNCT_EDGES, '');
     clean = clean.replace(/[\s\u00A0]+/g, ' ').trim();
   }
 
-  return clean || name.replace(/[\s\u00A0]+/g, ' ').trim();
+  const result = clean || name.replace(/[\s\u00A0]+/g, ' ').trim();
+  if (normalizedClientNameCache.size > 5000) {
+    normalizedClientNameCache.clear();
+  }
+  normalizedClientNameCache.set(name, result);
+  return result;
 }
 
 /**
@@ -268,7 +278,9 @@ export function getNormalizedClientName(name: string): string {
  */
 export function toTurkishAscii(str: string): string {
   if (!str) return '';
-  return str
+  const cached = turkishAsciiCache.get(str);
+  if (cached !== undefined) return cached;
+  const result = str
     .toLocaleLowerCase('tr-TR')
     .replace(/ğ/g, 'g')
     .replace(/ü/g, 'u')
@@ -278,6 +290,11 @@ export function toTurkishAscii(str: string): string {
     .replace(/ç/g, 'c')
     .replace(/[\s\u00A0]+/g, ' ')
     .trim();
+  if (turkishAsciiCache.size > 5000) {
+    turkishAsciiCache.clear();
+  }
+  turkishAsciiCache.set(str, result);
+  return result;
 }
 
 /**
