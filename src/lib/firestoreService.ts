@@ -34,6 +34,12 @@ interface UserData {
 }
 
 export let isFirestoreQuotaExceeded = false;
+export const CLIENT_INSTANCE_ID = 'client_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
+export let lastLocalFirestoreWriteAt = 0;
+
+let cachedMemoryLedger: Record<string, AccountingLedgerEntry> | null = null;
+let lastSerializedLedgerStr = '';
+let lastAutoSnapshotTime = 0;
 
 export function extractBaseCalendarUid(id: string): string {
   if (!id || !id.startsWith('ics_')) return id || '';
@@ -83,22 +89,7 @@ export function updateLocalAccountingLedger(
   allowUnpaidOverwrite: boolean = false
 ): Record<string, AccountingLedgerEntry> {
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
-  const rawLoadedLedger: Record<string, AccountingLedgerEntry> = {};
-
-  try {
-    if (typeof window !== 'undefined') {
-      const rawGlobal = localStorage.getItem('psycalcu_accounting_ledger');
-      if (rawGlobal) {
-        Object.assign(rawLoadedLedger, JSON.parse(rawGlobal) || {});
-      }
-      if (userId) {
-        const rawUser = localStorage.getItem(storageKey);
-        if (rawUser) {
-          Object.assign(rawLoadedLedger, JSON.parse(rawUser) || {});
-        }
-      }
-    }
-  } catch (e) {}
+  const rawLoadedLedger = getStoredAccountingLedger(userId);
 
   // Filter out 0-TL auto-zeroed historical entries so the ledger stays tiny and fast
   const mergedLedger: Record<string, AccountingLedgerEntry> = {};
@@ -222,42 +213,42 @@ export function updateLocalAccountingLedger(
     }
   });
 
-  const cleanMergedLedger = JSON.parse(JSON.stringify(mergedLedger)) as Record<string, AccountingLedgerEntry>;
+  cachedMemoryLedger = mergedLedger;
 
   try {
     if (typeof window !== 'undefined') {
-      const serialized = JSON.stringify(cleanMergedLedger);
-      try {
-        localStorage.setItem(storageKey, serialized);
-        localStorage.setItem('psycalcu_accounting_ledger', serialized);
-      } catch (quotaErr) {
-        // Free up space aggressively so accounting ledger (only a few KB) is ALWAYS saved synchronously in localStorage
+      const serialized = JSON.stringify(mergedLedger);
+      if (serialized !== lastSerializedLedgerStr) {
+        lastSerializedLedgerStr = serialized;
         try {
-          localStorage.removeItem('psycalcu_snapshots_active');
-          localStorage.removeItem('psycalcu_sessions');
-          if (userId) {
-            localStorage.removeItem(`psycalcu_snapshots_${userId}`);
-            localStorage.removeItem(`psycalcu_safety_backup_${userId}`);
-          }
           localStorage.setItem(storageKey, serialized);
           localStorage.setItem('psycalcu_accounting_ledger', serialized);
-        } catch (e2) {
+        } catch (quotaErr) {
           try {
-            if (userId) localStorage.removeItem(`psycalcu_sessions_${userId}`);
+            localStorage.removeItem('psycalcu_snapshots_active');
+            localStorage.removeItem('psycalcu_sessions');
+            if (userId) {
+              localStorage.removeItem(`psycalcu_snapshots_${userId}`);
+              localStorage.removeItem(`psycalcu_safety_backup_${userId}`);
+              localStorage.removeItem(`psycalcu_sessions_${userId}`);
+            }
             localStorage.setItem(storageKey, serialized);
             localStorage.setItem('psycalcu_accounting_ledger', serialized);
-          } catch (e3) {}
+          } catch (e2) {}
         }
+        idbSet(storageKey, mergedLedger).catch(() => {});
+        idbSet('psycalcu_accounting_ledger', mergedLedger).catch(() => {});
       }
     }
-    idbSet(storageKey, cleanMergedLedger).catch(() => {});
-    idbSet('psycalcu_accounting_ledger', cleanMergedLedger).catch(() => {});
   } catch (e) {}
 
-  return cleanMergedLedger;
+  return mergedLedger;
 }
 
 export function getStoredAccountingLedger(userId?: string): Record<string, AccountingLedgerEntry> {
+  if (cachedMemoryLedger && Object.keys(cachedMemoryLedger).length > 0) {
+    return cachedMemoryLedger;
+  }
   if (typeof window === 'undefined') return {};
   const storageKey = userId ? `psycalcu_accounting_ledger_${userId}` : 'psycalcu_accounting_ledger';
   const combined: Record<string, AccountingLedgerEntry> = {};
@@ -285,6 +276,7 @@ export function getStoredAccountingLedger(userId?: string): Record<string, Accou
       }
     }
   } catch (e) {}
+  cachedMemoryLedger = combined;
   return combined;
 }
 
@@ -337,7 +329,7 @@ export function applyAccountingLedgerToSessions(
     // If ledger says the session is PAID (or PARTIAL) and the session is currently UNPAID,
     // ALWAYS restore the payment status from the ledger!
     if ((ledgerHasPayment && !currentHasPayment) ||
-        (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime >= sTime))) {
+        (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime > sTime))) {
       const isOnline = s.type === 'online';
       return {
         ...s,
@@ -530,89 +522,86 @@ export async function saveUserData(
   snapshotReason?: string,
   allowUnpaidOverwrite: boolean = false
 ): Promise<void> {
-  const cleanedSettings = JSON.parse(JSON.stringify(settings)) as AppSettings;
+  lastLocalFirestoreWriteAt = Date.now();
   const mergedMonthState = mergeClosedMonths(
-    cleanedSettings.closedMonths,
+    settings.closedMonths,
     undefined,
     userId,
     undefined,
-    cleanedSettings.reopenedMonths
+    settings.reopenedMonths
   );
-  cleanedSettings.closedMonths = mergedMonthState.closedMonths;
-  cleanedSettings.reopenedMonths = mergedMonthState.reopenedMonths;
-  // 1. Auto-prune soft-deleted sessions older than 30 days (TTL cleanup to ensure zero data bloat)
+  const cleanedSettings: AppSettings = {
+    ...settings,
+    closedMonths: mergedMonthState.closedMonths,
+    reopenedMonths: mergedMonthState.reopenedMonths
+  };
+
+  // 1. Auto-prune soft-deleted sessions older than 30 days without expensive JSON.parse(JSON.stringify)
   const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-  const cleanedSessions = (JSON.parse(JSON.stringify(sessions)) as Session[]).filter(s => {
+  const cleanedSessions = (sessions || []).filter(s => {
     if (!s) return false;
     if (s.isDeleted && s.deletedAt && s.deletedAt < thirtyDaysAgo) {
-      return false; // Permanently purge past 30 days
+      return false;
     }
     return true;
   });
 
-  const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
+  const cleanedExpenses = expenses || [];
 
   // Update persistent accounting ledger (protects paid/manual status across calendar syncs and reloads)
-  const accountingLedger = JSON.parse(
-    JSON.stringify(updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite))
-  );
+  const accountingLedger = updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite);
 
-  // ALWAYS write to local safety emergency backup immediately and async to IndexedDB (100MB+ limit)
+  // Write to IndexedDB asynchronously without blocking main thread
   try {
-    idbSet(`psycalcu_safety_backup_${userId}`, cleanedSessions).catch(() => {});
-    idbSet(`psycalcu_safety_settings_${userId}`, cleanedSettings).catch(() => {});
     idbSet(`psycalcu_sessions_${userId}`, cleanedSessions).catch(() => {});
     idbSet(`psycalcu_settings_${userId}`, cleanedSettings).catch(() => {});
-    // Purge old heavy keys from localStorage to prevent 5MB QuotaExceededError
-    localStorage.removeItem(`psycalcu_safety_backup_${userId}`);
-    localStorage.removeItem(`psycalcu_safety_settings_${userId}`);
   } catch (e) {}
 
-  // Auto-create snapshot asynchronously in background so it NEVER delays Firestore setDoc!
-  const snapReason = snapshotReason || (sessions && sessions.some(s => s.paymentStatus === 'paid') ? 'Otomatik Muhasebe Güvenlik Yedeği' : '');
-  const currentSnap = (cleanedSessions && cleanedSessions.length > 0 && snapReason)
-    ? createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses)
-    : undefined;
-
-  if (currentSnap) {
-    const localKey = `psycalcu_snapshots_${userId}`;
-    idbGet<DataBackupSnapshot[]>(localKey)
-      .then(idbExisting => {
-        let localSnaps: DataBackupSnapshot[] = Array.isArray(idbExisting) ? idbExisting : [];
-        localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== currentSnap.label));
-        localSnaps.unshift(currentSnap);
-        if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
-        idbSet(localKey, localSnaps).catch(() => {});
-        idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
-        try {
-          localStorage.removeItem(localKey);
-          localStorage.removeItem('psycalcu_snapshots_active');
-        } catch (e) {}
-      })
-      .catch(() => {});
+  // Only create heavy full snapshots when explicitly requested or at most once every 3 minutes
+  const now = Date.now();
+  const shouldCreateSnapshot = Boolean(snapshotReason) || (now - lastAutoSnapshotTime > 180000 && cleanedSessions.some(s => s.paymentStatus === 'paid'));
+  if (cleanedSessions.length > 0 && shouldCreateSnapshot) {
+    lastAutoSnapshotTime = now;
+    const snapReason = snapshotReason || 'Otomatik Muhasebe Güvenlik Yedeği';
+    setTimeout(() => {
+      try {
+        const currentSnap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
+        const localKey = `psycalcu_snapshots_${userId}`;
+        idbGet<DataBackupSnapshot[]>(localKey)
+          .then(idbExisting => {
+            let localSnaps: DataBackupSnapshot[] = Array.isArray(idbExisting) ? idbExisting : [];
+            localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== currentSnap.label));
+            localSnaps.unshift(currentSnap);
+            if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
+            idbSet(localKey, localSnaps).catch(() => {});
+            idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
+          })
+          .catch(() => {});
+      } catch (e) {}
+    }, 50);
   }
 
   if (isFirestoreQuotaExceeded) {
-    console.warn('[firestoreService] Firestore cloud quota limit reached. Data safely preserved in IndexedDB.');
     return;
   }
   try {
     const docRef = doc(db, 'users', userId);
+    const cutoffDate = (cleanedSettings.accountingStartDate || '2026-07-01').split('T')[0];
 
     // Strip bulky calendar descriptions from cloud-stored sessions (calendar notes are stored locally in IndexedDB)
-    const cloudSessions = cleanedSessions.map(s => {
+    let cloudSessions = cleanedSessions.map(s => {
       if (s.isSyncedFromCalendar && s.notes) {
         return { ...s, notes: '' };
       }
       return s;
     });
 
-    // Build a compact cloud snapshot (containing only paid/partial/manually edited sessions)
-    // so Firestore document NEVER exceeds the 1MB (1,048,576 bytes) hard limit!
-    const compactCloudSnapshots = currentSnap ? [{
-      ...currentSnap,
-      sessions: (currentSnap.sessions || []).filter(s => s && !s.isDeleted && isMeaningfulLedgerEntry(s))
-    }] : [];
+    // If there are many historical calendar sessions (> 700), keep all active-period & paid/edited sessions so Firestore doc stays small and fast
+    if (cloudSessions.length > 700) {
+      cloudSessions = cloudSessions.filter(
+        s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
+      );
+    }
 
     const payload: any = { 
       settings: cleanedSettings,
@@ -621,12 +610,9 @@ export async function saveUserData(
       sessions: cloudSessions, 
       expenses: cleanedExpenses,
       accountingLedger,
+      lastModifiedByClientId: CLIENT_INSTANCE_ID,
       lastUpdatedAt: new Date().toISOString()
     };
-
-    if (compactCloudSnapshots.length > 0) {
-      payload.backupSnapshots = compactCloudSnapshots;
-    }
 
     // Keep a persistent calendarBackup inside the user document whenever URLs exist
     if (settings?.onlineCalendarWebcalUrl || settings?.faceToFaceCalendarWebcalUrl || (settings?.ownerCalendars && settings.ownerCalendars.length > 0)) {
@@ -640,25 +626,10 @@ export async function saveUserData(
       };
     }
 
-    const cutoffDate = (cleanedSettings.accountingStartDate || '2026-07-01').split('T')[0];
-
-    // Safety check: if serialized payload is over 600KB, omit backupSnapshots & calendarHistory to stay well under 1MB
-    let serializedSize = JSON.stringify(payload).length;
-    if (serializedSize > 600000) {
-      payload.backupSnapshots = deleteField();
-      payload.calendarHistory = deleteField();
-      serializedSize = JSON.stringify(payload).length;
-    }
-
-    // If still over 800KB (e.g. thousands of old pre-cutoff 0-TL calendar sessions), keep all active-period & paid/edited sessions
-    if (serializedSize > 800000) {
-      payload.sessions = cloudSessions.filter(
-        s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
-      );
-    }
-
     try {
+      lastLocalFirestoreWriteAt = Date.now();
       await setDoc(docRef, payload, { merge: true });
+      lastLocalFirestoreWriteAt = Date.now();
     } catch (writeErr: any) {
       const msg = (writeErr?.message || String(writeErr)).toLowerCase();
       if (msg.includes('size') || msg.includes('1048576') || msg.includes('longer than') || writeErr?.code === 'invalid-argument') {

@@ -129,29 +129,12 @@ export const safeStorage = {
         String(err).toLowerCase().includes('quota');
 
       if (isQuota) {
-        console.warn(`${LOG_PREFIX} Quota exceeded on setItem(${key}). Pruning non-essential cache...`);
         pruneStorage(userId);
-
         try {
-          // Remove the existing key first so browser does not require 2x key size during overwrite
           localStorage.removeItem(key);
           localStorage.setItem(key, value);
           return true;
         } catch (retryErr) {
-          // If this is a sessions array, store a compact version (without bulky synced calendar descriptions) in localStorage
-          // while saving the full version in IndexedDB so synchronous reload NEVER loses payment states!
-          if (key.startsWith('psycalcu_sessions')) {
-            try {
-              const parsed = JSON.parse(value);
-              if (Array.isArray(parsed)) {
-                const compact = JSON.stringify(
-                  parsed.map((s: any) => (s && s.isSyncedFromCalendar && s.notes ? { ...s, notes: '' } : s))
-                );
-                localStorage.setItem(key, compact);
-              }
-            } catch (compactErr) {}
-          }
-          console.warn(`${LOG_PREFIX} setItem localStorage quota full, safely offloading full payload to IndexedDB:`, retryErr);
           idbSet(key, value).catch(() => {});
           return true;
         }

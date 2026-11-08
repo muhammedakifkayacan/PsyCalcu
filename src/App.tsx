@@ -81,7 +81,7 @@ import { isDateInClosedMonth, getUnclosedPastMonths, ClosedMonthRecord, formatMo
 import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
-import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded, checkIsQuotaError, updateLocalAccountingLedger, applyAccountingLedgerToSessions, getStoredAccountingLedger, extractBaseCalendarUid } from './lib/firestoreService';
+import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded, checkIsQuotaError, updateLocalAccountingLedger, applyAccountingLedgerToSessions, getStoredAccountingLedger, extractBaseCalendarUid, CLIENT_INSTANCE_ID, lastLocalFirestoreWriteAt } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
@@ -262,9 +262,7 @@ const autoCorrectPastSessions = (
   });
 
   const validList = healedAndRestored.filter(Boolean) as Session[];
-  const smartHealed = autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices, effectiveClosedMonths);
-  const storedLedger = updateLocalAccountingLedger(auth.currentUser?.uid, smartHealed);
-  return applyAccountingLedgerToSessions(smartHealed, storedLedger, cutoffDate);
+  return autoHealSmartClientPrices(validList, defaultPrice, defaultBabysitterFee, defaultOfficeRentFee, cutoffDate, defaultOnlinePrice, defaultFaceToFacePrice, clientCustomPrices, effectiveClosedMonths);
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -867,10 +865,11 @@ export default function App() {
           } catch (e) {}
         }
         
+        let correctedInitialSessions: Session[] = [];
         if (savedSessions) {
           try { 
             const parsed = JSON.parse(savedSessions);
-            setSessions(autoCorrectPastSessions(
+            correctedInitialSessions = autoCorrectPastSessions(
               parsed,
               parsedSettingsForInit.defaultSessionPrice,
               parsedSettingsForInit.defaultBabysitterFee,
@@ -880,7 +879,8 @@ export default function App() {
               parsedSettingsForInit.defaultFaceToFacePrice,
               parsedSettingsForInit.clientCustomPrices,
               parsedSettingsForInit.closedMonths
-            )); 
+            );
+            setSessions(correctedInitialSessions); 
           } catch (e) {}
         }
         
@@ -905,12 +905,12 @@ export default function App() {
           });
         }
         
-        // Also initialize lastSavedRef to prevent immediate auto-saving before sync
+        // Initialize lastSavedRef without re-running autoCorrectPastSessions
         const userExpensesKey = `psycalcu_expenses_${currentUser.uid}`;
         const savedExpenses = safeStorage.getItem(userExpensesKey);
         lastSavedRef.current = {
           settings: savedSettings || '',
-          sessions: savedSessions ? JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions))) : '[]',
+          sessions: savedSessions || '[]',
           expenses: savedExpenses || '[]'
         };
       }
@@ -1008,22 +1008,9 @@ export default function App() {
               });
             }
           }
-          if (regCreated) {
+          if (regCreated && regCreated !== registrationCreatedAt) {
             setRegistrationCreatedAt(regCreated);
             safeStorage.setItem('psycalcu_registration_created_at', regCreated, user.uid);
-            const curSet = settingsRef.current || settings;
-            const effCutoff = curSet.accountingStartDate || regCreated;
-            setSessions(prev => autoCorrectPastSessions(
-              prev,
-              curSet.defaultSessionPrice,
-              curSet.defaultBabysitterFee,
-              curSet.defaultOfficeRentFee,
-              effCutoff,
-              curSet.defaultOnlinePrice,
-              curSet.defaultFaceToFacePrice,
-              curSet.clientCustomPrices,
-              curSet.closedMonths
-            ));
           }
           
           setRegistrationError(null);
@@ -1601,14 +1588,23 @@ export default function App() {
 
     const userDocRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      // Ignore local optimistic writes or when a local save is currently in flight to prevent race loops
-      if (docSnap.metadata.hasPendingWrites || activeSavesCountRef.current > 0) {
+      // Ignore local optimistic writes, active local saves, or snapshots triggered by this tab's own recent writes
+      if (
+        docSnap.metadata.hasPendingWrites ||
+        activeSavesCountRef.current > 0 ||
+        Date.now() - lastLocalFirestoreWriteAt < 8000
+      ) {
         return;
       }
 
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (!data) return;
+
+        // Strictly ignore snapshots that were written by this same browser tab instance
+        if (data.lastModifiedByClientId && data.lastModifiedByClientId === CLIENT_INSTANCE_ID) {
+          return;
+        }
 
         const newSettings = data.settings;
         const newSessions = data.sessions || [];
@@ -1624,7 +1620,6 @@ export default function App() {
           newSessionsStr !== lastSavedRef.current.sessions ||
           newExpensesStr !== lastSavedRef.current.expenses
         ) {
-          // Reconcile with local session state and persistent accountingLedger so local payments & manual prices are never lost
           let currentLocal = sessionsRef.current || [];
           if (currentLocal.length === 0) {
             try {
@@ -1649,7 +1644,6 @@ export default function App() {
             }
           });
           const remoteIds = new Set((newSessions as Session[]).map(s => s.id));
-          let hadRescuedLocalEdits = false;
 
           const reconciledSessions = (newSessions as Session[]).map(ns => {
             let ls = localMap.get(ns.id);
@@ -1671,14 +1665,12 @@ export default function App() {
             const lsPrice = Number(ls.price) || 0;
             const nsPrice = Number(ns.price) || 0;
 
-            // Preserve local payment/price edits if local was updated more recently OR if local has financial data and remote is missing it
             const localIsNewer = lsTime > nsTime;
             const localHasPaymentData = lsHasPayment && !nsHasPayment;
             const localHasPriceData = lsPrice > 0 && nsPrice === 0 && !(ns.isManuallyEdited && nsTime > lsTime);
             const localIsManuallyEdited = ls.isManuallyEdited && !ns.isManuallyEdited;
 
             if (localIsNewer || localHasPaymentData || localHasPriceData || localIsManuallyEdited) {
-              hadRescuedLocalEdits = true;
               return {
                 ...ns,
                 ...ls,
@@ -1692,10 +1684,14 @@ export default function App() {
               };
             }
 
+            // Preserve local calendar notes since cloud sessions strip notes to save space
+            if (ls.notes && !ns.notes) {
+              return { ...ns, notes: ls.notes };
+            }
+
             return ns;
           });
 
-          // Retain local-only sessions that haven't synced to Firestore yet
           const localOnlySessions = currentLocal.filter(
             ls => !remoteIds.has(ls.id) && (ls.isManuallyEdited || (ls.updatedAt && Date.now() - ls.updatedAt < 600000))
           );
@@ -1707,7 +1703,6 @@ export default function App() {
             effectiveCutoff
           );
 
-          // Reconcile closedMonths & reopenedMonths so remote snapshot never wipes out locally closed months
           const reconciledMonthState = mergeClosedMonths(
             settingsRef.current?.closedMonths,
             newSettings?.closedMonths || data.closedMonths,
@@ -1721,8 +1716,15 @@ export default function App() {
             reopenedMonths: reconciledMonthState.reopenedMonths,
           } : undefined;
           const mergedSettingsStr = mergedSettings ? JSON.stringify(mergedSettings) : newSettingsStr;
+          const finalSessionsStr = JSON.stringify(finalSessions);
 
           isRemoteUpdatingRef.current = true;
+          lastSavedRef.current = {
+            settings: mergedSettingsStr,
+            sessions: finalSessionsStr,
+            expenses: newExpensesStr
+          };
+
           if (mergedSettings) {
             setSettings(mergedSettings);
             settingsRef.current = mergedSettings;
@@ -1731,30 +1733,12 @@ export default function App() {
           setSessions(finalSessions);
           setExpenses(newExpenses);
 
-          const finalSessionsStr = JSON.stringify(finalSessions);
-
-          lastSavedRef.current = {
-            settings: mergedSettingsStr,
-            sessions: finalSessionsStr,
-            expenses: newExpensesStr
-          };
-
-          // Update local cache
           const userSessionsKey = `psycalcu_sessions_${user.uid}`;
           const userSettingsKey = `psycalcu_settings_${user.uid}`;
           const userExpensesKey = `psycalcu_expenses_${user.uid}`;
           if (mergedSettings) safeStorage.setItem(userSettingsKey, mergedSettingsStr, user.uid);
           safeStorage.setItem(userSessionsKey, finalSessionsStr, user.uid);
           safeStorage.setItem(userExpensesKey, newExpensesStr, user.uid);
-
-          // If local had closed months or rescued payments that were missing from the remote document, sync them back to Firestore
-          const remoteClosedCount = Object.keys(newSettings?.closedMonths || {}).length;
-          const mergedClosedCount = Object.keys(reconciledMonthState.closedMonths).length;
-          if ((hadRescuedLocalEdits || (mergedSettings && mergedClosedCount > remoteClosedCount)) && !isFirestoreQuotaExceeded && !isQuotaExceeded) {
-            saveUserData(user.uid, mergedSettings || settingsRef.current, finalSessions, newExpenses).catch(() => {});
-          }
-
-          showToast('Diğer cihazınızdan yapılan değişiklikler canlı olarak güncellendi.', 'info');
         }
       }
     }, (err) => {
@@ -1769,6 +1753,7 @@ export default function App() {
   // Refs to track latest values for safe unmount/unload saving
   const sessionsRef = useRef(sessions);
   const settingsRef = useRef(settings);
+  const immediateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -1782,83 +1767,65 @@ export default function App() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (user && !isQuotaExceeded) {
-        const currentSettingsStr = JSON.stringify(settingsRef.current);
-        const currentSessionsStr = JSON.stringify(sessionsRef.current);
-        if (currentSettingsStr !== lastSavedRef.current.settings ||
-            currentSessionsStr !== lastSavedRef.current.sessions) {
-          saveUserData(user.uid, settingsRef.current, sessionsRef.current).catch(err => {
-            console.error("beforeunload save error:", err);
-          });
-        }
+        updateLocalAccountingLedger(user.uid, sessionsRef.current);
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [user, isQuotaExceeded]);
 
-  // Save settings, sessions & expenses to local & cloud on changes with debouncing and change-detection
+  // Save settings, sessions & expenses to local & cloud on changes with debouncing so UI thread never lags
   useEffect(() => {
-    const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
-    const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
-    const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
-
-    // Immediately commit any payment / manual accounting edit to the persistent local ledger first
-    if (sessions.length > 0) {
-      updateLocalAccountingLedger(user?.uid, sessions);
-    }
-
-    // Do not overwrite localStorage with empty/stale state while initial auth/cloud sync is still in progress
     if (user && (!isInitialSyncDone || isAuthSyncing)) {
       return;
     }
 
-    safeStorage.setItem(localSettingsKey, JSON.stringify(settings), user ? user.uid : undefined);
-    if (sessions.length > 0 || isInitialSyncDone) {
-      safeStorage.setItem(localSessionsKey, JSON.stringify(sessions), user ? user.uid : undefined);
-    }
-    safeStorage.setItem(localExpensesKey, JSON.stringify(expenses), user ? user.uid : undefined);
-
-    if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
+    if (isRemoteUpdatingRef.current) {
+      isRemoteUpdatingRef.current = false;
       return;
     }
 
-    const currentSettingsStr = JSON.stringify(settings);
-    const currentSessionsStr = JSON.stringify(sessions);
-    const currentExpensesStr = JSON.stringify(expenses);
+    const timer = setTimeout(() => {
+      const localSessionsKey = user ? `psycalcu_sessions_${user.uid}` : 'psycalcu_sessions';
+      const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
+      const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
-    // If change came from remote listener, skip saving back to cloud
-    if (isRemoteUpdatingRef.current) {
-      isRemoteUpdatingRef.current = false;
+      const currentSettingsStr = JSON.stringify(settings);
+      const currentSessionsStr = JSON.stringify(sessions);
+      const currentExpensesStr = JSON.stringify(expenses);
+
+      if (sessions.length > 0) {
+        updateLocalAccountingLedger(user?.uid, sessions);
+      }
+      safeStorage.setItem(localSettingsKey, currentSettingsStr, user ? user.uid : undefined);
+      if (sessions.length > 0 || isInitialSyncDone) {
+        safeStorage.setItem(localSessionsKey, currentSessionsStr, user ? user.uid : undefined);
+      }
+      safeStorage.setItem(localExpensesKey, currentExpensesStr, user ? user.uid : undefined);
+
+      if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
+        return;
+      }
+
+      if (currentSettingsStr === lastSavedRef.current.settings &&
+          currentSessionsStr === lastSavedRef.current.sessions &&
+          currentExpensesStr === lastSavedRef.current.expenses) {
+        return;
+      }
+
       lastSavedRef.current = {
         settings: currentSettingsStr,
         sessions: currentSessionsStr,
         expenses: currentExpensesStr
       };
-      return;
-    }
 
-    // Skip saving to cloud if data hasn't changed since last cloud synchronization or save
-    if (currentSettingsStr === lastSavedRef.current.settings &&
-        currentSessionsStr === lastSavedRef.current.sessions &&
-        currentExpensesStr === lastSavedRef.current.expenses) {
-      return;
-    }
-
-    setIsCloudSaving(true);
-
-    // Debounce cloud save by 300ms to ensure instant multi-device synchronization and prevent race conditions
-    const timer = setTimeout(() => {
+      setIsCloudSaving(true);
       activeSavesCountRef.current++;
       saveUserData(user.uid, settings, sessions, expenses).then(() => {
         activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
         if (activeSavesCountRef.current === 0) {
           setIsCloudSaving(false);
         }
-        lastSavedRef.current = {
-          settings: currentSettingsStr,
-          sessions: currentSessionsStr,
-          expenses: currentExpensesStr
-        };
       }).catch((err: any) => {
         activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
         if (activeSavesCountRef.current === 0) {
@@ -1875,13 +1842,10 @@ export default function App() {
           console.error("Bulut kayıt hatası:", err);
         }
       });
-    }, 300);
+    }, 600);
 
     return () => {
       clearTimeout(timer);
-      if (activeSavesCountRef.current === 0) {
-        setIsCloudSaving(false);
-      }
     };
   }, [settings, sessions, expenses, user, isInitialSyncDone, isAuthSyncing, isQuotaExceeded]);
 
@@ -3109,37 +3073,47 @@ export default function App() {
 
     try {
       const effectiveUid = user?.uid || auth.currentUser?.uid;
-      // 1. Update local accounting ledger FIRST (only a few KB) so payment lock is 100% persisted before any quota-heavy writes
+      // 1. Update local accounting ledger FIRST (~5KB) so payment lock is 100% persisted synchronously in <1ms
       updateLocalAccountingLedger(effectiveUid, nextSessions, undefined, allowUnpaidOverwrite);
 
-      const sessionsStr = JSON.stringify(nextSessions);
-      if (effectiveUid) {
-        safeStorage.setItem(`psycalcu_sessions_${effectiveUid}`, sessionsStr, effectiveUid);
-      } else {
-        safeStorage.setItem('psycalcu_sessions', sessionsStr);
+      // 2. Defer heavy JSON.stringify + Firestore write off the synchronous click frame so UI responds instantaneously
+      if (immediateSaveTimerRef.current) {
+        clearTimeout(immediateSaveTimerRef.current);
       }
+      immediateSaveTimerRef.current = setTimeout(() => {
+        try {
+          const latestSessions = sessionsRef.current || nextSessions;
+          const curSettings = settingsRef.current || settings;
+          const curExpenses = expensesRef.current || expenses;
+          const sessionsStr = JSON.stringify(latestSessions);
 
-      if (effectiveUid && registrationStatus === 'approved') {
-        activeSavesCountRef.current += 1;
-        const curSettings = settingsRef.current || settings;
-        const curExpenses = expensesRef.current || expenses;
-        saveUserData(effectiveUid, curSettings, nextSessions, curExpenses, snapshotReason, allowUnpaidOverwrite)
-          .then(() => {
+          if (effectiveUid) {
+            safeStorage.setItem(`psycalcu_sessions_${effectiveUid}`, sessionsStr, effectiveUid);
+          } else {
+            safeStorage.setItem('psycalcu_sessions', sessionsStr);
+          }
+
+          if (effectiveUid && registrationStatus === 'approved') {
             lastSavedRef.current = {
               settings: JSON.stringify(curSettings),
               sessions: sessionsStr,
               expenses: JSON.stringify(curExpenses)
             };
-          })
-          .catch(err => {
-            console.error("Immediate session save error:", err);
-          })
-          .finally(() => {
-            setTimeout(() => {
-              activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
-            }, 500);
-          });
-      }
+            activeSavesCountRef.current += 1;
+            saveUserData(effectiveUid, curSettings, latestSessions, curExpenses, snapshotReason, allowUnpaidOverwrite)
+              .catch(err => {
+                console.error("Immediate session save error:", err);
+              })
+              .finally(() => {
+                setTimeout(() => {
+                  activeSavesCountRef.current = Math.max(0, activeSavesCountRef.current - 1);
+                }, 1500);
+              });
+          }
+        } catch (err) {
+          console.warn("Deferred session save error:", err);
+        }
+      }, 80);
     } catch (e) {
       console.warn("Error in commitSessionsImmediately:", e);
     }
