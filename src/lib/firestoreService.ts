@@ -166,8 +166,8 @@ export function updateLocalAccountingLedger(
     const entry: AccountingLedgerEntry = {
       id: s.id,
       paymentStatus: s.paymentStatus || 'unpaid',
-      paidAmount: s.paidAmount,
-      paymentMethod: s.paymentMethod,
+      ...(s.paidAmount !== undefined ? { paidAmount: Number(s.paidAmount) || 0 } : {}),
+      ...(s.paymentMethod ? { paymentMethod: s.paymentMethod } : {}),
       price: Number(s.price) || 0,
       hasBabysitterFee: Boolean(s.hasBabysitterFee),
       babysitterFeeAmount: Number(s.babysitterFeeAmount) || 0,
@@ -175,7 +175,7 @@ export function updateLocalAccountingLedger(
       officeRentFeeAmount: s.type === 'online' ? 0 : (Number(s.officeRentFeeAmount) || 0),
       isManuallyEdited: Boolean(s.isManuallyEdited || hasPayment),
       isPaymentLocked: hasPayment ? true : false,
-      calendarSyncNotice: s.calendarSyncNotice,
+      ...(s.calendarSyncNotice ? { calendarSyncNotice: s.calendarSyncNotice } : {}),
       updatedAt: sUpdatedAt,
       clientName: s.clientName,
       date: s.date,
@@ -210,35 +210,51 @@ export function updateLocalAccountingLedger(
         (hasPayment && !existingIsPaid) ||
         (sUpdatedAt > 0 && sUpdatedAt >= (existing.updatedAt || 0))
       ) {
-        mergedLedger[k] = {
-          ...entry,
-          calendarSyncNotice: entry.calendarSyncNotice || existing.calendarSyncNotice
+        const nextEntry: AccountingLedgerEntry = {
+          ...entry
         };
+        const notice = entry.calendarSyncNotice || existing.calendarSyncNotice;
+        if (notice) {
+          nextEntry.calendarSyncNotice = notice;
+        }
+        mergedLedger[k] = nextEntry;
       }
     }
   });
 
+  const cleanMergedLedger = JSON.parse(JSON.stringify(mergedLedger)) as Record<string, AccountingLedgerEntry>;
+
   try {
     if (typeof window !== 'undefined') {
-      const serialized = JSON.stringify(mergedLedger);
+      const serialized = JSON.stringify(cleanMergedLedger);
       try {
         localStorage.setItem(storageKey, serialized);
         localStorage.setItem('psycalcu_accounting_ledger', serialized);
       } catch (quotaErr) {
-        // Free up space and retry
+        // Free up space aggressively so accounting ledger (only a few KB) is ALWAYS saved synchronously in localStorage
         try {
           localStorage.removeItem('psycalcu_snapshots_active');
-          if (userId) localStorage.removeItem(`psycalcu_snapshots_${userId}`);
+          localStorage.removeItem('psycalcu_sessions');
+          if (userId) {
+            localStorage.removeItem(`psycalcu_snapshots_${userId}`);
+            localStorage.removeItem(`psycalcu_safety_backup_${userId}`);
+          }
           localStorage.setItem(storageKey, serialized);
           localStorage.setItem('psycalcu_accounting_ledger', serialized);
-        } catch (e2) {}
+        } catch (e2) {
+          try {
+            if (userId) localStorage.removeItem(`psycalcu_sessions_${userId}`);
+            localStorage.setItem(storageKey, serialized);
+            localStorage.setItem('psycalcu_accounting_ledger', serialized);
+          } catch (e3) {}
+        }
       }
     }
-    idbSet(storageKey, mergedLedger).catch(() => {});
-    idbSet('psycalcu_accounting_ledger', mergedLedger).catch(() => {});
+    idbSet(storageKey, cleanMergedLedger).catch(() => {});
+    idbSet('psycalcu_accounting_ledger', cleanMergedLedger).catch(() => {});
   } catch (e) {}
 
-  return mergedLedger;
+  return cleanMergedLedger;
 }
 
 export function getStoredAccountingLedger(userId?: string): Record<string, AccountingLedgerEntry> {
@@ -255,6 +271,18 @@ export function getStoredAccountingLedger(userId?: string): Record<string, Accou
       if (rawUser) {
         Object.assign(combined, JSON.parse(rawUser) || {});
       }
+    } else {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('psycalcu_accounting_ledger_')) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            try {
+              Object.assign(combined, JSON.parse(raw) || {});
+            } catch (e) {}
+          }
+        }
+      }
     }
   } catch (e) {}
   return combined;
@@ -263,10 +291,9 @@ export function getStoredAccountingLedger(userId?: string): Record<string, Accou
 export function applyAccountingLedgerToSessions(
   sessions: Session[],
   ledger?: Record<string, AccountingLedgerEntry>,
-  accountingStartDate?: string | null
+  _accountingStartDate?: string | null
 ): Session[] {
   if (!Array.isArray(sessions) || !ledger || Object.keys(ledger).length === 0) return sessions;
-  const cutoff = accountingStartDate ? accountingStartDate.split('T')[0] : '';
 
   // Count sessions per client+day to avoid ambiguous `day:` matches when a client has 2 sessions on the same day
   const clientDateCounts = new Map<string, number>();
@@ -281,7 +308,6 @@ export function applyAccountingLedgerToSessions(
 
   return sessions.map(s => {
     if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return s;
-    if (cutoff && s.date && s.date < cutoff) return s;
 
     const keys = getLedgerKeysForSession(s);
     let matchedEntry: AccountingLedgerEntry | undefined = undefined;
@@ -311,7 +337,7 @@ export function applyAccountingLedgerToSessions(
     // If ledger says the session is PAID (or PARTIAL) and the session is currently UNPAID,
     // ALWAYS restore the payment status from the ledger!
     if ((ledgerHasPayment && !currentHasPayment) ||
-        (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime > sTime))) {
+        (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime >= sTime))) {
       const isOnline = s.type === 'online';
       return {
         ...s,
@@ -324,9 +350,17 @@ export function applyAccountingLedgerToSessions(
         hasOfficeRentFee: isOnline ? false : (matchedEntry.hasOfficeRentFee ?? s.hasOfficeRentFee),
         officeRentFeeAmount: isOnline ? 0 : (matchedEntry.hasOfficeRentFee ? (matchedEntry.officeRentFeeAmount || s.officeRentFeeAmount) : 0),
         isManuallyEdited: true,
-        isPaymentLocked: ledgerHasPayment ? true : s.isPaymentLocked,
+        isPaymentLocked: ledgerHasPayment ? true : Boolean(s.isPaymentLocked),
         calendarSyncNotice: s.calendarSyncNotice || matchedEntry.calendarSyncNotice,
         updatedAt: Math.max(sTime, lTime)
+      };
+    }
+
+    if (ledgerHasPayment && !s.isPaymentLocked) {
+      return {
+        ...s,
+        isPaymentLocked: true,
+        isManuallyEdited: true
       };
     }
 
@@ -519,7 +553,9 @@ export async function saveUserData(
   const cleanedExpenses = expenses ? JSON.parse(JSON.stringify(expenses)) : [];
 
   // Update persistent accounting ledger (protects paid/manual status across calendar syncs and reloads)
-  const accountingLedger = updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite);
+  const accountingLedger = JSON.parse(
+    JSON.stringify(updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite))
+  );
 
   // ALWAYS write to local safety emergency backup immediately and async to IndexedDB (100MB+ limit)
   try {
@@ -532,39 +568,28 @@ export async function saveUserData(
     localStorage.removeItem(`psycalcu_safety_settings_${userId}`);
   } catch (e) {}
 
-  // Auto-create snapshot if requested OR periodically for safety if there are paid sessions
-  // STRICT ROLLING LIMIT: Max 5 snapshots in IndexedDB (FIFO)
+  // Auto-create snapshot asynchronously in background so it NEVER delays Firestore setDoc!
   const snapReason = snapshotReason || (sessions && sessions.some(s => s.paymentStatus === 'paid') ? 'Otomatik Muhasebe Güvenlik Yedeği' : '');
-  let updatedSnapshots: DataBackupSnapshot[] | undefined = undefined;
-  if (cleanedSessions && cleanedSessions.length > 0 && snapReason) {
-    try {
-      const snap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
-      const localKey = `psycalcu_snapshots_${userId}`;
-      let localSnaps: DataBackupSnapshot[] = [];
-      try {
-        const idbExisting = await idbGet<DataBackupSnapshot[]>(localKey);
-        if (Array.isArray(idbExisting)) {
-          localSnaps = idbExisting;
-        } else {
-          const oldStr = localStorage.getItem(localKey);
-          if (oldStr) localSnaps = JSON.parse(oldStr);
-        }
-      } catch (e) {}
+  const currentSnap = (cleanedSessions && cleanedSessions.length > 0 && snapReason)
+    ? createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses)
+    : undefined;
 
-      // Deduplicate snapshots
-      localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== snap.label));
-      localSnaps.unshift(snap);
-      if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
-      
-      // Store full snapshots in IndexedDB (hundreds of MBs capacity)
-      idbSet(localKey, localSnaps).catch(() => {});
-      idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
-      updatedSnapshots = localSnaps;
-
-      // Clean up snapshot strings from localStorage to guarantee zero browser storage limit warnings
-      localStorage.removeItem(localKey);
-      localStorage.removeItem('psycalcu_snapshots_active');
-    } catch (localErr) {}
+  if (currentSnap) {
+    const localKey = `psycalcu_snapshots_${userId}`;
+    idbGet<DataBackupSnapshot[]>(localKey)
+      .then(idbExisting => {
+        let localSnaps: DataBackupSnapshot[] = Array.isArray(idbExisting) ? idbExisting : [];
+        localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== currentSnap.label));
+        localSnaps.unshift(currentSnap);
+        if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
+        idbSet(localKey, localSnaps).catch(() => {});
+        idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
+        try {
+          localStorage.removeItem(localKey);
+          localStorage.removeItem('psycalcu_snapshots_active');
+        } catch (e) {}
+      })
+      .catch(() => {});
   }
 
   if (isFirestoreQuotaExceeded) {
@@ -584,10 +609,10 @@ export async function saveUserData(
 
     // Build a compact cloud snapshot (containing only paid/partial/manually edited sessions)
     // so Firestore document NEVER exceeds the 1MB (1,048,576 bytes) hard limit!
-    const compactCloudSnapshots = (updatedSnapshots || []).slice(0, 2).map(snap => ({
-      ...snap,
-      sessions: (snap.sessions || []).filter(s => s && !s.isDeleted && isMeaningfulLedgerEntry(s))
-    }));
+    const compactCloudSnapshots = currentSnap ? [{
+      ...currentSnap,
+      sessions: (currentSnap.sessions || []).filter(s => s && !s.isDeleted && isMeaningfulLedgerEntry(s))
+    }] : [];
 
     const payload: any = { 
       settings: cleanedSettings,

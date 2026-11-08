@@ -286,7 +286,9 @@ export const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
       paymentStatus: nextStatus,
       paidAmount: nextStatus === 'paid' ? session.price : 0,
       updatedAt: Date.now(),
-      isManuallyEdited: true
+      isManuallyEdited: true,
+      isPaymentLocked: nextStatus === 'paid',
+      calendarSyncNotice: nextStatus === 'unpaid' ? undefined : session.calendarSyncNotice
     });
   };
 

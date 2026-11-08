@@ -153,9 +153,14 @@ const autoCorrectPastSessions = (
 
   const effectiveClosedMonths = getEffectiveClosedMonths(closedMonths, auth.currentUser?.uid);
 
+  // Apply stored accounting ledger FIRST so any session marked paid/locked is immediately flagged as isManuallyEdited
+  // before cutoff date checks or smart price healing run.
+  const initialLedger = getStoredAccountingLedger(auth.currentUser?.uid);
+  const preRestoredList = applyAccountingLedgerToSessions(sessionList, initialLedger, cutoffDate);
+
   const repairCostCache = new Map<string, { price: number; babysitterFeeAmount: number; officeRentFeeAmount: number }>();
 
-  const healedAndRestored = sessionList.map(s => {
+  const healedAndRestored = preRestoredList.map(s => {
     if (!s) return null;
 
     // 0. Soft-delete 30-day TTL Auto-Prune (Zero-bloat safeguard):
@@ -365,29 +370,41 @@ export default function App() {
     };
   }, []);
   const [sessions, setSessions] = useState<Session[]>(() => {
-    let saved = safeStorage.getItem('psycalcu_sessions');
-    if (!saved) {
-      try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith('psycalcu_sessions_') || key.startsWith('psycalcu_safety_backup_'))) {
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              try {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  saved = raw;
-                  break;
-                }
-              } catch (e) {}
-            }
+    let saved: string | null = null;
+    try {
+      // Prefer user-scoped sessions key first so we always read the most recent authenticated session list
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('psycalcu_sessions_')) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                saved = raw;
+                break;
+              }
+            } catch (e) {}
           }
         }
-      } catch (e) {}
+      }
+    } catch (e) {}
+    if (!saved) {
+      saved = safeStorage.getItem('psycalcu_sessions');
     }
     if (saved) {
       try {
-        return autoCorrectPastSessions(JSON.parse(saved));
+        return autoCorrectPastSessions(
+          JSON.parse(saved),
+          settings.defaultSessionPrice,
+          settings.defaultBabysitterFee,
+          settings.defaultOfficeRentFee,
+          settings.accountingStartDate,
+          settings.defaultOnlinePrice,
+          settings.defaultFaceToFacePrice,
+          settings.clientCustomPrices,
+          settings.closedMonths
+        );
       } catch (e) {}
     }
     return [];
@@ -841,16 +858,30 @@ export default function App() {
         // Immediately load user-specific cached data for a seamless instant UI transition on different devices
         const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
         const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
-        const savedSessions = safeStorage.getItem(userSessionsKey);
-        const savedSettings = safeStorage.getItem(userSettingsKey);
+        const savedSessions = safeStorage.getItem(userSessionsKey) || safeStorage.getItem('psycalcu_sessions');
+        const savedSettings = safeStorage.getItem(userSettingsKey) || safeStorage.getItem('psycalcu_settings');
+        let parsedSettingsForInit = settingsRef.current || settings;
+        if (savedSettings) {
+          try {
+            parsedSettingsForInit = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
+          } catch (e) {}
+        }
         
         if (savedSessions) {
           try { 
             const parsed = JSON.parse(savedSessions);
-            setSessions(autoCorrectPastSessions(parsed)); 
+            setSessions(autoCorrectPastSessions(
+              parsed,
+              parsedSettingsForInit.defaultSessionPrice,
+              parsedSettingsForInit.defaultBabysitterFee,
+              parsedSettingsForInit.defaultOfficeRentFee,
+              parsedSettingsForInit.accountingStartDate || registrationCreatedAt,
+              parsedSettingsForInit.defaultOnlinePrice,
+              parsedSettingsForInit.defaultFaceToFacePrice,
+              parsedSettingsForInit.clientCustomPrices,
+              parsedSettingsForInit.closedMonths
+            )); 
           } catch (e) {}
-        } else {
-          setSessions([]);
         }
         
         if (savedSettings) {
@@ -1771,11 +1802,21 @@ export default function App() {
     const localSettingsKey = user ? `psycalcu_settings_${user.uid}` : 'psycalcu_settings';
     const localExpensesKey = user ? `psycalcu_expenses_${user.uid}` : 'psycalcu_expenses';
 
+    // Immediately commit any payment / manual accounting edit to the persistent local ledger first
+    if (sessions.length > 0) {
+      updateLocalAccountingLedger(user?.uid, sessions);
+    }
+
+    // Do not overwrite localStorage with empty/stale state while initial auth/cloud sync is still in progress
+    if (user && (!isInitialSyncDone || isAuthSyncing)) {
+      return;
+    }
+
     safeStorage.setItem(localSettingsKey, JSON.stringify(settings), user ? user.uid : undefined);
-    safeStorage.setItem(localSessionsKey, JSON.stringify(sessions), user ? user.uid : undefined);
+    if (sessions.length > 0 || isInitialSyncDone) {
+      safeStorage.setItem(localSessionsKey, JSON.stringify(sessions), user ? user.uid : undefined);
+    }
     safeStorage.setItem(localExpensesKey, JSON.stringify(expenses), user ? user.uid : undefined);
-    // Immediately commit any payment / manual accounting edit to the persistent local ledger
-    updateLocalAccountingLedger(user?.uid, sessions);
 
     if (!user || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) {
       return;
@@ -3067,17 +3108,22 @@ export default function App() {
     setSessions(nextSessions);
 
     try {
+      const effectiveUid = user?.uid || auth.currentUser?.uid;
+      // 1. Update local accounting ledger FIRST (only a few KB) so payment lock is 100% persisted before any quota-heavy writes
+      updateLocalAccountingLedger(effectiveUid, nextSessions, undefined, allowUnpaidOverwrite);
+
       const sessionsStr = JSON.stringify(nextSessions);
-      safeStorage.setItem('psycalcu_sessions', sessionsStr, user?.uid);
-      if (user?.uid) {
-        safeStorage.setItem(`psycalcu_sessions_${user.uid}`, sessionsStr, user.uid);
+      if (effectiveUid) {
+        safeStorage.setItem(`psycalcu_sessions_${effectiveUid}`, sessionsStr, effectiveUid);
+      } else {
+        safeStorage.setItem('psycalcu_sessions', sessionsStr);
       }
-      updateLocalAccountingLedger(user?.uid, nextSessions, undefined, allowUnpaidOverwrite);
-      if (user?.uid && isInitialSyncDone && !isAuthSyncing && registrationStatus === 'approved') {
+
+      if (effectiveUid && registrationStatus === 'approved') {
         activeSavesCountRef.current += 1;
         const curSettings = settingsRef.current || settings;
         const curExpenses = expensesRef.current || expenses;
-        saveUserData(user.uid, curSettings, nextSessions, curExpenses, snapshotReason, allowUnpaidOverwrite)
+        saveUserData(effectiveUid, curSettings, nextSessions, curExpenses, snapshotReason, allowUnpaidOverwrite)
           .then(() => {
             lastSavedRef.current = {
               settings: JSON.stringify(curSettings),
@@ -3146,7 +3192,14 @@ export default function App() {
         return;
       }
     }
-    const withTimestamp = { ...savedSession, updatedAt: Date.now(), isManuallyEdited: true };
+    const isPaidOrPartial = savedSession.paymentStatus === 'paid' || savedSession.paymentStatus === 'partial';
+    const withTimestamp: Session = {
+      ...savedSession,
+      updatedAt: Date.now(),
+      isManuallyEdited: true,
+      isPaymentLocked: isPaidOrPartial,
+      calendarSyncNotice: savedSession.paymentStatus === 'unpaid' ? undefined : savedSession.calendarSyncNotice
+    };
     commitSessionsImmediately(prev => {
       let updatedList: Session[];
       const exists = prev.some(s => s.id === savedSession.id);

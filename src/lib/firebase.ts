@@ -48,6 +48,7 @@ export const auth = getAuth(app);
 let dbInstance;
 try {
   dbInstance = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     })
@@ -55,10 +56,10 @@ try {
 } catch (err) {
   console.warn("Failed to initialize Firestore with persistent local cache, falling back to standard initialization:", err);
   try {
-    dbInstance = initializeFirestore(app, {}, "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222");
+    dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true }, "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222");
   } catch (err2) {
     console.error("Failed to initialize Firestore, falling back to default database:", err2);
-    dbInstance = initializeFirestore(app, {});
+    dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true });
   }
 }
 export const db = dbInstance;
