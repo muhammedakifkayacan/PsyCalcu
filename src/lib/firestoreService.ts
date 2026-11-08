@@ -2,7 +2,7 @@ import { db } from './firebase';
 import { doc, setDoc, getDoc, deleteField } from 'firebase/firestore';
 import { Session, AppSettings, Expense, DataBackupSnapshot, getNormalizedClientName, toTurkishAscii } from '../types';
 import { idbSet, idbGet } from '../utils/idbStorage';
-import { mergeClosedMonths } from '../utils/monthCloseUtils';
+import { mergeClosedMonths, isDateInClosedMonth } from '../utils/monthCloseUtils';
 
 export interface AccountingLedgerEntry {
   id: string;
@@ -616,11 +616,26 @@ export async function saveUserData(
       return s;
     });
 
-    // If there are many historical calendar sessions (> 700), keep all active-period & paid/edited sessions so Firestore doc stays small and fast
-    if (cloudSessions.length > 700) {
-      cloudSessions = cloudSessions.filter(
-        s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
-      );
+    const activeClosedMonths = cleanedSettings.closedMonths || {};
+    const isProtectedSession = (s: Session): boolean => {
+      if (!s || s.isDeleted) return false;
+      if (isDateInClosedMonth(s.date, activeClosedMonths)) return true;
+      if (s.date && s.date >= cutoffDate) return true;
+      return isMeaningfulLedgerEntry(s);
+    };
+
+    // Keep all sessions up to 3,500; if exceeding 3,500, always preserve locked months, active period, and paid/edited sessions
+    if (cloudSessions.length > 3500) {
+      const protectedList = cloudSessions.filter(isProtectedSession);
+      if (protectedList.length >= 3500) {
+        cloudSessions = protectedList;
+      } else {
+        const protectedIds = new Set(protectedList.map(s => s.id));
+        const remaining = cloudSessions
+          .filter(s => !s.isDeleted && !protectedIds.has(s.id))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        cloudSessions = [...protectedList, ...remaining.slice(0, 3500 - protectedList.length)];
+      }
     }
 
     const payload: any = { 
@@ -630,6 +645,8 @@ export async function saveUserData(
       sessions: cloudSessions, 
       expenses: cleanedExpenses,
       accountingLedger,
+      backupSnapshots: deleteField(),
+      calendarHistory: deleteField(),
       lastModifiedByClientId: CLIENT_INSTANCE_ID,
       lastUpdatedAt: new Date().toISOString()
     };
@@ -653,17 +670,15 @@ export async function saveUserData(
     } catch (writeErr: any) {
       const msg = (writeErr?.message || String(writeErr)).toLowerCase();
       if (msg.includes('size') || msg.includes('1048576') || msg.includes('longer than') || writeErr?.code === 'invalid-argument') {
-        // Document exceeded 1MB due to legacy fields in Firestore — purge heavy fields and compact sessions, then retry immediately!
-        payload.backupSnapshots = deleteField();
-        payload.calendarHistory = deleteField();
-        payload.sessions = cloudSessions.filter(
-          s => !s.isDeleted && ((s.date && s.date >= cutoffDate) || isMeaningfulLedgerEntry(s))
-        );
+        // Document exceeded 1MB — keep all locked months, active period (>= cutoffDate), and paid/edited sessions!
+        payload.sessions = cloudSessions.filter(isProtectedSession);
         try {
           await setDoc(docRef, payload, { merge: true });
         } catch (retryErr) {
-          // Even in worst-case size overflow, ALWAYS persist accountingLedger + paid/edited sessions + settings!
-          const essentialSessions = cloudSessions.filter(s => !s.isDeleted && isMeaningfulLedgerEntry(s));
+          // Even in worst-case size overflow, ALWAYS persist locked-month sessions + accountingLedger + paid/edited sessions + settings!
+          const essentialSessions = cloudSessions.filter(
+            s => !s.isDeleted && (isDateInClosedMonth(s.date, activeClosedMonths) || isMeaningfulLedgerEntry(s))
+          );
           await setDoc(docRef, {
             settings: cleanedSettings,
             closedMonths: cleanedSettings.closedMonths || {},

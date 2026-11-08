@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Globe, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar } from 'lucide-react';
+import { X, ShieldAlert, Save, Landmark, Baby, User, Phone, Globe, Sparkles, Lock, AlertTriangle, ChevronDown, Building, Clock, Percent, Calendar, RefreshCw } from 'lucide-react';
 import { AppSettings } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -15,6 +15,7 @@ interface SettingsModalProps {
   requestedRole?: 'tenant' | 'owner' | null;
   onRequestRoleChange?: (targetRole: 'tenant' | 'owner' | null) => Promise<void>;
   onOpenClientPricingModal?: () => void;
+  onForceFullCalendarSync?: () => Promise<void>;
 }
 
 export default function SettingsModal({ 
@@ -27,7 +28,8 @@ export default function SettingsModal({
   featuresSmartPriceMatchingAllowed = true,
   requestedRole = null,
   onRequestRoleChange,
-  onOpenClientPricingModal
+  onOpenClientPricingModal,
+  onForceFullCalendarSync
 }: SettingsModalProps) {
   useBodyScrollLock(isOpen);
   const [therapistName, setTherapistName] = useState(settings.therapistName);
@@ -49,6 +51,7 @@ export default function SettingsModal({
 
   const [pendingSmartPriceToggle, setPendingSmartPriceToggle] = useState<boolean | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(5);
+  const [isFullSyncing, setIsFullSyncing] = useState(false);
 
   useEffect(() => {
     let interval: any = null;
@@ -613,6 +616,35 @@ export default function SettingsModal({
               />
             </button>
           </div>
+          {onForceFullCalendarSync && (settings.onlineCalendarWebcalUrl || settings.faceToFaceCalendarWebcalUrl || (settings.ownerCalendars && settings.ownerCalendars.length > 0)) && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl border border-[#cb997e]/30 bg-[#cb997e]/5">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-[#cb997e]" />
+                  <span className="text-xs font-bold text-[#555a4a] uppercase tracking-wider">Tüm Takvim Geçmişini Baştan Eşitle</span>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Ajandada açık olan gün/hafta/ay sorgulanır. Geçmiş veya kilitlenen aylarda eksik seans varsa tüm takvimi tarayarak eksikleri tamamlar.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isFullSyncing}
+                onClick={async () => {
+                  setIsFullSyncing(true);
+                  try {
+                    await onForceFullCalendarSync();
+                  } finally {
+                    setIsFullSyncing(false);
+                  }
+                }}
+                className="px-3.5 py-2 bg-[#cb997e] hover:bg-[#b58369] disabled:bg-slate-200 disabled:text-slate-400 text-white text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isFullSyncing ? 'animate-spin' : ''}`} />
+                {isFullSyncing ? 'Taranıyor...' : 'Tüm Takvimi Eşitle'}
+              </button>
+            </div>
+          )}
           </div>
 
           {/* Sticky Actions Footer (Always visible above mobile virtual keyboard) */}

@@ -444,7 +444,9 @@ export function parseICS(
   closedMonths?: Record<string, ClosedMonthRecord>,
   isInitialCalendarSyncDone: boolean = false,
   defaultOnlinePrice?: number,
-  defaultFaceToFacePrice?: number
+  defaultFaceToFacePrice?: number,
+  customWindowStart?: string,
+  customWindowEnd?: string
 ): Session[] {
   const sessions: Session[] = [];
 
@@ -464,26 +466,27 @@ export function parseICS(
     }
   }
 
-  // Resolve effective accounting start cutoff (YYYY-MM-DD)
-  const effectiveAccountingStart = (accountingStartDate && accountingStartDate.trim())
-    ? accountingStartDate.split('T')[0]
-    : '';
-
   const todayObj = new Date();
   const past30DaysObj = new Date(todayObj);
   past30DaysObj.setDate(todayObj.getDate() - 30);
   const rolling30DaysStart = formatLocalDate(past30DaysObj);
 
-  // DATE WINDOW:
-  // 1. İlk tam takvim aktarımında (!isInitialCalendarSyncDone): Tüm geçmiş (2010+) ve gelecek eksiksiz aktarılır.
-  // 2. İlk tam aktarım tamamlandıktan sonra (isInitialCalendarSyncDone): Yalnızca son 30 gün ve gelecek tarihler (kilitli aylar hariç) kontrol edilir!
-  const windowStart = isInitialCalendarSyncDone
-    ? (effectiveAccountingStart && effectiveAccountingStart > rolling30DaysStart ? effectiveAccountingStart : rolling30DaysStart)
-    : (effectiveAccountingStart || '2010-01-01');
-
   const future365Days = new Date();
   future365Days.setDate(todayObj.getDate() + 365);
-  const windowEnd = formatLocalDate(future365Days);
+  const defaultFutureEnd = formatLocalDate(future365Days);
+
+  // DATE WINDOW:
+  // 1. İlk tam takvim aktarımında veya "Tüm Takvimi Baştan Eşitle" modunda (!isInitialCalendarSyncDone):
+  //    Tüm geçmiş (2010+) ve gelecek eksiksiz taranır.
+  // 2. Ajanda görünüm bazlı sorguda (customWindowStart / customWindowEnd verildiğinde):
+  //    Günlük görünümde o gün, haftalık görünümde o hafta, aylık görünümde o ay taranır!
+  const windowStart = isInitialCalendarSyncDone
+    ? (customWindowStart || rolling30DaysStart)
+    : '2010-01-01';
+
+  const windowEnd = isInitialCalendarSyncDone
+    ? (customWindowEnd || defaultFutureEnd)
+    : defaultFutureEnd;
 
   interface RawEvent {
     uid: string;
@@ -645,8 +648,7 @@ export function parseICS(
         const rawOccs = generateOccurrences(startParsed, rruleParsed, raw.exdates, windowStart, windowEnd);
         for (let i = 0; i < rawOccs.length; i++) {
           const occ = rawOccs[i];
-          if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) continue;
-          if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) continue;
+          if (isInitialCalendarSyncDone && closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) continue;
           occurrences.push(occ);
         }
       }
@@ -657,10 +659,7 @@ export function parseICS(
       if (dStr < windowStart || dStr > windowEnd || raw.exdates.has(dStr)) {
         continue;
       }
-      if (isInitialCalendarSyncDone && effectiveAccountingStart && dStr < effectiveAccountingStart) {
-        continue;
-      }
-      if (closedMonths && isDateInClosedMonth(dStr, closedMonths)) {
+      if (isInitialCalendarSyncDone && closedMonths && isDateInClosedMonth(dStr, closedMonths)) {
         continue;
       }
       occurrences.push({ dateStr: dStr, timeStr: startParsed.timeStr });
@@ -758,9 +757,14 @@ export function parseICS(
         }
       }
 
-      // Events strictly before an explicitly configured accounting start date are pulled into the calendar & agenda,
-      // but zeroed out financially (price: 0, paymentStatus: 'paid', no expenses) if configured
-      const isBeforeRegistration = Boolean(occ.dateStr && effectiveAccountingCutoff && occ.dateStr < effectiveAccountingCutoff);
+      const closedMonthRec = closedMonths && occ.dateStr ? closedMonths[occ.dateStr.slice(0, 7)] : undefined;
+      const isClosedMonthWithIncome = Boolean(closedMonthRec && (Number(closedMonthRec.totalIncome) || 0) > 0);
+      const isBeforeRegistration = Boolean(
+        occ.dateStr &&
+        effectiveAccountingCutoff &&
+        occ.dateStr < effectiveAccountingCutoff &&
+        !isClosedMonthWithIncome
+      );
 
       // Determine financial parameters based on session type
       let price = defaultPrice;

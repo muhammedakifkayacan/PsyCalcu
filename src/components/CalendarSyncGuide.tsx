@@ -6,7 +6,11 @@ import { Session, AppSettings, OwnerCalendar, normalizeOwnerCalendars } from '..
 import { usePrivacy } from '../context/PrivacyContext';
 
 interface CalendarSyncGuideProps {
-  onImportSessions: (sessions: Session[], sourceCalendar: 'online' | 'face-to-face' | 'rent-income') => { 
+  onImportSessions: (
+    sessions: Session[],
+    sourceCalendar: 'online' | 'face-to-face' | 'rent-income',
+    syncWindow?: { start: string; end: string; isFullSync?: boolean }
+  ) => { 
     addedCount: number; 
     updatedCount: number; 
     deletedCount?: number;
@@ -28,6 +32,7 @@ interface CalendarSyncGuideProps {
   showExplanations?: boolean;
   onHideExplanations?: () => void;
   onOpenMonthClosingModal?: (monthKey?: string) => void;
+  onForceFullCalendarSync?: () => Promise<void>;
 }
 
 export default function CalendarSyncGuide({
@@ -45,6 +50,7 @@ export default function CalendarSyncGuide({
   showExplanations = true,
   onHideExplanations,
   onOpenMonthClosingModal,
+  onForceFullCalendarSync,
 }: CalendarSyncGuideProps) {
   const { formatMoney } = usePrivacy();
   const [dragActive, setDragActive] = useState(false);
@@ -54,6 +60,7 @@ export default function CalendarSyncGuide({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isOnlineSyncing, setIsOnlineSyncing] = useState(false);
   const [isFaceToFaceSyncing, setIsFaceToFaceSyncing] = useState(false);
+  const [isFullHistorySyncing, setIsFullHistorySyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isOnlineLocked, setIsOnlineLocked] = useState(!!settings.onlineCalendarWebcalUrl);
@@ -358,7 +365,6 @@ export default function CalendarSyncGuide({
       const text = e.target?.result as string;
       if (text) {
         try {
-          const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
           const onlineDef = settings.defaultOnlinePrice ?? defaultPrice;
           const faceToFaceDef = settings.defaultFaceToFacePrice ?? defaultPrice;
           const parsed = parseICS(
@@ -371,12 +377,12 @@ export default function CalendarSyncGuide({
             settings.autoMarkShortEventsAsNonSession ?? true,
             settings.accountingStartDate,
             settings.closedMonths,
-            isInitialDone,
+            false,
             onlineDef,
             faceToFaceDef
           );
           if (parsed.length > 0) {
-            const stats = onImportSessions(parsed, type);
+            const stats = onImportSessions(parsed, type, { start: '2010-01-01', end: '2099-12-31', isFullSync: true });
             const typeLabel = type === 'online' ? 'Online' : 'Yüzyüze';
             if (stats.addedCount > 0 || stats.updatedCount > 0) {
               showToast(`${typeLabel} takvim (.ics) dosyası başarıyla içeri aktarıldı: ${stats.addedCount} yeni seans eklendi, ${stats.updatedCount} seans güncellendi.`, 'success');
@@ -432,7 +438,6 @@ export default function CalendarSyncGuide({
       const icsText = await response.text();
       const onlineDefaultPrice = settings.defaultOnlinePrice ?? defaultPrice;
       const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? defaultPrice;
-      const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
       const parsed = parseICS(
         icsText, 
         onlineDefaultPrice, 
@@ -443,7 +448,7 @@ export default function CalendarSyncGuide({
         settings.autoMarkShortEventsAsNonSession ?? true,
         settings.accountingStartDate,
         settings.closedMonths,
-        isInitialDone,
+        false,
         onlineDefaultPrice,
         faceToFaceDefaultPrice
       );
@@ -457,7 +462,7 @@ export default function CalendarSyncGuide({
             onlineCalendarWebcalUrl: onlineUrl.trim()
           });
         }
-        const stats = onImportSessions(parsed, 'online');
+        const stats = onImportSessions(parsed, 'online', { start: '2010-01-01', end: '2099-12-31', isFullSync: true });
         if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
           let msg = `Online Seanslar Takvimi eşitlendi: `;
           const parts = [];
@@ -498,7 +503,6 @@ export default function CalendarSyncGuide({
       const icsText = await response.text();
       const onlineDefaultPrice = settings.defaultOnlinePrice ?? defaultPrice;
       const faceToFaceDefaultPrice = settings.defaultFaceToFacePrice ?? defaultPrice;
-      const isInitialDone = Boolean(settings.hasCompletedInitialCalendarSync);
       const parsed = parseICS(
         icsText, 
         faceToFaceDefaultPrice, 
@@ -509,7 +513,7 @@ export default function CalendarSyncGuide({
         settings.autoMarkShortEventsAsNonSession ?? true,
         settings.accountingStartDate,
         settings.closedMonths,
-        isInitialDone,
+        false,
         onlineDefaultPrice,
         faceToFaceDefaultPrice
       );
@@ -523,7 +527,7 @@ export default function CalendarSyncGuide({
             faceToFaceCalendarWebcalUrl: faceToFaceUrl.trim()
           });
         }
-        const stats = onImportSessions(parsed, 'face-to-face');
+        const stats = onImportSessions(parsed, 'face-to-face', { start: '2010-01-01', end: '2099-12-31', isFullSync: true });
         if (stats.addedCount > 0 || stats.updatedCount > 0 || (stats.deletedCount || 0) > 0) {
           let msg = `Yüzyüze Seanslar Takvimi eşitlendi: `;
           const parts = [];
@@ -1104,10 +1108,40 @@ export default function CalendarSyncGuide({
             </div>
           </div>
 
-          <div className="flex justify-end pt-1">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+            {onForceFullCalendarSync && (
+              <div className="flex-1 bg-[#fdfbf7] border border-[#e5e1d8] rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-[#6b705c] flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-[#cb997e] shrink-0" />
+                    <span>Tüm Geçmişi & Kilitli Ayları Takvimden Tamamla</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Ajanda ekranında hız için <strong>Günlük görünümde o günün, Haftalık görünümde o haftanın, Aylık görünümde ise o ayın</strong> etkinlikleri sorgulanır. Geçmiş aylarda veya kilitlenen aylarda görünmeyen/eksik seans varsa, mevcut ödendi bilgilerinizi bozmadan tüm takvimi tarayarak eksikleri veritabanına tamamlar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isFullHistorySyncing}
+                  onClick={async () => {
+                    setIsFullHistorySyncing(true);
+                    try {
+                      await onForceFullCalendarSync();
+                    } finally {
+                      setIsFullHistorySyncing(false);
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-[#cb997e] hover:bg-[#b58369] disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFullHistorySyncing ? 'animate-spin' : ''}`} />
+                  {isFullHistorySyncing ? 'Tüm Takvim Taranıyor...' : 'Tüm Takvimi Baştan Eşitle'}
+                </button>
+              </div>
+            )}
+
             <button
               type="submit"
-              className="px-6 py-2 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-full transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-6 py-2.5 bg-[#6b705c] hover:bg-[#585c4c] text-white text-xs font-semibold rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 self-end sm:self-center"
             >
               Takvim Linklerini Kaydet
             </button>
