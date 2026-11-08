@@ -433,9 +433,10 @@ export function parseICS(
   // DATE WINDOW:
   // KURAL: Takvim eşitleme tamamını bir kere yaptıktan sonra,
   // muhasebe başlangıç tarihinden öncekini bir daha kontrol etmeyecek!
-  const windowStart = (isInitialCalendarSyncDone && effectiveAccountingStart)
-    ? effectiveAccountingStart
-    : '1970-01-01';
+  // Seanslar hiçbir koşulda 2025-01-01 öncesine çekilmez; böylece 1970'den gelen tekrarlayan etkinlikler belleği şişirmez.
+  const windowStart = effectiveAccountingStart
+    ? (effectiveAccountingStart > '2025-01-01' ? effectiveAccountingStart : '2025-01-01')
+    : '2025-01-01';
 
   const todayObj = new Date();
   const future365Days = new Date();

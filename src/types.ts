@@ -608,7 +608,9 @@ export function autoHealSmartClientPrices(
     if ((b.updatedAt || 0) !== (a.updatedAt || 0)) {
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     }
-    return (b.date || '').localeCompare(a.date || '');
+    const bDate = b.date || '';
+    const aDate = a.date || '';
+    return bDate > aDate ? 1 : (bDate < aDate ? -1 : 0);
   });
 
   sortedForPrices.forEach(s => {

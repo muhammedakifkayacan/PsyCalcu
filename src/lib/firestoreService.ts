@@ -35,7 +35,15 @@ interface UserData {
 
 export let isFirestoreQuotaExceeded = false;
 export const CLIENT_INSTANCE_ID = 'client_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
-export let lastLocalFirestoreWriteAt = 0;
+let lastLocalFirestoreWriteAt = 0;
+
+export function markLocalFirestoreWrite() {
+  lastLocalFirestoreWriteAt = Date.now();
+}
+
+export function isRecentLocalFirestoreWrite(windowMs = 15000): boolean {
+  return Date.now() - lastLocalFirestoreWriteAt < windowMs;
+}
 
 let cachedMemoryLedger: Record<string, AccountingLedgerEntry> | null = null;
 let lastSerializedLedgerStr = '';
@@ -643,9 +651,9 @@ export async function saveUserData(
     }
 
     try {
-      lastLocalFirestoreWriteAt = Date.now();
+      markLocalFirestoreWrite();
       await setDoc(docRef, payload, { merge: true });
-      lastLocalFirestoreWriteAt = Date.now();
+      markLocalFirestoreWrite();
     } catch (writeErr: any) {
       const msg = (writeErr?.message || String(writeErr)).toLowerCase();
       if (msg.includes('size') || msg.includes('1048576') || msg.includes('longer than') || writeErr?.code === 'invalid-argument') {

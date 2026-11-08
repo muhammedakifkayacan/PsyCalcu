@@ -81,7 +81,7 @@ import { isDateInClosedMonth, getUnclosedPastMonths, ClosedMonthRecord, formatMo
 import { formatLocalDate, getTodayLocalDate } from './utils/dateUtils';
 import { auth, onAuthStateChanged, db, getRedirectResult, signOut } from './lib/firebase';
 import type { User as FirebaseUser } from './lib/firebase';
-import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded, checkIsQuotaError, updateLocalAccountingLedger, applyAccountingLedgerToSessions, getStoredAccountingLedger, extractBaseCalendarUid, CLIENT_INSTANCE_ID, lastLocalFirestoreWriteAt } from './lib/firestoreService';
+import { fetchUserData, saveUserData, migrateLocalDataToFirestore, isFirestoreQuotaExceeded, checkIsQuotaError, updateLocalAccountingLedger, applyAccountingLedgerToSessions, getStoredAccountingLedger, extractBaseCalendarUid, CLIENT_INSTANCE_ID, isRecentLocalFirestoreWrite } from './lib/firestoreService';
 import { collection, onSnapshot, query, limit, orderBy, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { NotificationCenter } from './components/NotificationCenter';
 import { HeaderNavigation } from './components/HeaderNavigation';
@@ -197,6 +197,11 @@ const autoCorrectPastSessions = (
         return null;
       }
       return s;
+    }
+
+    // 0b. Prune obsolete recurring calendar events from before 2025 to prevent memory explosion
+    if (s.id && s.id.startsWith('ics_') && s.date && s.date < '2025-01-01') {
+      return null;
     }
 
     // LOCKED / CLOSED MONTH PROTECTION:
@@ -1630,6 +1635,8 @@ export default function App() {
     performSync();
   }, [user, registrationStatus]);
 
+  const isInitialSnapshotHandledRef = useRef(false);
+
   // Real-time live multi-device listener: instant updates when changes occur on another device
   useEffect(() => {
     if (!user || registrationStatus !== 'approved' || !isInitialSyncDone || isAuthSyncing || isQuotaExceeded) return;
@@ -1640,8 +1647,14 @@ export default function App() {
       if (
         docSnap.metadata.hasPendingWrites ||
         activeSavesCountRef.current > 0 ||
-        Date.now() - lastLocalFirestoreWriteAt < 8000
+        isRecentLocalFirestoreWrite(15000)
       ) {
+        return;
+      }
+
+      // Skip the very first snapshot on mount because performSync already fetched and reconciled the latest cloud state
+      if (!isInitialSnapshotHandledRef.current) {
+        isInitialSnapshotHandledRef.current = true;
         return;
       }
 
@@ -1989,23 +2002,9 @@ export default function App() {
   useEffect(() => {
     // Only run when auth check is complete, not loading, not actively syncing auth, 
     // AND the initial cloud database synchronization is fully finished!
+    // Handled smoothly by triggerAutoCalendarSync
     if (isInitialAuthCheckDone && !isAuthLoading && !isAuthSyncing && isInitialSyncDone) {
-      if (hasAutoSyncedRef.current) return;
-      const currentSettings = settingsRef.current;
-      if (!currentSettings.calendarSyncEnabled) return;
-      const hasUrls = Boolean(
-        currentSettings.onlineCalendarWebcalUrl ||
-        currentSettings.faceToFaceCalendarWebcalUrl ||
-        (currentSettings.ownerCalendars && currentSettings.ownerCalendars.length > 0)
-      );
-      if (!hasUrls) return;
       hasAutoSyncedRef.current = true;
-
-      // Run with a gentle delay so dashboard mounts smoothly first without blocking user interaction
-      const timer = setTimeout(() => {
-        handleManualCalendarSync(false);
-      }, 3000);
-      return () => clearTimeout(timer);
     }
   }, [isInitialAuthCheckDone, isAuthLoading, isAuthSyncing, isInitialSyncDone]);
 
@@ -2957,20 +2956,17 @@ export default function App() {
     // Total unpaid amount
     const totalUnpaidAmount = unpaidSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
     
-    // Group by client using equivalence rules (case-insensitive, suffixes like Wp/Google meet, accent tolerance)
-    const clientBuckets: { displayName: string; normName: string; sessions: Session[] }[] = [];
+    // Group by client using equivalence rules (case-insensitive, suffixes like Wp/Google meet, accent tolerance) with O(1) Map
+    const clientBucketsMap = new Map<string, { displayName: string; normName: string; sessions: Session[] }>();
     unpaidSessions.forEach(s => {
       const rawName = (s.clientName || '').trim();
       const normName = getNormalizedClientName(rawName) || rawName;
       const canonicalDisplay = getCanonicalClientDisplayName(rawName) || normName;
+      const key = toTurkishAscii(normName).toLowerCase().trim();
 
-      let existing = clientBuckets.find(b => 
-        areClientNamesEquivalent(b.displayName, rawName) ||
-        areClientNamesEquivalent(b.normName, normName)
-      );
-
+      const existing = clientBucketsMap.get(key);
       if (!existing) {
-        clientBuckets.push({
+        clientBucketsMap.set(key, {
           displayName: canonicalDisplay,
           normName,
           sessions: [s]
@@ -2985,13 +2981,14 @@ export default function App() {
         }
       }
     });
+    const clientBuckets = Array.from(clientBucketsMap.values());
     
     // Map to array of client debt info
     const clientsWithDebts = clientBuckets.map(({ displayName, sessions: clientSessions }) => {
       // Sort sessions by date and time (oldest first so they can pay oldest first)
       const sortedSessions = [...clientSessions].sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        return a.time.localeCompare(b.time);
+        if (a.date !== b.date) return a.date > b.date ? 1 : -1;
+        return (a.time || '') > (b.time || '') ? 1 : -1;
       });
       
       const totalAmount = sortedSessions.reduce((sum, s) => sum + getRemainingDebt(s), 0);
@@ -4127,9 +4124,9 @@ export default function App() {
       effectiveSessions.length > 0
     );
 
-    const cutOffDateStr = (isInitialCalendarSyncDone && effectiveAccountingStartDate)
-      ? effectiveAccountingStartDate
-      : '1970-01-01';
+    const cutOffDateStr = effectiveAccountingStartDate
+      ? (effectiveAccountingStartDate > '2025-01-01' ? effectiveAccountingStartDate : '2025-01-01')
+      : '2025-01-01';
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched
