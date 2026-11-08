@@ -44,23 +44,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Initialize Firestore with offline persistence enabled and specify the correct databaseId
+// Initialize Firestore without heavy IndexedDB multi-tab persistence to prevent iOS Safari/Chrome WebKit Jetsam OOM crashes
 let dbInstance;
 try {
   dbInstance = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
+    ignoreUndefinedProperties: true
   }, "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222");
 } catch (err) {
-  console.warn("Failed to initialize Firestore with persistent local cache, falling back to standard initialization:", err);
-  try {
-    dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true }, "ai-studio-psycalcu-c6b31660-ddde-4081-add9-6a1d609c8222");
-  } catch (err2) {
-    console.error("Failed to initialize Firestore, falling back to default database:", err2);
-    dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true });
-  }
+  console.error("Failed to initialize Firestore, falling back to default database:", err);
+  dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true });
 }
 export const db = dbInstance;
 

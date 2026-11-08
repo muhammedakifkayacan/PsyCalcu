@@ -441,29 +441,12 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
       const rawSessions = (data.sessions as Session[]) || [];
       const remoteLedger = (data.accountingLedger as Record<string, AccountingLedgerEntry>) || {};
 
-      // Also merge any IndexedDB stored accounting ledger and local sessions so offline/recent payments are never lost
+      // Merge IndexedDB accounting ledger (lightweight object) without loading duplicate multi-MB session arrays into memory
       let idbLedger: Record<string, AccountingLedgerEntry> = {};
-      let idbSessions: Session[] = [];
       try {
         const storedIdbLedger = await idbGet<Record<string, AccountingLedgerEntry>>(`psycalcu_accounting_ledger_${userId}`);
         if (storedIdbLedger && typeof storedIdbLedger === 'object') {
           idbLedger = storedIdbLedger;
-        }
-        const storedIdbSessions = await idbGet<Session[]>(`psycalcu_sessions_${userId}`);
-        if (Array.isArray(storedIdbSessions)) {
-          idbSessions = storedIdbSessions;
-        } else if (typeof storedIdbSessions === 'string') {
-          idbSessions = JSON.parse(storedIdbSessions) || [];
-        }
-      } catch (e) {}
-
-      let localCachedSessions: Session[] = [];
-      try {
-        if (typeof window !== 'undefined') {
-          const rawLocalStr = localStorage.getItem(`psycalcu_sessions_${userId}`) || localStorage.getItem('psycalcu_sessions');
-          if (rawLocalStr) {
-            localCachedSessions = JSON.parse(rawLocalStr) || [];
-          }
         }
       } catch (e) {}
 
@@ -480,7 +463,7 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
 
       const mergedLedger = updateLocalAccountingLedger(
         userId,
-        [...rawSessions, ...idbSessions, ...localCachedSessions],
+        rawSessions,
         combinedLedgerSource,
         false
       );
@@ -490,7 +473,6 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
         settings,
         sessions: healedSessions,
         expenses: (data.expenses as Expense[]) || [],
-        backupSnapshots: (data.backupSnapshots as DataBackupSnapshot[]) || [],
         accountingLedger: mergedLedger,
         calendarHistory: data.calendarHistory || [],
         calendarBackup: data.calendarBackup
@@ -507,7 +489,7 @@ export async function fetchUserData(userId: string): Promise<UserData | null> {
 }
 
 /**
- * Helper to build a clean snapshot object
+ * Helper to build a clean snapshot object without expensive JSON.parse(JSON.stringify) deep-cloning
  */
 export function createSnapshotObject(
   label: string,
@@ -532,9 +514,9 @@ export function createSnapshotObject(
     totalNetIncome: totalGross - totalExpenses,
     paidSessionsCount: paidSessions.length,
     unpaidSessionsCount: unpaidSessions.length,
-    sessions: JSON.parse(JSON.stringify(sessions)),
-    settings: JSON.parse(JSON.stringify(settings)),
-    expenses: JSON.parse(JSON.stringify(expenses))
+    sessions: [...sessions],
+    settings: { ...settings },
+    expenses: [...expenses]
   };
 }
 
@@ -563,7 +545,7 @@ export async function saveUserData(
     reopenedMonths: mergedMonthState.reopenedMonths
   };
 
-  // 1. Auto-prune soft-deleted sessions older than 30 days without expensive JSON.parse(JSON.stringify)
+  // 1. Auto-prune soft-deleted sessions older than 30 days
   const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
   const cleanedSessions = (sessions || []).filter(s => {
     if (!s) return false;
@@ -578,34 +560,27 @@ export async function saveUserData(
   // Update persistent accounting ledger (protects paid/manual status across calendar syncs and reloads)
   const accountingLedger = updateLocalAccountingLedger(userId, cleanedSessions, undefined, allowUnpaidOverwrite);
 
-  // Write to IndexedDB asynchronously without blocking main thread
-  try {
-    idbSet(`psycalcu_sessions_${userId}`, cleanedSessions).catch(() => {});
-    idbSet(`psycalcu_settings_${userId}`, cleanedSettings).catch(() => {});
-  } catch (e) {}
-
-  // Only create heavy full snapshots when explicitly requested or at most once every 3 minutes
+  // Only create snapshots when explicitly requested by user action (not during background syncs) and cap at 2 snapshots
   const now = Date.now();
-  const shouldCreateSnapshot = Boolean(snapshotReason) || (now - lastAutoSnapshotTime > 180000 && cleanedSessions.some(s => s.paymentStatus === 'paid'));
+  const isSyncSnapshot = snapshotReason && (snapshotReason.includes('Eşitleme') || snapshotReason.includes('Otomatik'));
+  const shouldCreateSnapshot = Boolean(snapshotReason && !isSyncSnapshot) || (now - lastAutoSnapshotTime > 600000 && cleanedSessions.some(s => s.paymentStatus === 'paid'));
   if (cleanedSessions.length > 0 && shouldCreateSnapshot) {
     lastAutoSnapshotTime = now;
-    const snapReason = snapshotReason || 'Otomatik Muhasebe Güvenlik Yedeği';
+    const snapReason = snapshotReason || 'Muhasebe Güvenlik Yedeği';
     setTimeout(() => {
       try {
         const currentSnap = createSnapshotObject(snapReason, cleanedSettings, cleanedSessions, cleanedExpenses);
-        const localKey = `psycalcu_snapshots_${userId}`;
-        idbGet<DataBackupSnapshot[]>(localKey)
+        idbGet<DataBackupSnapshot[]>('psycalcu_snapshots_active')
           .then(idbExisting => {
             let localSnaps: DataBackupSnapshot[] = Array.isArray(idbExisting) ? idbExisting : [];
             localSnaps = localSnaps.filter(s => s && (Date.now() - new Date(s.timestamp).getTime() > 60000 || s.label !== currentSnap.label));
             localSnaps.unshift(currentSnap);
-            if (localSnaps.length > 5) localSnaps = localSnaps.slice(0, 5);
-            idbSet(localKey, localSnaps).catch(() => {});
+            if (localSnaps.length > 2) localSnaps = localSnaps.slice(0, 2);
             idbSet('psycalcu_snapshots_active', localSnaps).catch(() => {});
           })
           .catch(() => {});
       } catch (e) {}
-    }, 50);
+    }, 200);
   }
 
   if (isFirestoreQuotaExceeded) {

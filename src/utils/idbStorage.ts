@@ -7,9 +7,13 @@ const DB_NAME = 'psycalcu_offline_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'keyval_store';
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
+      dbPromise = null;
       reject(new Error('IndexedDB not supported'));
       return;
     }
@@ -24,13 +28,23 @@ function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-      resolve(request.result);
+      const db = request.result;
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
     };
 
     request.onerror = () => {
+      dbPromise = null;
       reject(request.error || new Error('Failed to open IndexedDB'));
     };
   });
+  return dbPromise;
 }
 
 export async function idbSet<T = any>(key: string, value: T): Promise<boolean> {
@@ -43,9 +57,9 @@ export async function idbSet<T = any>(key: string, value: T): Promise<boolean> {
 
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
-      tx.oncomplete = () => db.close();
     });
   } catch (err) {
+    dbPromise = null;
     console.warn('[idbStorage] idbSet error:', err);
     return false;
   }
@@ -63,9 +77,9 @@ export async function idbGet<T = any>(key: string): Promise<T | null> {
         resolve(req.result ?? null);
       };
       req.onerror = () => resolve(null);
-      tx.oncomplete = () => db.close();
     });
   } catch (err) {
+    dbPromise = null;
     console.warn('[idbStorage] idbGet error:', err);
     return null;
   }
@@ -81,9 +95,9 @@ export async function idbDelete(key: string): Promise<boolean> {
 
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
-      tx.oncomplete = () => db.close();
     });
   } catch (err) {
+    dbPromise = null;
     console.warn('[idbStorage] idbDelete error:', err);
     return false;
   }

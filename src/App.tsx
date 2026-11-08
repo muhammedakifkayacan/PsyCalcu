@@ -1283,17 +1283,7 @@ export default function App() {
           }
 
           // EXISTING USER WHO ALREADY HAS CLOUD DATA
-          const cloudSessions = autoCorrectPastSessions(
-            cloudData.sessions || [],
-            cloudData.settings?.defaultSessionPrice ?? settings.defaultSessionPrice,
-            cloudData.settings?.defaultBabysitterFee ?? settings.defaultBabysitterFee,
-            cloudData.settings?.defaultOfficeRentFee ?? settings.defaultOfficeRentFee,
-            effectiveCutoff,
-            cloudData.settings?.defaultOnlinePrice ?? settings.defaultOnlinePrice,
-            cloudData.settings?.defaultFaceToFacePrice ?? settings.defaultFaceToFacePrice,
-            cloudData.settings?.clientCustomPrices ?? settings.clientCustomPrices,
-            reconciledMonthState.closedMonths
-          );
+          const cloudSessions = cloudData.sessions || [];
           
           if (shouldMigrate) {
             // User explicitly requested to migrate anonymous data into their existing cloud account
@@ -1356,43 +1346,43 @@ export default function App() {
             // SAFE BIDIRECTIONAL RECONCILIATION:
             // Never blindly wipe out local edits if local has newer updates or user-recorded payments!
             const userSessionsKey = `psycalcu_sessions_${user.uid}`;
-            let localSessions: Session[] = [];
-            const savedSessionsStr = safeStorage.getItem(userSessionsKey) || safeStorage.getItem('psycalcu_sessions');
-            if (savedSessionsStr) {
-              try { localSessions = JSON.parse(savedSessionsStr); } catch (e) {}
-            }
-            if (localSessions.length === 0) {
-              try {
-                const idbUserSessions = await idbGet<Session[] | string>(userSessionsKey);
-                if (Array.isArray(idbUserSessions)) {
-                  localSessions = idbUserSessions;
-                } else if (typeof idbUserSessions === 'string') {
-                  const parsedIdb = JSON.parse(idbUserSessions);
-                  if (Array.isArray(parsedIdb)) localSessions = parsedIdb;
-                }
-              } catch (e) {}
-            }
+            const localSessions: Session[] = (sessionsRef.current && sessionsRef.current.length > 0)
+              ? sessionsRef.current
+              : (() => {
+                  const savedSessionsStr = safeStorage.getItem(userSessionsKey) || safeStorage.getItem('psycalcu_sessions');
+                  if (savedSessionsStr) {
+                    try { return JSON.parse(savedSessionsStr) || []; } catch (e) {}
+                  }
+                  return [];
+                })();
 
             const localMap = new Map<string, Session>();
             const localByUidDate = new Map<string, Session>();
             const localBySlot = new Map<string, Session>();
+            const cutoffDateOnly = effectiveCutoff ? effectiveCutoff.split('T')[0] : '';
 
             const isPaidActiveSession = (s: Session | null | undefined): boolean => {
               if (!s || s.isDeleted) return false;
               if (s.type === 'cancelled' || s.type === 'non-session') return false;
-              if (effectiveCutoff && s.date && s.date < effectiveCutoff) return false;
+              if (cutoffDateOnly && s.date && s.date < cutoffDateOnly) return false;
               const price = Number(s.price) || 0;
               const paidAmt = Number(s.paidAmount) || 0;
               if (price <= 0 && paidAmt <= 0) return false;
               return s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || paidAmt > 0;
             };
 
-            const registerLocalCandidate = (s: Session) => {
-              if (!s || !s.id) return;
+            for (let i = 0; i < localSessions.length; i++) {
+              const s = localSessions[i];
+              if (!s || !s.id) continue;
+              // Skip historical pre-cutoff sessions from expensive UID/slot indexing since they are never overridden
+              if (cutoffDateOnly && s.date && s.date < cutoffDateOnly) {
+                if (!localMap.has(s.id)) localMap.set(s.id, s);
+                continue;
+              }
               const existing = localMap.get(s.id);
               const sPaid = isPaidActiveSession(s);
               const exPaid = isPaidActiveSession(existing);
-              if (!existing || (sPaid && !exPaid) || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited && (!effectiveCutoff || s.date >= effectiveCutoff))) {
+              if (!existing || (sPaid && !exPaid) || ((s.updatedAt || 0) > (existing.updatedAt || 0)) || (!existing.isManuallyEdited && s.isManuallyEdited)) {
                 localMap.set(s.id, s);
               }
               if (!s.isDeleted && s.id.startsWith('ics_') && s.date) {
@@ -1414,13 +1404,16 @@ export default function App() {
                   }
                 }
               }
-            };
-
-            localSessions.forEach(registerLocalCandidate);
+            }
 
             let hasNewerLocalEdits = false;
             const matchedLocalIds = new Set<string>();
             const mergedSessions = cloudSessions.map(cs => {
+              // Fast-path: never override historical pre-cutoff sessions with local edits
+              if (cutoffDateOnly && cs.date && cs.date < cutoffDateOnly) {
+                matchedLocalIds.add(cs.id);
+                return cs;
+              }
               let ls = localMap.get(cs.id);
               if (!ls && cs.id && cs.id.startsWith('ics_') && cs.date) {
                 ls = localByUidDate.get(`${extractBaseCalendarUid(cs.id)}_${cs.date}`);
@@ -1431,11 +1424,6 @@ export default function App() {
               }
               if (!ls) return cs;
               matchedLocalIds.add(ls.id);
-
-              // Never override historical pre-cutoff sessions with local edits
-              if (effectiveCutoff && cs.date && cs.date < effectiveCutoff) {
-                return cs;
-              }
 
               const localTime = ls.updatedAt || 0;
               const cloudTime = cs.updatedAt || 0;
@@ -1499,52 +1487,21 @@ export default function App() {
               setExpenses(cloudData.expenses);
             }
 
-            // Combine snapshots from cloud and localStorage
-            const combinedSnapshots: DataBackupSnapshot[] = [];
-            if (cloudData.backupSnapshots && Array.isArray(cloudData.backupSnapshots)) {
-              combinedSnapshots.push(...cloudData.backupSnapshots);
-            }
-            try {
-              const activeSnapStr = localStorage.getItem('psycalcu_snapshots_active');
-              if (activeSnapStr) {
-                const parsed = JSON.parse(activeSnapStr);
-                if (Array.isArray(parsed)) combinedSnapshots.push(...parsed);
-              }
-              const userSnapStr = localStorage.getItem(`psycalcu_snapshots_${user.uid}`);
-              if (userSnapStr) {
-                const parsed = JSON.parse(userSnapStr);
-                if (Array.isArray(parsed)) combinedSnapshots.push(...parsed);
-              }
-            } catch (e) {}
-
-            const snapMap = new Map<string, DataBackupSnapshot>();
-            combinedSnapshots.forEach(snap => {
-              if (snap && snap.id && !snapMap.has(snap.id)) {
-                snapMap.set(snap.id, snap);
-              }
-            });
-            const sortedSnaps = Array.from(snapMap.values())
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              .slice(0, 3);
-            try {
-              idbSet('psycalcu_snapshots_active', sortedSnaps).catch(() => {});
-              localStorage.removeItem('psycalcu_snapshots_active');
-              if (user?.uid) {
-                localStorage.removeItem(`psycalcu_snapshots_${user.uid}`);
-              }
-            } catch (e) {}
-            
-            // Update the user-specific localStorage cache immediately
+            // Update the user-specific localStorage cache immediately with a single serialization
             const userSettingsKey = `psycalcu_settings_${user.uid}`;
             const userExpensesKey = `psycalcu_expenses_${user.uid}`;
-            safeStorage.setItem(userSessionsKey, JSON.stringify(finalSessions), user.uid);
-            safeStorage.setItem(userSettingsKey, JSON.stringify(cloudData.settings), user.uid);
-            safeStorage.setItem(userExpensesKey, JSON.stringify(cloudData.expenses || []), user.uid);
+            const serializedSettings = JSON.stringify(cloudData.settings);
+            const serializedSessions = JSON.stringify(finalSessions);
+            const serializedExpenses = JSON.stringify(cloudData.expenses || []);
+
+            safeStorage.setItem(userSessionsKey, serializedSessions, user.uid);
+            safeStorage.setItem(userSettingsKey, serializedSettings, user.uid);
+            safeStorage.setItem(userExpensesKey, serializedExpenses, user.uid);
 
             lastSavedRef.current = {
-              settings: JSON.stringify(cloudData.settings),
-              sessions: JSON.stringify(finalSessions),
-              expenses: JSON.stringify(cloudData.expenses || [])
+              settings: serializedSettings,
+              sessions: serializedSessions,
+              expenses: serializedExpenses
             };
 
             // If local had newer changes or closed months not yet in cloud, save to cloud now
