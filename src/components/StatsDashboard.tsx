@@ -14,6 +14,7 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
+  RefreshCw,
   List,
   Users,
   User,
@@ -70,6 +71,7 @@ export interface StatsDashboardProps {
   onTogglePayment?: (sessionId: string) => void;
   onEditSession?: (session: Session) => void;
   onOpenClientHistory?: (clientName: string) => void;
+  isSyncing?: boolean;
 }
 
 export default function StatsDashboard({
@@ -83,7 +85,8 @@ export default function StatsDashboard({
   onOpenMonthClosingModal,
   onTogglePayment,
   onEditSession,
-  onOpenClientHistory
+  onOpenClientHistory,
+  isSyncing = false
 }: StatsDashboardProps) {
   const { formatMoney, formatClientName } = usePrivacy();
 
@@ -756,16 +759,23 @@ export default function StatsDashboard({
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer select-none shadow-3xs ${
                             isPaid
                               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : isSyncing
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                               : isPartial
                               ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                               : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                           }`}
-                          title="Ödeme durumunu değiştirmek için tıklayın"
+                          title={isSyncing && !isPaid ? 'Bulut verileri eşitleniyor...' : 'Ödeme durumunu değiştirmek için tıklayın'}
                         >
                           {isPaid ? (
                             <>
                               <CheckCircle className="w-3.5 h-3.5 text-white" />
                               <span>ÖDENDİ</span>
+                            </>
+                          ) : isSyncing ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 text-amber-700 animate-spin" />
+                              <span>EŞİTLENİYOR...</span>
                             </>
                           ) : isPartial ? (
                             <>
@@ -831,16 +841,23 @@ export default function StatsDashboard({
                       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer select-none shadow-3xs ${
                         isPaid
                           ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                          : isSyncing
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                           : isPartial
                           ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                           : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                       }`}
-                      title="Ödeme durumunu değiştirmek için tıklayın"
+                      title={isSyncing && !isPaid ? 'Bulut verileri eşitleniyor...' : 'Ödeme durumunu değiştirmek için tıklayın'}
                     >
                       {isPaid ? (
                         <>
                           <CheckCircle className="w-3.5 h-3.5 text-white" />
                           <span>ÖDENDİ</span>
+                        </>
+                      ) : isSyncing ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 text-amber-700 animate-spin" />
+                          <span>EŞİTLENİYOR...</span>
                         </>
                       ) : isPartial ? (
                         <>
@@ -1048,16 +1065,23 @@ export default function StatsDashboard({
                                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer select-none shadow-3xs ${
                                       isPaid
                                         ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                        : isSyncing
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                                         : isPartial
                                         ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
                                         : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                                     }`}
-                                    title="Ödeme durumunu değiştirmek için tıklayın"
+                                    title={isSyncing && !isPaid ? 'Bulut verileri eşitleniyor...' : 'Ödeme durumunu değiştirmek için tıklayın'}
                                   >
                                     {isPaid ? (
                                       <>
                                         <CheckCircle className="w-3 h-3 text-white" />
                                         <span>ÖDENDİ</span>
+                                      </>
+                                    ) : isSyncing ? (
+                                      <>
+                                        <RefreshCw className="w-3 h-3 text-amber-700 animate-spin" />
+                                        <span>EŞİTLENİYOR...</span>
                                       </>
                                     ) : isPartial ? (
                                       <>
@@ -1131,12 +1155,14 @@ export default function StatsDashboard({
                                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer shadow-3xs ${
                                   isPaid
                                     ? 'bg-emerald-600 text-white'
+                                    : isSyncing
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
                                     : isPartial
                                     ? 'bg-amber-100 text-amber-800 border border-amber-300'
                                     : 'bg-rose-50 text-rose-700 border border-rose-200'
                                 }`}
                               >
-                                {isPaid ? '✓ ÖDENDİ' : isPartial ? '◐ KISMİ' : '○ BEKLİYOR'}
+                                {isPaid ? '✓ ÖDENDİ' : isSyncing ? '🔄 EŞİTLENİYOR...' : isPartial ? '◐ KISMİ' : '○ BEKLİYOR'}
                               </button>
                             </div>
                           </div>

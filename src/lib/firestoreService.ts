@@ -86,14 +86,18 @@ export function isMeaningfulLedgerEntry(entry?: Partial<AccountingLedgerEntry> |
   if (!entry) return false;
   if ((entry as Session).type === 'cancelled' || (entry as Session).type === 'non-session') return false;
   const price = Number(entry.price) || 0;
-  if (price <= 0) return false;
-  const minCutoff = cutoffDate || '2026-07-01';
-  if (entry.date && entry.date < minCutoff) return false;
   const hasRealPayment =
     entry.paymentStatus === 'paid' ||
     entry.paymentStatus === 'partial' ||
     (Number(entry.paidAmount) || 0) > 0;
-  return Boolean(hasRealPayment || entry.isManuallyEdited);
+  // If user paid or manually edited, it is ALWAYS meaningful and must NEVER be discarded
+  if (hasRealPayment || entry.isManuallyEdited) return true;
+  if (price <= 0) return false;
+  // Only apply cutoff if an explicit date is provided; never default to an arbitrary cutoff date
+  if (cutoffDate && cutoffDate.trim() && entry.date && entry.date < cutoffDate.trim()) {
+    return false;
+  }
+  return false;
 }
 
 export function updateLocalAccountingLedger(
@@ -308,7 +312,7 @@ export function applyAccountingLedgerToSessions(
   if (!Array.isArray(sessions) || !ledger || Object.keys(ledger).length === 0) return sessions;
   const cutoff = (accountingStartDate && accountingStartDate.trim())
     ? accountingStartDate.split('T')[0]
-    : '2026-07-01';
+    : null;
 
   // Count sessions per client+day to avoid ambiguous `day:` matches when a client has 2 sessions on the same day
   const clientDateCounts = new Map<string, number>();
@@ -323,7 +327,6 @@ export function applyAccountingLedgerToSessions(
 
   return sessions.map(s => {
     if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return s;
-    if (cutoff && s.date && s.date < cutoff) return s;
 
     const keys = getLedgerKeysForSession(s);
     let matchedEntry: AccountingLedgerEntry | undefined = undefined;
@@ -610,7 +613,9 @@ export async function saveUserData(
   }
   try {
     const docRef = doc(db, 'users', userId);
-    const cutoffDate = (cleanedSettings.accountingStartDate || '2026-07-01').split('T')[0];
+    const cutoffDate = (cleanedSettings.accountingStartDate && cleanedSettings.accountingStartDate.trim())
+      ? cleanedSettings.accountingStartDate.split('T')[0]
+      : '2010-01-01';
 
     // Strip bulky calendar descriptions from cloud-stored sessions (calendar notes are stored locally in IndexedDB)
     let cloudSessions = cleanedSessions.map(s => {

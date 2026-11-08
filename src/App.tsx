@@ -95,6 +95,25 @@ import { VoiceChatAssistant } from './components/VoiceChatAssistant';
 import { mutationQueue } from './utils/mutationQueue';
 import { idbGet, idbSet } from './utils/idbStorage';
 
+// Synchronously retrieve the active user ID from local auth storage at frame 0 before onAuthStateChanged fires
+export function getActiveLocalUserId(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('firebase:authUser:')) {
+        const val = localStorage.getItem(key);
+        if (val) {
+          const parsed = JSON.parse(val);
+          if (parsed && parsed.uid) return String(parsed.uid);
+        }
+      }
+    }
+    const fallback = localStorage.getItem('psycalcu_last_active_uid');
+    if (fallback) return fallback;
+  } catch (e) {}
+  return null;
+}
+
 // Reusable custom view for locked features controlled by the Admin
 const FeatureLockedView = ({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) => (
   <div className="bg-white rounded-[2.5rem] border border-[#e5e1d8] p-8 md:p-12 text-center max-w-xl mx-auto shadow-xs my-12 animate-fade-in flex flex-col items-center justify-center space-y-5">
@@ -118,8 +137,7 @@ const FeatureLockedView = ({ title, icon, description }: { title: string; icon: 
   </div>
 );
 
-// Auto-correct any session before 2026-07-01 to be 0 TL,
-// AND automatically repair/heal any active sessions (from 2026-07-01 onwards) whose price or fees were accidentally zeroed out.
+// Auto-correct past sessions and heal prices/payment locks
 const autoCorrectPastSessions = (
   sessionList: Session[],
   defaultPrice = 1200,
@@ -136,7 +154,8 @@ const autoCorrectPastSessions = (
   let effectiveStartDate = accountingStartDate;
   if (!effectiveStartDate) {
     try {
-      const storedSettings = safeStorage.getItem('psycalcu_settings');
+      const activeUid = getActiveLocalUserId();
+      const storedSettings = (activeUid ? safeStorage.getItem(`psycalcu_settings_${activeUid}`) : null) || safeStorage.getItem('psycalcu_settings');
       if (storedSettings) {
         const parsed = JSON.parse(storedSettings);
         if (parsed?.accountingStartDate) {
@@ -146,11 +165,10 @@ const autoCorrectPastSessions = (
     } catch (e) {}
   }
 
-  const isRealPaidSession = (s: Session | null | undefined, cutoffStr?: string): boolean => {
+  const isRealPaidSession = (s: Session | null | undefined, cutoffStr?: string | null): boolean => {
     if (!s || s.isDeleted) return false;
     if (s.type === 'cancelled' || s.type === 'non-session') return false;
-    const effectiveCutoff = (cutoffStr && cutoffStr.trim()) ? cutoffStr.split('T')[0] : '2026-07-01';
-    if (s.date && s.date < effectiveCutoff) return false;
+    if (cutoffStr && cutoffStr.trim() && s.date && s.date < cutoffStr.trim()) return false;
     const price = Number(s.price) || 0;
     const paidAmt = Number(s.paidAmount) || 0;
     if (price <= 0 && paidAmt <= 0) return false;
@@ -162,12 +180,12 @@ const autoCorrectPastSessions = (
     );
   };
 
-  // Cutoff date is the user's accounting & debt tracking start date (defaults to 2026-07-01 if not configured)
+  // Cutoff date is the user's accounting & debt tracking start date (only enforced if explicitly configured)
   const cutoffDate = (effectiveStartDate && effectiveStartDate.trim()) 
     ? effectiveStartDate.split('T')[0] 
-    : '2026-07-01';
+    : null;
 
-  const effectiveClosedMonths = getEffectiveClosedMonths(closedMonths, auth.currentUser?.uid);
+  const effectiveClosedMonths = getEffectiveClosedMonths(closedMonths, auth.currentUser?.uid || getActiveLocalUserId() || undefined);
 
   // Deduplicate incoming sessions by id and heal any calendar session that had isSyncedFromCalendar accidentally cleared
   const dedupedById = new Map<string, Session>();
@@ -184,8 +202,9 @@ const autoCorrectPastSessions = (
   }
   const uniqueSessionList = Array.from(dedupedById.values());
 
-  // Apply stored accounting ledger FIRST so any real paid/locked session (>= cutoffDate, price > 0) is restored
-  const initialLedger = getStoredAccountingLedger(auth.currentUser?.uid);
+  // Apply stored accounting ledger FIRST so any real paid/locked session is restored
+  const effectiveUid = auth.currentUser?.uid || getActiveLocalUserId() || undefined;
+  const initialLedger = getStoredAccountingLedger(effectiveUid);
   const preRestoredList = applyAccountingLedgerToSessions(uniqueSessionList, initialLedger, cutoffDate);
 
   const healedAndRestored = preRestoredList.map(s => {
@@ -210,10 +229,9 @@ const autoCorrectPastSessions = (
       return s;
     }
 
-    // 1. Sessions strictly before accounting start cutoff date:
+    // 1. Sessions strictly before accounting start cutoff date (only if cutoffDate is explicitly set):
     // Any session before cutoffDate must ALWAYS be 0 TL, paymentStatus: 'paid', paidAmount: 0, no expenses, and unlocked!
-    // This heals any historical sessions that were mistakenly stamped with price/lock during previous syncs.
-    if (s.date && s.date < cutoffDate) {
+    if (cutoffDate && s.date && s.date < cutoffDate) {
       if (
         s.price !== 0 ||
         s.paymentStatus !== 'paid' ||
@@ -370,7 +388,14 @@ export default function App() {
   const { formatMoney, formatClientName, isPrivacyMode, isHideClientNames } = usePrivacy();
   // Load settings from safeStorage or set defaults
   const [settings, setSettings] = useState<AppSettings>(() => {
-    let savedSettings = safeStorage.getItem('psycalcu_settings');
+    const activeUid = getActiveLocalUserId();
+    let savedSettings: string | null = null;
+    if (activeUid) {
+      savedSettings = safeStorage.getItem(`psycalcu_settings_${activeUid}`);
+    }
+    if (!savedSettings) {
+      savedSettings = safeStorage.getItem('psycalcu_settings');
+    }
     if (!savedSettings) {
       try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -442,32 +467,45 @@ export default function App() {
     };
   }, []);
   const [sessions, setSessions] = useState<Session[]>(() => {
+    const activeUid = getActiveLocalUserId();
     let saved: string | null = null;
-    try {
-      // Prefer user-scoped sessions key first so we always read the most recent authenticated session list
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('psycalcu_sessions_')) {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                saved = raw;
-                break;
-              }
-            } catch (e) {}
+    if (activeUid) {
+      saved = safeStorage.getItem(`psycalcu_sessions_${activeUid}`);
+    }
+    if (!saved) {
+      try {
+        // Prefer user-scoped sessions key first so we always read the most recent authenticated session list
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('psycalcu_sessions_')) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  saved = raw;
+                  break;
+                }
+              } catch (e) {}
+            }
           }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
     if (!saved) {
       saved = safeStorage.getItem('psycalcu_sessions');
     }
     if (saved) {
       try {
+        const rawSessions = JSON.parse(saved);
+        const localLedger = getStoredAccountingLedger(activeUid || undefined);
+        const sessionsWithLedger = applyAccountingLedgerToSessions(
+          rawSessions,
+          localLedger,
+          settings.accountingStartDate
+        );
         return autoCorrectPastSessions(
-          JSON.parse(saved),
+          sessionsWithLedger,
           settings.defaultSessionPrice,
           settings.defaultBabysitterFee,
           settings.defaultOfficeRentFee,
@@ -927,6 +965,11 @@ export default function App() {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
         }
       } else {
+        // Record active user ID for synchronous recovery at frame 0 on reloads
+        try {
+          localStorage.setItem('psycalcu_last_active_uid', currentUser.uid);
+        } catch (e) {}
+
         // Immediately load user-specific cached data for a seamless instant UI transition on different devices
         const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
         const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
@@ -943,8 +986,14 @@ export default function App() {
         if (savedSessions) {
           try { 
             const parsed = JSON.parse(savedSessions);
-            correctedInitialSessions = autoCorrectPastSessions(
+            const userLedger = getStoredAccountingLedger(currentUser.uid);
+            const sessionsWithLedger = applyAccountingLedgerToSessions(
               parsed,
+              userLedger,
+              parsedSettingsForInit.accountingStartDate || registrationCreatedAt
+            );
+            correctedInitialSessions = autoCorrectPastSessions(
+              sessionsWithLedger,
               parsedSettingsForInit.defaultSessionPrice,
               parsedSettingsForInit.defaultBabysitterFee,
               parsedSettingsForInit.defaultOfficeRentFee,
@@ -3117,11 +3166,19 @@ export default function App() {
     setSessions(nextSessions);
 
     try {
-      const effectiveUid = user?.uid || auth.currentUser?.uid;
+      const effectiveUid = user?.uid || auth.currentUser?.uid || getActiveLocalUserId();
       // 1. Update local accounting ledger FIRST (~5KB) so payment lock is 100% persisted synchronously in <1ms
       updateLocalAccountingLedger(effectiveUid, nextSessions, undefined, allowUnpaidOverwrite);
 
-      // 2. Defer heavy JSON.stringify + Firestore write off the synchronous click frame so UI responds instantaneously
+      // 2. CRITICAL: Synchronously write updated sessions to local safeStorage right now!
+      // This guarantees that if the user refreshes or closes the page instantly, frame 0 already has the 'paid' state!
+      const sessionsStr = JSON.stringify(nextSessions);
+      if (effectiveUid) {
+        safeStorage.setItem(`psycalcu_sessions_${effectiveUid}`, sessionsStr, effectiveUid);
+      }
+      safeStorage.setItem('psycalcu_sessions', sessionsStr);
+
+      // 3. Defer only the Firestore cloud network write off the synchronous click frame so UI responds instantaneously
       if (immediateSaveTimerRef.current) {
         clearTimeout(immediateSaveTimerRef.current);
       }
@@ -3130,18 +3187,12 @@ export default function App() {
           const latestSessions = sessionsRef.current || nextSessions;
           const curSettings = settingsRef.current || settings;
           const curExpenses = expensesRef.current || expenses;
-          const sessionsStr = JSON.stringify(latestSessions);
-
-          if (effectiveUid) {
-            safeStorage.setItem(`psycalcu_sessions_${effectiveUid}`, sessionsStr, effectiveUid);
-          } else {
-            safeStorage.setItem('psycalcu_sessions', sessionsStr);
-          }
+          const str = JSON.stringify(latestSessions);
 
           if (effectiveUid && registrationStatus === 'approved') {
             lastSavedRef.current = {
               settings: JSON.stringify(curSettings),
-              sessions: sessionsStr,
+              sessions: str,
               expenses: JSON.stringify(curExpenses)
             };
             activeSavesCountRef.current += 1;
@@ -3158,7 +3209,7 @@ export default function App() {
         } catch (err) {
           console.warn("Deferred session save error:", err);
         }
-      }, 80);
+      }, 100);
     } catch (e) {
       console.warn("Error in commitSessionsImmediately:", e);
     }
@@ -7103,23 +7154,39 @@ export default function App() {
                                       className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all border shrink-0 text-center cursor-pointer ${
                                         session.paymentStatus === 'paid'
                                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                          : session.paymentStatus === 'partial'
+                                          : (!isInitialSyncDone || isAuthSyncing)
                                             ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                                            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                            : session.paymentStatus === 'partial'
+                                              ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                              : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                                       }`}
                                       title={
                                         session.paymentStatus === 'paid'
                                           ? 'Ödenmedi olarak işaretle'
-                                          : session.paymentStatus === 'partial'
-                                            ? 'Tamamı Ödendi olarak işaretle'
-                                            : 'Ödendi olarak işaretle'
+                                          : (!isInitialSyncDone || isAuthSyncing)
+                                            ? 'Bulut verileri eşitleniyor...'
+                                            : session.paymentStatus === 'partial'
+                                              ? 'Tamamı Ödendi olarak işaretle'
+                                              : 'Ödendi olarak işaretle'
                                       }
                                     >
-                                      {session.paymentStatus === 'paid'
-                                        ? '● ÖDENDİ'
-                                        : session.paymentStatus === 'partial'
-                                          ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
-                                          : '○ ÖDENMEDİ'}
+                                      {session.paymentStatus === 'paid' ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <span>● ÖDENDİ</span>
+                                          {(!isInitialSyncDone || isAuthSyncing || isCloudSaving) && (
+                                            <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-600 ml-0.5" />
+                                          )}
+                                        </span>
+                                      ) : (!isInitialSyncDone || isAuthSyncing) ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
+                                          <span>EŞİTLENİYOR...</span>
+                                        </span>
+                                      ) : session.paymentStatus === 'partial' ? (
+                                        `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')})`
+                                      ) : (
+                                        '○ ÖDENMEDİ'
+                                      )}
                                     </button>
 
                                     {(session.paymentStatus === 'paid' || session.paymentStatus === 'partial') && session.paymentMethod && (
@@ -7818,6 +7885,7 @@ export default function App() {
                     setIsSessionModalOpen(true);
                   }}
                   onOpenClientHistory={handleOpenClientPage}
+                  isSyncing={!isInitialSyncDone || isAuthSyncing}
                 />
               )}
             </motion.div>
@@ -7991,7 +8059,14 @@ export default function App() {
                             </div>
                             <div className="text-right">
                               <span className="text-lg font-bold text-red-600 block">{formatMoney(debtor.totalAmount)}</span>
-                              <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full tracking-wider">ÖDENMEDİ</span>
+                              {(!isInitialSyncDone || isAuthSyncing) ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full tracking-wider border border-amber-200">
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
+                                  EŞİTLENİYOR...
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full tracking-wider">ÖDENMEDİ</span>
+                              )}
                             </div>
                           </div>
 
@@ -8718,15 +8793,29 @@ export default function App() {
                                   <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
                                     isPaid 
                                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                                      : session.paymentStatus === 'partial'
-                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                        : 'bg-red-50 text-red-700 border border-red-100'
+                                      : (!isInitialSyncDone || isAuthSyncing)
+                                        ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                                        : session.paymentStatus === 'partial'
+                                          ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                          : 'bg-red-50 text-red-700 border border-red-100'
                                   }`}>
-                                    {isPaid 
-                                      ? 'ÖDENDİ' 
-                                      : session.paymentStatus === 'partial'
-                                        ? `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
-                                        : 'ÖDENMEDİ'}
+                                    {isPaid ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <span>ÖDENDİ</span>
+                                        {(!isInitialSyncDone || isAuthSyncing || isCloudSaving) && (
+                                          <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-600 ml-0.5" />
+                                        )}
+                                      </span>
+                                    ) : (!isInitialSyncDone || isAuthSyncing) ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
+                                        <span>EŞİTLENİYOR...</span>
+                                      </span>
+                                    ) : session.paymentStatus === 'partial' ? (
+                                      `◐ KISMİ (₺${(session.paidAmount || 0).toLocaleString('tr-TR')} ALINDI)`
+                                    ) : (
+                                      'ÖDENMEDİ'
+                                    )}
                                   </span>
                                   {(isPaid || session.paymentStatus === 'partial' || session.isPaymentLocked) && session.paymentStatus !== 'unpaid' && (session.isSyncedFromCalendar || session.isPaymentLocked) && (
                                     <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Ödeme durumu ve fiyat takvim senkronizasyonuna karşı kilitlendi">
