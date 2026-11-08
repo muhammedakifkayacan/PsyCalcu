@@ -448,11 +448,11 @@ export function parseICS(
 ): Session[] {
   const sessions: Session[] = [];
 
-  // Remove Byte Order Mark (BOM)
-  const cleanText = icsText.replace(/^\uFEFF/, '').replace(/^\uFFFE/, '');
-  const normalizedText = cleanText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const unfoldedText = normalizedText.replace(/\n[ \t]/g, '');
-  const lines = unfoldedText.split('\n');
+  // Single-pass unfold and split to minimize peak memory on iOS WebKit
+  const lines = icsText
+    .replace(/^\uFEFF|\uFFFE/g, '')
+    .replace(/\r?\n[ \t]/g, '')
+    .split(/\r?\n/);
 
   // Detect calendar-wide timezone if available
   let calTimezone = 'Europe/Istanbul';
@@ -686,19 +686,23 @@ export function parseICS(
 
     // Check if RRULE exists
     let occurrences: { dateStr: string; timeStr: string }[] = [];
+    let hadValidRrule = false;
     if (raw.rruleRaw) {
       const rruleParsed = parseRruleString(raw.rruleRaw, calTimezone);
       if (rruleParsed) {
+        hadValidRrule = true;
         occurrences = generateOccurrences(startParsed, rruleParsed, raw.exdates, windowStart, windowEnd);
       }
     }
 
-    // If no RRULE or RRULE generated 0 occurrences, fallback to single event occurrence
-    if (occurrences.length === 0) {
-      if (startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
+    // If no valid RRULE, treat as single event occurrence within [windowStart, windowEnd]
+    if (!hadValidRrule) {
+      if (startParsed.dateStr >= windowStart && startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
         occurrences.push({ dateStr: startParsed.dateStr, timeStr: startParsed.timeStr });
       }
     }
+
+    if (occurrences.length === 0) continue;
 
     // Optional user membership / accounting cutoff date (only active if explicitly provided)
     const effectiveAccountingCutoff = ((accountingStartDate && accountingStartDate.trim()) 
@@ -709,24 +713,9 @@ export function parseICS(
 
     // Pure clinical note (without generic "Konum: ..." room/platform labels) for local IndexedDB note cache
     const cleanClinicalNote = (raw.descriptionRaw || raw.noteRaw || '').trim();
+    const normClientForNote = cleanClinicalNote ? getNormalizedClientName(raw.summary || '') : '';
 
     for (const occ of occurrences) {
-      // Generate deterministic ID per occurrence
-      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
-      const sessionId = hasRecurrence
-        ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
-        : `ics_${raw.uid}`;
-
-    // Cache clinical notes in local-only IndexedDB for all valid occurrences (2010-01-01 onwards) with minimal keys
-      if (cleanClinicalNote && occ.dateStr >= '2010-01-01') {
-        hasAnyLocalNoteToCache = true;
-        localNotesToCache[sessionId] = cleanClinicalNote;
-        const normClient = getNormalizedClientName(raw.summary || '');
-        if (normClient && occ.dateStr) {
-          localNotesToCache[`client_d:${normClient}_${occ.dateStr}`] = cleanClinicalNote;
-        }
-      }
-
       // 1. If initial calendar sync was already done, NEVER evaluate or import events before accounting start date
       if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) {
         continue;
@@ -735,6 +724,21 @@ export function parseICS(
       // 2. NEVER evaluate or import events in closed / locked months when closedMonths is provided!
       if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) {
         continue;
+      }
+
+      // Generate deterministic ID per occurrence
+      const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
+      const sessionId = hasRecurrence
+        ? `ics_${raw.uid}_${occ.dateStr.replace(/-/g, '')}`
+        : `ics_${raw.uid}`;
+
+      // Cache clinical notes in local-only IndexedDB for valid occurrences in window
+      if (cleanClinicalNote && occ.dateStr >= windowStart) {
+        hasAnyLocalNoteToCache = true;
+        localNotesToCache[sessionId] = cleanClinicalNote;
+        if (normClientForNote && occ.dateStr) {
+          localNotesToCache[`client_d:${normClientForNote}_${occ.dateStr}`] = cleanClinicalNote;
+        }
       }
 
       // Events strictly before an explicitly configured accounting start date are pulled into the calendar & agenda,

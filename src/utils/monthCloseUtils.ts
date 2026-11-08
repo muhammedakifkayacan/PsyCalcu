@@ -132,6 +132,8 @@ export function getStoredClosedMonths(userId?: string): Record<string, ClosedMon
 /**
  * Persists closed months and optional reopened month timestamp to localStorage and IndexedDB
  */
+const effectiveClosedMonthsWeakCache = new WeakMap<object, Record<string, ClosedMonthRecord>>();
+
 export function saveStoredClosedMonths(
   userId: string | undefined,
   closedMonths: Record<string, ClosedMonthRecord>,
@@ -232,18 +234,31 @@ export function getEffectiveClosedMonths(
   userId?: string
 ): Record<string, ClosedMonthRecord> {
   const stored = activeClosedMonthsCache ?? getStoredClosedMonths(userId);
-  const reopened = activeReopenedMonthsCache ?? getStoredReopenedMonths(userId);
-  if (!closedMonths || Object.keys(closedMonths).length === 0) {
+  if (!closedMonths || closedMonths === stored) {
     return stored;
   }
+  const cached = effectiveClosedMonthsWeakCache.get(closedMonths);
+  if (cached) return cached;
+
+  const keys = Object.keys(closedMonths);
+  if (keys.length === 0) {
+    effectiveClosedMonthsWeakCache.set(closedMonths, stored);
+    return stored;
+  }
+
+  const reopened = activeReopenedMonthsCache ?? getStoredReopenedMonths(userId);
   const merged: Record<string, ClosedMonthRecord> = { ...stored };
-  for (const [k, rec] of Object.entries(closedMonths)) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const rec = closedMonths[k];
     if (!rec) continue;
     const closedMs = parseClosedAtMs(rec.closedAt);
     const reopenedMs = reopened[k] || 0;
     if (reopenedMs > 0 && reopenedMs > closedMs) continue;
     merged[k] = rec;
   }
+  effectiveClosedMonthsWeakCache.set(closedMonths, merged);
+  effectiveClosedMonthsWeakCache.set(merged, merged);
   return merged;
 }
 
@@ -275,9 +290,8 @@ export function isDateInClosedMonth(
   dateStr: string,
   closedMonths?: Record<string, ClosedMonthRecord>
 ): boolean {
-  if (!dateStr) return false;
-  const key = getMonthKey(dateStr);
-  if (!key) return false;
+  if (!dateStr || dateStr.length < 7) return false;
+  const key = dateStr.slice(0, 7);
   const effective = getEffectiveClosedMonths(closedMonths);
   return Boolean(effective[key]);
 }

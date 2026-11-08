@@ -646,19 +646,13 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isAgendaFilterOpen]);
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
+  const [isStartupSplashTimedOut, setIsStartupSplashTimedOut] = useState(false);
   const hasSyncedRef = useRef<string | null>(null);
-  const lastSavedRef = useRef<{ settings: string; sessions: string; expenses: string }>((() => {
-    const savedSessions = safeStorage.getItem('psycalcu_sessions');
-    let initialSessionsStr = '[]';
-    if (savedSessions) {
-      try {
-        initialSessionsStr = JSON.stringify(autoCorrectPastSessions(JSON.parse(savedSessions)));
-      } catch (e) {}
-    }
-    const savedSettingsStr = safeStorage.getItem('psycalcu_settings') || '';
-    const savedExpensesStr = safeStorage.getItem('psycalcu_expenses') || '[]';
-    return { settings: savedSettingsStr, sessions: initialSessionsStr, expenses: savedExpensesStr };
-  })());
+  const lastSavedRef = useRef<{ settings: string; sessions: string; expenses: string }>({
+    settings: '',
+    sessions: '[]',
+    expenses: '[]'
+  });
 
   // Notification States
   const [localNotifications, setLocalNotifications] = useState<AppNotification[]>(() => {
@@ -757,14 +751,17 @@ export default function App() {
     }
   }, [user]);
 
-  // Set initial sync done to true for guest mode, and false for logged-in users initially
+  // Brief safety timeout for startup loading screen so mobile networks never hang startup
   useEffect(() => {
-    if (!user) {
-      setIsInitialSyncDone(true);
-    } else {
-      setIsInitialSyncDone(false);
+    if (isInitialSyncDone) {
+      setIsStartupSplashTimedOut(false);
+      return;
     }
-  }, [user]);
+    const timer = setTimeout(() => {
+      setIsStartupSplashTimedOut(true);
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, [isInitialSyncDone]);
 
   const allNotifications = useMemo<AppNotification[]>(() => {
     const annotsWithReadState = announcements.map(ann => ({
@@ -944,6 +941,7 @@ export default function App() {
   // Monitor Auth State Changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      const prevActiveUid = getActiveLocalUserId();
       setUser(currentUser);
       setIsInitialAuthCheckDone(true);
       localStorage.removeItem('psycalcu_pending_redirect');
@@ -954,6 +952,7 @@ export default function App() {
         setRegistrationCreatedAt(null);
         setIsCloudSaving(false);
         setIsAuthSyncing(false);
+        setIsInitialSyncDone(true);
         activeSavesCountRef.current = 0;
         // Load safe storage if they log out
         const savedSessions = safeStorage.getItem('psycalcu_sessions');
@@ -967,67 +966,73 @@ export default function App() {
           try { setSettings(JSON.parse(savedSettings)); } catch (e) {}
         }
       } else {
+        if (hasSyncedRef.current !== currentUser.uid) {
+          setIsInitialSyncDone(false);
+        }
         // Record active user ID for synchronous recovery at frame 0 on reloads
         try {
           localStorage.setItem('psycalcu_last_active_uid', currentUser.uid);
         } catch (e) {}
 
-        // Immediately load user-specific cached data for a seamless instant UI transition on different devices
+        // Immediately load user-specific cached data only if not already loaded on frame 0 for this same user
         const userSessionsKey = `psycalcu_sessions_${currentUser.uid}`;
         const userSettingsKey = `psycalcu_settings_${currentUser.uid}`;
         const savedSessions = safeStorage.getItem(userSessionsKey) || safeStorage.getItem('psycalcu_sessions');
         const savedSettings = safeStorage.getItem(userSettingsKey) || safeStorage.getItem('psycalcu_settings');
-        let parsedSettingsForInit = settingsRef.current || settings;
-        if (savedSettings) {
-          try {
-            parsedSettingsForInit = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
-          } catch (e) {}
-        }
-        
-        let correctedInitialSessions: Session[] = [];
-        if (savedSessions) {
-          try { 
-            const parsed = JSON.parse(savedSessions);
-            const userLedger = getStoredAccountingLedger(currentUser.uid);
-            const sessionsWithLedger = applyAccountingLedgerToSessions(
-              parsed,
-              userLedger,
-              parsedSettingsForInit.accountingStartDate || registrationCreatedAt
-            );
-            correctedInitialSessions = autoCorrectPastSessions(
-              sessionsWithLedger,
-              parsedSettingsForInit.defaultSessionPrice,
-              parsedSettingsForInit.defaultBabysitterFee,
-              parsedSettingsForInit.defaultOfficeRentFee,
-              parsedSettingsForInit.accountingStartDate || registrationCreatedAt,
-              parsedSettingsForInit.defaultOnlinePrice,
-              parsedSettingsForInit.defaultFaceToFacePrice,
-              parsedSettingsForInit.clientCustomPrices,
-              parsedSettingsForInit.closedMonths
-            );
-            setSessions(correctedInitialSessions); 
-          } catch (e) {}
-        }
-        
-        if (savedSettings) {
-          try {
-            const parsed = JSON.parse(savedSettings);
-            const mergedClosed = mergeClosedMonths(parsed.closedMonths, undefined, currentUser.uid, undefined, parsed.reopenedMonths);
+        const alreadyInitializedForUser = prevActiveUid === currentUser.uid && sessionsRef.current && sessionsRef.current.length > 0;
+
+        if (!alreadyInitializedForUser) {
+          let parsedSettingsForInit = settingsRef.current || settings;
+          if (savedSettings) {
+            try {
+              parsedSettingsForInit = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
+            } catch (e) {}
+          }
+
+          if (savedSessions) {
+            try { 
+              const parsed = JSON.parse(savedSessions);
+              const userLedger = getStoredAccountingLedger(currentUser.uid);
+              const sessionsWithLedger = applyAccountingLedgerToSessions(
+                parsed,
+                userLedger,
+                parsedSettingsForInit.accountingStartDate || registrationCreatedAt
+              );
+              const correctedInitialSessions = autoCorrectPastSessions(
+                sessionsWithLedger,
+                parsedSettingsForInit.defaultSessionPrice,
+                parsedSettingsForInit.defaultBabysitterFee,
+                parsedSettingsForInit.defaultOfficeRentFee,
+                parsedSettingsForInit.accountingStartDate || registrationCreatedAt,
+                parsedSettingsForInit.defaultOnlinePrice,
+                parsedSettingsForInit.defaultFaceToFacePrice,
+                parsedSettingsForInit.clientCustomPrices,
+                parsedSettingsForInit.closedMonths
+              );
+              setSessions(correctedInitialSessions); 
+            } catch (e) {}
+          }
+
+          if (savedSettings) {
+            try {
+              const parsed = JSON.parse(savedSettings);
+              const mergedClosed = mergeClosedMonths(parsed.closedMonths, undefined, currentUser.uid, undefined, parsed.reopenedMonths);
+              setSettings({
+                ...DEFAULT_SETTINGS,
+                ...parsed,
+                ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
+                closedMonths: mergedClosed.closedMonths,
+                reopenedMonths: mergedClosed.reopenedMonths,
+              });
+            } catch (e) {}
+          } else {
+            const mergedClosed = mergeClosedMonths(undefined, undefined, currentUser.uid);
             setSettings({
               ...DEFAULT_SETTINGS,
-              ...parsed,
-              ownerCalendars: normalizeOwnerCalendars(parsed.ownerCalendars ?? DEFAULT_SETTINGS.ownerCalendars),
               closedMonths: mergedClosed.closedMonths,
               reopenedMonths: mergedClosed.reopenedMonths,
             });
-          } catch (e) {}
-        } else {
-          const mergedClosed = mergeClosedMonths(undefined, undefined, currentUser.uid);
-          setSettings({
-            ...DEFAULT_SETTINGS,
-            closedMonths: mergedClosed.closedMonths,
-            reopenedMonths: mergedClosed.reopenedMonths,
-          });
+          }
         }
         
         // Initialize lastSavedRef without re-running autoCorrectPastSessions
@@ -1518,8 +1523,9 @@ export default function App() {
                 snapMap.set(snap.id, snap);
               }
             });
-            const sortedSnaps = Array.from(snapMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            setBackupSnapshots(sortedSnaps);
+            const sortedSnaps = Array.from(snapMap.values())
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              .slice(0, 3);
             try {
               idbSet('psycalcu_snapshots_active', sortedSnaps).catch(() => {});
               localStorage.removeItem('psycalcu_snapshots_active');
@@ -2418,36 +2424,28 @@ export default function App() {
   const [historyModalClientName, setHistoryModalClientName] = useState<string | null>(null);
   const [backupSnapshots, setBackupSnapshots] = useState<DataBackupSnapshot[]>([]);
 
-  // Load snapshots safely from IndexedDB without choking 5MB localStorage
+  // Lazy-load snapshots from IndexedDB only when the modal is opened to save 30-50MB RAM on iOS WebKit
   useEffect(() => {
+    // Purge legacy snapshots from localStorage once on mount
+    try {
+      localStorage.removeItem('psycalcu_snapshots_active');
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('psycalcu_snapshots_') || k.startsWith('psycalcu_safety_backup_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (!isClientPricingModalOpen) return;
     idbGet<DataBackupSnapshot[]>('psycalcu_snapshots_active').then(snaps => {
       if (Array.isArray(snaps) && snaps.length > 0) {
-        setBackupSnapshots(snaps);
-      } else {
-        // Fallback or migrate from legacy localStorage if present
-        try {
-          const cached = localStorage.getItem('psycalcu_snapshots_active');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setBackupSnapshots(parsed);
-              idbSet('psycalcu_snapshots_active', parsed).catch(() => {});
-            }
-          }
-        } catch (e) {}
+        setBackupSnapshots(snaps.slice(0, 3));
       }
-      // Always purge snapshots and safety backups from localStorage to free up browser storage
-      try {
-        localStorage.removeItem('psycalcu_snapshots_active');
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && (k.startsWith('psycalcu_snapshots_') || k.startsWith('psycalcu_safety_backup_'))) {
-            localStorage.removeItem(k);
-          }
-        }
-      } catch (e) {}
     }).catch(() => {});
-  }, []);
+  }, [isClientPricingModalOpen]);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [isMonthClosingModalOpen, setIsMonthClosingModalOpen] = useState(false);
@@ -2516,17 +2514,20 @@ export default function App() {
         const response = await fetch(`/api/proxy-ical?url=${encodeURIComponent(item.url)}`);
         if (response.ok) {
           const icsText = await response.text();
+          const effectiveNoteCutoff = settings.accountingStartDate
+            ? settings.accountingStartDate.split('T')[0]
+            : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : null);
           const parsed = parseICS(
             icsText, 
             settings.defaultSessionPrice, 
             settings.defaultBabysitterFee, 
             settings.defaultOfficeRentFee, 
             item.type, 
-            null, 
+            registrationCreatedAt, 
             false,
-            null,
-            undefined,
-            false
+            effectiveNoteCutoff,
+            settings.closedMonths,
+            true
           );
 
           parsed.forEach(ev => {
@@ -2895,6 +2896,10 @@ export default function App() {
   // Active and Soft-Deleted session separation (Geri Dönüşüm Kutusu)
   const deletedSessions = useMemo(() => sessions.filter(s => Boolean(s.isDeleted)), [sessions]);
   const activeSessions = useMemo(() => sessions.filter(s => !s.isDeleted), [sessions]);
+  const unclosedMonthsCount = useMemo(
+    () => getUnclosedPastMonths(activeSessions, settings.closedMonths).length,
+    [activeSessions, settings.closedMonths]
+  );
 
   // Filtered sessions for the selected day
   const filteredSessions = useMemo(() => {
@@ -5552,12 +5557,26 @@ export default function App() {
     return <PublicAvailability userId={shareUserId} />;
   }
 
-  if (!isInitialAuthCheckDone) {
+  // Unified, calm, single-stage startup loading screen so iOS Safari/Chrome never flickers between multiple screens
+  const isStartupLoading =
+    !isInitialAuthCheckDone ||
+    isAuthLoading ||
+    (Boolean(user) && registrationStatus === 'checking' && !registrationError) ||
+    (Boolean(user) && registrationStatus === 'approved' && (!isInitialSyncDone || isAuthSyncing) && !isStartupSplashTimedOut);
+
+  if (isStartupLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#fdfbf7]" id="auth-loading-screen">
-        <div className="text-center space-y-4">
-          <RefreshCw className="w-8 h-8 animate-spin text-[#6b705c] mx-auto" />
-          <p className="text-sm font-serif italic text-slate-500">Güvenli bulut veritabanınız senkronize ediliyor...</p>
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="auth-loading-screen">
+        <div className="max-w-sm w-full bg-white rounded-[2rem] border border-[#e5e1d8] shadow-xs p-8 text-center space-y-5">
+          <div className="w-14 h-14 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
+            <RefreshCw className="w-6 h-6 animate-spin" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-lg font-serif italic text-[#6b705c]">PsyCalcu Hazırlanıyor</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Güvenli bulut verileriniz ve ajandanız yükleniyor, lütfen bekleyiniz...
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -5888,21 +5907,16 @@ export default function App() {
   if (user && registrationStatus === 'approved' && (!isInitialSyncDone || isAuthSyncing) && !settings.userRole) {
     return (
       <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-6" id="cloud-sync-loading-screen">
-        <div className="max-w-md w-full bg-white rounded-[2.5rem] border border-[#e5e1d8] shadow-sm p-8 text-center space-y-6 relative overflow-hidden">
-          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-[#6b705c]/5 rounded-full pointer-events-none" />
-          
-          <div className="w-16 h-16 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
-            <RefreshCw className="w-8 h-8 animate-spin" />
+        <div className="max-w-sm w-full bg-white rounded-[2rem] border border-[#e5e1d8] shadow-xs p-8 text-center space-y-5">
+          <div className="w-14 h-14 bg-[#6b705c]/10 rounded-2xl flex items-center justify-center text-[#6b705c] mx-auto border border-[#6b705c]/20">
+            <RefreshCw className="w-6 h-6 animate-spin" />
           </div>
-
-          <div className="space-y-2">
-            <h2 className="text-xl font-serif text-[#6b705c]">Verileriniz Eşitleniyor</h2>
-            <p className="text-xs text-slate-400 font-mono tracking-wider">{user.email}</p>
+          <div className="space-y-1.5">
+            <h2 className="text-lg font-serif italic text-[#6b705c]">PsyCalcu Hazırlanıyor</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Güvenli bulut verileriniz ve ajandanız yükleniyor, lütfen bekleyiniz...
+            </p>
           </div>
-
-          <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-            PsyCalcu bulut hesabınızdaki ayarlar ve seans verileri güvenli bir şekilde yükleniyor. Lütfen bekleyiniz...
-          </p>
         </div>
       </div>
     );
@@ -5995,7 +6009,7 @@ export default function App() {
           setIsClientPricingModalOpen(true);
         }}
         onOpenMonthClosingModal={openMonthClosingModal}
-        unclosedMonthsCount={getUnclosedPastMonths(activeSessions, settings.closedMonths).length}
+        unclosedMonthsCount={unclosedMonthsCount}
         isOnline={isOnline}
         pendingMutationsCount={pendingMutationsCount}
         deletedSessionsCount={deletedSessions.length}

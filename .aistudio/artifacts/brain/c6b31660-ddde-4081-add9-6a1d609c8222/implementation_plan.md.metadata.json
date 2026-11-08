@@ -1,0 +1,6 @@
+{
+  "summary":  "iPhone ve iPad (Safari ve Chrome/WebKit) tarayıcılarında senkronizasyon sırasında oluşan \"Sayfada birçok kez sorunla karşılaştı\" (RAM/Jetsam çökmesi) hatasını ve ekran gidip gelmelerini (flickering) kalıcı olarak ortadan kaldıran mimari ve performans iyileştirme planı.",
+  "updatedAt":  "2026-11-08T15:24:35.904558534Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

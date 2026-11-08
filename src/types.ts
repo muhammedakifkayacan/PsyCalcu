@@ -202,10 +202,19 @@ export function toTurkishTitleCase(str: string): string {
     .join(' ');
 }
 
+const canonicalDisplayNameCache = new Map<string, string>();
+
 export function getCanonicalClientDisplayName(name: string): string {
   if (!name) return '';
+  const cached = canonicalDisplayNameCache.get(name);
+  if (cached !== undefined) return cached;
   const norm = getNormalizedClientName(name) || name.replace(/[\s\u00A0]+/g, ' ').trim();
-  return toTurkishTitleCase(norm);
+  const res = toTurkishTitleCase(norm);
+  if (canonicalDisplayNameCache.size > 5000) {
+    canonicalDisplayNameCache.clear();
+  }
+  canonicalDisplayNameCache.set(name, res);
+  return res;
 }
 
 const MODALITY_PATTERN_STR = '(?:online seans|online görüşme|online gorusme|online terapi|online|yüz yüze seans|yüzyüze|yüz yüze|yüz-yüze|yuzyuze|yuz yuze|ofis|klinik|google meet|gmeet|g meet|meet|zoom|skype|facetime|face to face|whatsapp|watsap|wp\\.|wp|wa|ms teams|teams|telegram|tg|duo|botim|telefon|tel|görüntülü görüşme|goruntulu gorusme|görüntülü|goruntulu|video|sesli|arama|çağrı|cagri|linki|link)';
@@ -311,42 +320,20 @@ export function toTurkishAscii(str: string): string {
  */
 export function areClientNamesEquivalent(nameA?: string | null, nameB?: string | null): boolean {
   if (!nameA || !nameB) return false;
-  
-  // Collapse whitespace and trim
-  const cleanA = nameA.replace(/[\s\u00A0]+/g, ' ').trim();
-  const cleanB = nameB.replace(/[\s\u00A0]+/g, ' ').trim();
-  
-  if (!cleanA || !cleanB) return false;
+  if (nameA === nameB) return true;
 
-  // 1. Direct match with whitespace collapsed (case insensitive in Turkish)
-  if (cleanA.toLocaleLowerCase('tr-TR') === cleanB.toLocaleLowerCase('tr-TR')) {
-    return true;
-  }
-
-  // 2. Normalized match (session numbers, prefixes, suffixes, extra spaces removed)
-  const normA = getNormalizedClientName(cleanA);
-  const normB = getNormalizedClientName(cleanB);
-  
+  // Fast path via cached normalized Turkish ASCII
+  const normA = getNormalizedClientName(nameA);
+  const normB = getNormalizedClientName(nameB);
   if (!normA || !normB) return false;
+  if (normA === normB) return true;
 
-  const lowerNormA = normA.toLocaleLowerCase('tr-TR');
-  const lowerNormB = normB.toLocaleLowerCase('tr-TR');
-
-  if (lowerNormA === lowerNormB) {
-    return true;
-  }
-
-  // 3. Turkish ASCII diacritics match (e.g. "Zeynep Okum" vs "Zeynep Öküm")
   const asciiA = toTurkishAscii(normA);
   const asciiB = toTurkishAscii(normB);
+  if (asciiA === asciiB) return true;
 
-  if (asciiA === asciiB) {
-    return true;
-  }
-
-  // 4. Inverted name order token match (e.g. "Öküm, Zeynep" vs "Zeynep Öküm")
+  // Inverted name order token match (e.g. "Öküm, Zeynep" vs "Zeynep Öküm")
   // STRICT CONSTRAINT: Both names MUST have the EXACT SAME number of tokens (minimum 2 tokens)!
-  // "Zeynep" (1 token) can NEVER match "Zeynep Öküm" (2 tokens)!
   const tokensA = asciiA.split(/[\s,]+/).filter(Boolean);
   const tokensB = asciiB.split(/[\s,]+/).filter(Boolean);
 
@@ -358,16 +345,45 @@ export function areClientNamesEquivalent(nameA?: string | null, nameB?: string |
     }
   }
 
-  // Strict isolation: Under no circumstances do partial, prefix, or substring matching!
   return false;
 }
 
+const customRulesIndexCache = new WeakMap<object, Map<string, ClientPricingRule>>();
+
+function getIndexedCustomRules(clientCustomPrices: { [key: string]: ClientPricingRule }): Map<string, ClientPricingRule> {
+  const cached = customRulesIndexCache.get(clientCustomPrices);
+  if (cached) return cached;
+
+  const map = new Map<string, ClientPricingRule>();
+  for (const [key, rule] of Object.entries(clientCustomPrices)) {
+    if (!key || !rule) continue;
+    map.set(key, rule);
+    map.set(key.toLocaleLowerCase('tr-TR'), rule);
+    const norm = getNormalizedClientName(key);
+    if (norm) {
+      map.set(norm, rule);
+      map.set(norm.toLocaleLowerCase('tr-TR'), rule);
+      const ascii = toTurkishAscii(norm);
+      if (ascii) {
+        map.set(`ascii:${ascii}`, rule);
+        const tokens = ascii.split(/[\s,]+/).filter(Boolean);
+        if (tokens.length >= 2) {
+          map.set(`tokens:${[...tokens].sort().join(' ')}`, rule);
+        }
+      }
+    }
+  }
+
+  customRulesIndexCache.set(clientCustomPrices, map);
+  return map;
+}
+
 /**
- * Finds a matching client custom pricing rule by checking:
+ * Finds a matching client custom pricing rule in O(1) time via pre-indexed WeakMap:
  * 1. Exact key match
  * 2. Normalized client name match
  * 3. Case-insensitive lowercase match
- * 4. Strict token equivalence match (via areClientNamesEquivalent)
+ * 4. Turkish ASCII & token-order equivalence match
  */
 export function findClientCustomRule(
   clientCustomPrices?: { [key: string]: ClientPricingRule },
@@ -382,21 +398,23 @@ export function findClientCustomRule(
   const norm = getNormalizedClientName(clientName);
   if (norm && clientCustomPrices[norm]) return clientCustomPrices[norm];
 
-  const normLower = norm ? norm.toLocaleLowerCase('tr-TR') : '';
-  const clientLower = clientName.toLocaleLowerCase('tr-TR');
+  // 3. O(1) indexed lookup
+  const indexMap = getIndexedCustomRules(clientCustomPrices);
+  const byNormLower = norm ? indexMap.get(norm.toLocaleLowerCase('tr-TR')) : undefined;
+  if (byNormLower) return byNormLower;
 
-  // 3. Case-insensitive match
-  for (const [key, rule] of Object.entries(clientCustomPrices)) {
-    const kLower = key.toLocaleLowerCase('tr-TR');
-    if (kLower === normLower || kLower === clientLower) {
-      return rule;
-    }
-  }
+  const byClientLower = indexMap.get(clientName.toLocaleLowerCase('tr-TR'));
+  if (byClientLower) return byClientLower;
 
-  // 4. Strict equivalence match (prevents "Zeynep" matching "Zeynep Öküm")
-  for (const [key, rule] of Object.entries(clientCustomPrices)) {
-    if (areClientNamesEquivalent(key, clientName)) {
-      return rule;
+  const ascii = norm ? toTurkishAscii(norm) : toTurkishAscii(clientName);
+  if (ascii) {
+    const byAscii = indexMap.get(`ascii:${ascii}`);
+    if (byAscii) return byAscii;
+
+    const tokens = ascii.split(/[\s,]+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      const byTokens = indexMap.get(`tokens:${[...tokens].sort().join(' ')}`);
+      if (byTokens) return byTokens;
     }
   }
 
