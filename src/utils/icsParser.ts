@@ -469,15 +469,18 @@ export function parseICS(
     ? accountingStartDate.split('T')[0]
     : '';
 
+  const todayObj = new Date();
+  const past30DaysObj = new Date(todayObj);
+  past30DaysObj.setDate(todayObj.getDate() - 30);
+  const rolling30DaysStart = formatLocalDate(past30DaysObj);
+
   // DATE WINDOW:
-  // KURAL: Takvim eşitleme tamamını bir kere yaptıktan sonra,
-  // muhasebe başlangıç tarihinden öncekini bir daha kontrol etmeyecek!
-  // Unix epoch (1970) hatalı saat kalıntıları hariç, kullanıcının 2010 ve 2015 gibi tüm geçmiş takvim kayıtları eksiksiz içeri aktarılır.
-  const windowStart = (isInitialCalendarSyncDone && effectiveAccountingStart)
-    ? effectiveAccountingStart
+  // 1. İlk tam takvim aktarımında (!isInitialCalendarSyncDone): Tüm geçmiş (2010+) ve gelecek eksiksiz aktarılır.
+  // 2. İlk tam aktarım tamamlandıktan sonra (isInitialCalendarSyncDone): Yalnızca son 30 gün ve gelecek tarihler (kilitli aylar hariç) kontrol edilir!
+  const windowStart = isInitialCalendarSyncDone
+    ? (effectiveAccountingStart && effectiveAccountingStart > rolling30DaysStart ? effectiveAccountingStart : rolling30DaysStart)
     : (effectiveAccountingStart || '2010-01-01');
 
-  const todayObj = new Date();
   const future365Days = new Date();
   future365Days.setDate(todayObj.getDate() + 365);
   const windowEnd = formatLocalDate(future365Days);
@@ -574,39 +577,47 @@ export function parseICS(
   }
 
   // Cross-event EXDATE and RECURRENCE-ID resolution:
-  // In Apple and Google Calendar, an occurrence rescheduling, postponement or deletion creates an exception VEVENT with RECURRENCE-ID.
-  // The master event (with RRULE) must exclude all dates referenced by RECURRENCE-ID or EXDATE for the same UID,
-  // so the old phantom date never persists!
-  const uidToExdates = new Map<string, Set<string>>();
+  // Only needed for UIDs that actually have a master RRULE event!
+  const rruleUids = new Set<string>();
   for (const raw of rawEvents) {
-    if (!uidToExdates.has(raw.uid)) {
-      uidToExdates.set(raw.uid, new Set<string>());
-    }
-    const set = uidToExdates.get(raw.uid)!;
-    // Add all parsed exdates
-    raw.exdates.forEach(d => set.add(d));
-
-    // If this event has a RECURRENCE-ID, the original recurring slot must be excluded from the master event
-    if (raw.recurrenceIdRaw) {
-      const recParsed = parseIcsDateTimeToLocal(raw.recurrenceIdRaw, calTimezone);
-      if (recParsed) {
-        set.add(recParsed.dateStr);
-      } else {
-        const colonIdx = raw.recurrenceIdRaw.indexOf(':');
-        const val = colonIdx !== -1 ? raw.recurrenceIdRaw.substring(colonIdx + 1).trim() : raw.recurrenceIdRaw.trim();
-        const clean = val.replace(/[-:]/g, '');
-        if (clean.length >= 8) {
-          set.add(`${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`);
-        }
-      }
+    if (raw.rruleRaw) {
+      rruleUids.add(raw.uid);
     }
   }
 
-  // Merge the collected excluded dates back into all master recurring events for each UID
-  for (const raw of rawEvents) {
-    const allEx = uidToExdates.get(raw.uid);
-    if (allEx && raw.rruleRaw) {
-      allEx.forEach(d => raw.exdates.add(d));
+  if (rruleUids.size > 0) {
+    const uidToExdates = new Map<string, Set<string>>();
+    for (const raw of rawEvents) {
+      if (!rruleUids.has(raw.uid)) continue;
+      let set = uidToExdates.get(raw.uid);
+      if (!set) {
+        set = new Set<string>();
+        uidToExdates.set(raw.uid, set);
+      }
+      raw.exdates.forEach(d => set!.add(d));
+
+      if (raw.recurrenceIdRaw) {
+        const recParsed = parseIcsDateTimeToLocal(raw.recurrenceIdRaw, calTimezone);
+        if (recParsed) {
+          set.add(recParsed.dateStr);
+        } else {
+          const colonIdx = raw.recurrenceIdRaw.indexOf(':');
+          const val = colonIdx !== -1 ? raw.recurrenceIdRaw.substring(colonIdx + 1).trim() : raw.recurrenceIdRaw.trim();
+          const clean = val.replace(/[-:]/g, '');
+          if (clean.length >= 8) {
+            set.add(`${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`);
+          }
+        }
+      }
+    }
+
+    for (const raw of rawEvents) {
+      if (raw.rruleRaw) {
+        const allEx = uidToExdates.get(raw.uid);
+        if (allEx) {
+          allEx.forEach(d => raw.exdates.add(d));
+        }
+      }
     }
   }
 
@@ -616,10 +627,46 @@ export function parseICS(
   // Process raw events into sessions
   for (const raw of rawEvents) {
     if (raw.statusRaw === 'CANCELLED') continue;
-
     if (!raw.dtStartRaw) continue;
+
     const startParsed = parseIcsDateTimeToLocal(raw.dtStartRaw, calTimezone);
     if (!startParsed) continue;
+
+    // FAST-SKIP: Check date window and closedMonths BEFORE running any string/keyword/duration calculations!
+    let occurrences: { dateStr: string; timeStr: string }[] = [];
+    let hadValidRrule = false;
+    if (raw.rruleRaw) {
+      const rruleParsed = parseRruleString(raw.rruleRaw, calTimezone);
+      if (rruleParsed) {
+        hadValidRrule = true;
+        if (rruleParsed.until && rruleParsed.until < windowStart) {
+          continue;
+        }
+        const rawOccs = generateOccurrences(startParsed, rruleParsed, raw.exdates, windowStart, windowEnd);
+        for (let i = 0; i < rawOccs.length; i++) {
+          const occ = rawOccs[i];
+          if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) continue;
+          if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) continue;
+          occurrences.push(occ);
+        }
+      }
+    }
+
+    if (!hadValidRrule) {
+      const dStr = startParsed.dateStr;
+      if (dStr < windowStart || dStr > windowEnd || raw.exdates.has(dStr)) {
+        continue;
+      }
+      if (isInitialCalendarSyncDone && effectiveAccountingStart && dStr < effectiveAccountingStart) {
+        continue;
+      }
+      if (closedMonths && isDateInClosedMonth(dStr, closedMonths)) {
+        continue;
+      }
+      occurrences.push({ dateStr: dStr, timeStr: startParsed.timeStr });
+    }
+
+    if (occurrences.length === 0) continue;
 
     const duration = calculateEventDuration(raw.dtStartRaw, raw.dtEndRaw, raw.durationRaw, calTimezone);
 
@@ -684,26 +731,6 @@ export function parseICS(
     if (raw.locationRaw) notesParts.push(`Konum: ${raw.locationRaw}`);
     const notesStr = notesParts.length > 0 ? notesParts.join('\n') : undefined;
 
-    // Check if RRULE exists
-    let occurrences: { dateStr: string; timeStr: string }[] = [];
-    let hadValidRrule = false;
-    if (raw.rruleRaw) {
-      const rruleParsed = parseRruleString(raw.rruleRaw, calTimezone);
-      if (rruleParsed) {
-        hadValidRrule = true;
-        occurrences = generateOccurrences(startParsed, rruleParsed, raw.exdates, windowStart, windowEnd);
-      }
-    }
-
-    // If no valid RRULE, treat as single event occurrence within [windowStart, windowEnd]
-    if (!hadValidRrule) {
-      if (startParsed.dateStr >= windowStart && startParsed.dateStr <= windowEnd && !raw.exdates.has(startParsed.dateStr)) {
-        occurrences.push({ dateStr: startParsed.dateStr, timeStr: startParsed.timeStr });
-      }
-    }
-
-    if (occurrences.length === 0) continue;
-
     // Optional user membership / accounting cutoff date (only active if explicitly provided)
     const effectiveAccountingCutoff = ((accountingStartDate && accountingStartDate.trim()) 
       ? accountingStartDate.split('T')[0] 
@@ -716,16 +743,6 @@ export function parseICS(
     const normClientForNote = cleanClinicalNote ? getNormalizedClientName(raw.summary || '') : '';
 
     for (const occ of occurrences) {
-      // 1. If initial calendar sync was already done, NEVER evaluate or import events before accounting start date
-      if (isInitialCalendarSyncDone && effectiveAccountingStart && occ.dateStr < effectiveAccountingStart) {
-        continue;
-      }
-
-      // 2. NEVER evaluate or import events in closed / locked months when closedMonths is provided!
-      if (closedMonths && isDateInClosedMonth(occ.dateStr, closedMonths)) {
-        continue;
-      }
-
       // Generate deterministic ID per occurrence
       const hasRecurrence = Boolean(raw.rruleRaw || raw.recurrenceIdRaw || occurrences.length > 1);
       const sessionId = hasRecurrence

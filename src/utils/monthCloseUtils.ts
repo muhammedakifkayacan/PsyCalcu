@@ -6,18 +6,30 @@ export type { ClosedMonthRecord };
 
 let activeClosedMonthsCache: Record<string, ClosedMonthRecord> | null = null;
 let activeReopenedMonthsCache: Record<string, number> | null = null;
+let cachedMonthsUserId: string | undefined = undefined;
+let lastSavedClosedStr = '';
+let lastSavedReopenedStr = '';
 
+const closedAtMsCache = new Map<string, number>();
 function parseClosedAtMs(closedAt?: string): number {
   if (!closedAt) return 0;
+  const cached = closedAtMsCache.get(closedAt);
+  if (cached !== undefined) return cached;
   const t = new Date(closedAt).getTime();
-  return isNaN(t) ? 0 : t;
+  const res = isNaN(t) ? 0 : t;
+  closedAtMsCache.set(closedAt, res);
+  return res;
 }
 
 /**
- * Reads explicitly reopened (unlocked) month timestamps from localStorage
+ * Reads explicitly reopened (unlocked) month timestamps from localStorage (with in-memory cache)
  */
 export function getStoredReopenedMonths(userId?: string): Record<string, number> {
   if (typeof window === 'undefined') return activeReopenedMonthsCache || {};
+  if (activeReopenedMonthsCache && (!userId || cachedMonthsUserId === userId)) {
+    return activeReopenedMonthsCache;
+  }
+
   const merged: Record<string, number> = { ...(activeReopenedMonthsCache || {}) };
   const keysToCheck = [
     userId ? `psycalcu_reopened_months_${userId}` : '',
@@ -39,7 +51,6 @@ export function getStoredReopenedMonths(userId?: string): Record<string, number>
         }
       }
     }
-    // Also check settings in localStorage for reopenedMonths
     const settingsKeys = [
       userId ? `psycalcu_settings_${userId}` : '',
       'psycalcu_settings'
@@ -65,10 +76,14 @@ export function getStoredReopenedMonths(userId?: string): Record<string, number>
 }
 
 /**
- * Reads and merges closed months from all local persistence keys, respecting reopened months
+ * Reads and merges closed months from all local persistence keys, respecting reopened months (with in-memory cache)
  */
 export function getStoredClosedMonths(userId?: string): Record<string, ClosedMonthRecord> {
   if (typeof window === 'undefined') return activeClosedMonthsCache || {};
+  if (activeClosedMonthsCache && (!userId || cachedMonthsUserId === userId)) {
+    return activeClosedMonthsCache;
+  }
+
   const reopened = getStoredReopenedMonths(userId);
   const merged: Record<string, ClosedMonthRecord> = { ...(activeClosedMonthsCache || {}) };
 
@@ -126,6 +141,7 @@ export function getStoredClosedMonths(userId?: string): Record<string, ClosedMon
   }
 
   activeClosedMonthsCache = finalClosed;
+  if (userId) cachedMonthsUserId = userId;
   return finalClosed;
 }
 
@@ -165,20 +181,26 @@ export function saveStoredClosedMonths(
 
   activeClosedMonthsCache = finalClosed;
   activeReopenedMonthsCache = reopened;
+  if (userId) cachedMonthsUserId = userId;
+  effectiveClosedMonthsWeakCache.set(finalClosed, finalClosed);
 
   if (typeof window !== 'undefined') {
     try {
       const closedStr = JSON.stringify(finalClosed);
       const reopenedStr = JSON.stringify(reopened);
-      localStorage.setItem('psycalcu_closed_months', closedStr);
-      localStorage.setItem('psycalcu_reopened_months', reopenedStr);
-      if (userId) {
-        localStorage.setItem(`psycalcu_closed_months_${userId}`, closedStr);
-        localStorage.setItem(`psycalcu_reopened_months_${userId}`, reopenedStr);
-        idbSet(`psycalcu_closed_months_${userId}`, finalClosed).catch(() => {});
-        idbSet(`psycalcu_reopened_months_${userId}`, reopened).catch(() => {});
+      if (closedStr !== lastSavedClosedStr || reopenedStr !== lastSavedReopenedStr) {
+        lastSavedClosedStr = closedStr;
+        lastSavedReopenedStr = reopenedStr;
+        localStorage.setItem('psycalcu_closed_months', closedStr);
+        localStorage.setItem('psycalcu_reopened_months', reopenedStr);
+        if (userId) {
+          localStorage.setItem(`psycalcu_closed_months_${userId}`, closedStr);
+          localStorage.setItem(`psycalcu_reopened_months_${userId}`, reopenedStr);
+          idbSet(`psycalcu_closed_months_${userId}`, finalClosed).catch(() => {});
+          idbSet(`psycalcu_reopened_months_${userId}`, reopened).catch(() => {});
+        }
+        idbSet('psycalcu_closed_months', finalClosed).catch(() => {});
       }
-      idbSet('psycalcu_closed_months', finalClosed).catch(() => {});
     } catch (e) {}
   }
 
@@ -197,6 +219,16 @@ export function mergeClosedMonths(
 ): { closedMonths: Record<string, ClosedMonthRecord>; reopenedMonths: Record<string, number> } {
   const storedClosed = getStoredClosedMonths(userId);
   const storedReopened = getStoredReopenedMonths(userId);
+
+  // Fast path: when no remote or new local records are passed, return cached state directly without re-looping
+  if (
+    (!remoteClosed || remoteClosed === storedClosed) &&
+    (!localClosed || localClosed === storedClosed) &&
+    (!remoteReopened || remoteReopened === storedReopened) &&
+    (!localReopened || localReopened === storedReopened)
+  ) {
+    return { closedMonths: storedClosed, reopenedMonths: storedReopened };
+  }
 
   const mergedReopened: Record<string, number> = { ...storedReopened };
   for (const src of [localReopened, remoteReopened]) {

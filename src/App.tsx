@@ -4189,7 +4189,22 @@ export default function App() {
       effectiveSessions.length > 0
     );
 
-    const cutOffDateStr = effectiveAccountingStartDate || '2010-01-01';
+    const todayDateObj = new Date();
+    const past30DaysDateObj = new Date(todayDateObj);
+    past30DaysDateObj.setDate(todayDateObj.getDate() - 30);
+    const rolling30DaysStart = formatLocalDate(past30DaysDateObj);
+
+    const past45DaysDateObj = new Date(todayDateObj);
+    past45DaysDateObj.setDate(todayDateObj.getDate() - 45);
+    const rescheduleIndexLookbackStr = formatLocalDate(past45DaysDateObj);
+
+    // KURAL: İlk tam takvim aktarımı bittikten sonra (isInitialCalendarSyncDone),
+    // yalnızca son 30 gün ve gelecek tarihler (kilitli aylar hariç) kontrol edilir!
+    const cutOffDateStr = isInitialCalendarSyncDone
+      ? (effectiveAccountingStartDate && effectiveAccountingStartDate > rolling30DaysStart
+          ? effectiveAccountingStartDate
+          : rolling30DaysStart)
+      : (effectiveAccountingStartDate || '2010-01-01');
 
     const activeSyncedTypes = Array.isArray(syncedTypesFetched)
       ? syncedTypesFetched
@@ -4258,13 +4273,21 @@ export default function App() {
       );
     };
 
-    // Index non-deleted sessions first so active paid sessions always take priority over soft-deleted items
-    const sortedForIndexing = [...effectiveSessions].sort((a, b) => (a.isDeleted ? 1 : 0) - (b.isDeleted ? 1 : 0));
-    sortedForIndexing.forEach(s => {
-      if (!existingById.has(s.id) || !s.isDeleted) {
+    // Single-pass O(N) indexing: completely skip closed months and old history (>45 days ago after initial sync)
+    // so users who locked many past months/years have zero indexing lag!
+    for (let i = 0; i < effectiveSessions.length; i++) {
+      const s = effectiveSessions[i];
+      if (!s || !s.id) continue;
+      const prevById = existingById.get(s.id);
+      if (!prevById || (prevById.isDeleted && !s.isDeleted)) {
         existingById.set(s.id, s);
       }
-      if (s.isDeleted) return; // Never let soft-deleted sessions pollute UID/date or client/date indexes
+      if (s.isDeleted) continue;
+
+      // Skip locked months and old historical sessions from expensive string/UID/slot indexing
+      if (isDateInClosedMonth(s.date, activeClosedMonths)) continue;
+      if (isInitialCalendarSyncDone && s.date && s.date < rescheduleIndexLookbackStr) continue;
+
       if (s.id.startsWith('ics_')) {
         const baseUid = extractBaseUid(s.id);
         const uidDateKey = `${baseUid}_${s.date}`;
@@ -4294,7 +4317,7 @@ export default function App() {
         dateList.push(s);
         existingByClientDate.set(`${normName}_${s.date}`, dateList);
       }
-    });
+    }
 
     // PASS 1: Pre-reserve all exact ID and exact BaseUID+Date matches so recurring event fallback never steals a future/past occurrence's session!
     const preReservedExistingIds = new Set<string>();
@@ -4397,9 +4420,9 @@ export default function App() {
         return;
       }
 
-      // 2. ACCOUNTING START DATE PROTECTION (AFTER INITIAL FULL SYNC):
-      // Takvim eşitleme tamamını bir kere yaptıktan sonra, muhasebe başlangıç tarihinden öncekini bir daha kontrol etme!
-      if (isInitialCalendarSyncDone && effectiveAccountingStartDate && ns.date < effectiveAccountingStartDate) {
+      // 2. ROLLING 30-DAY & ACCOUNTING START DATE PROTECTION (AFTER INITIAL FULL SYNC):
+      // İlk tam takvim eşitlemesi yapıldıktan sonra, son 30 günden (cutOffDateStr) öncekileri bir daha kontrol etme!
+      if (isInitialCalendarSyncDone && ns.date && ns.date < cutOffDateStr) {
         return;
       }
 
@@ -4750,9 +4773,9 @@ export default function App() {
         return;
       }
 
-      // 4. ACCOUNTING START DATE PROTECTION:
-      // After initial calendar sync is done, sessions before accountingStartDate must NEVER be checked or deleted!
-      if (isInitialCalendarSyncDone && effectiveAccountingStartDate && s.date < effectiveAccountingStartDate) {
+      // 4. ROLLING 30-DAY & ACCOUNTING START DATE PROTECTION:
+      // After initial calendar sync is done, sessions older than 30 days (cutOffDateStr) must NEVER be checked or deleted!
+      if (isInitialCalendarSyncDone && s.date && s.date < cutOffDateStr) {
         sessionsToKeep.push(s);
         return;
       }

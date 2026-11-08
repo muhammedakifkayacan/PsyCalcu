@@ -615,36 +615,50 @@ export function autoHealSmartClientPrices(
     return sessionList;
   }
 
-  // Group latest known valid prices and fees per normalized client name AND session type
+  // Fast-path check: Do we actually have any unlocked, active-period session with 0 price that needs healing?
+  // 99% of the time all active sessions already have prices, so we can skip cloning/sorting/iterating entirely!
+  let hasAnyZeroPriceToHeal = false;
+  for (let i = 0; i < sessionList.length; i++) {
+    const s = sessionList[i];
+    if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session' || s.isManuallyEdited) continue;
+    if (s.price && s.price > 0) continue;
+    if (effectiveCutoff && (!s.date || s.date < effectiveCutoff)) continue;
+    if (closedMonths && s.date && closedMonths[s.date.slice(0, 7)]) continue;
+    hasAnyZeroPriceToHeal = true;
+    break;
+  }
+
+  if (!hasAnyZeroPriceToHeal) {
+    return sessionList;
+  }
+
+  // Group latest known valid prices and fees per normalized client name AND session type in a single O(N) pass (no array sort!)
   const clientTypeEstablishedPrices = new Map<string, number>();
+  const clientTypeBestRank = new Map<string, number>();
   const clientGeneralEstablishedPrices = new Map<string, number>();
+  const clientGeneralBestRank = new Map<string, number>();
   const clientBabysitterFees = new Map<string, number>();
   const clientOfficeRentFees = new Map<string, number>();
 
-  // Pass 1: Find all clients with a known non-zero price in active sessions (latest date/updatedAt first)
-  const sortedForPrices = [...sessionList].sort((a, b) => {
-    if ((b.updatedAt || 0) !== (a.updatedAt || 0)) {
-      return (b.updatedAt || 0) - (a.updatedAt || 0);
-    }
-    const bDate = b.date || '';
-    const aDate = a.date || '';
-    return bDate > aDate ? 1 : (bDate < aDate ? -1 : 0);
-  });
-
-  sortedForPrices.forEach(s => {
-    if (!s || s.type === 'cancelled' || s.type === 'non-session') return;
+  for (let i = 0; i < sessionList.length; i++) {
+    const s = sessionList[i];
+    if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') continue;
     const isWithinAccounting = !effectiveCutoff || (s.date && s.date >= effectiveCutoff);
+    if (!isWithinAccounting) continue;
     const normName = getNormalizedClientName(s.clientName);
-    if (!normName) return;
+    if (!normName) continue;
     const asciiKey = toTurkishAscii(normName).toLowerCase();
     const typeKey = `${asciiKey}_${s.type}`;
+    const rank = s.updatedAt || 0;
 
-    if (typeof s.price === 'number' && s.price > 0 && isWithinAccounting) {
-      if (!clientTypeEstablishedPrices.has(typeKey)) {
+    if (typeof s.price === 'number' && s.price > 0) {
+      if (!clientTypeEstablishedPrices.has(typeKey) || rank >= (clientTypeBestRank.get(typeKey) || 0)) {
         clientTypeEstablishedPrices.set(typeKey, s.price);
+        clientTypeBestRank.set(typeKey, rank);
       }
-      if (!clientGeneralEstablishedPrices.has(asciiKey)) {
+      if (!clientGeneralEstablishedPrices.has(asciiKey) || rank >= (clientGeneralBestRank.get(asciiKey) || 0)) {
         clientGeneralEstablishedPrices.set(asciiKey, s.price);
+        clientGeneralBestRank.set(asciiKey, rank);
       }
     }
     if (s.hasBabysitterFee && (Number(s.babysitterFeeAmount) || 0) > 0 && !clientBabysitterFees.has(asciiKey)) {
@@ -653,7 +667,7 @@ export function autoHealSmartClientPrices(
     if (s.hasOfficeRentFee && (Number(s.officeRentFeeAmount) || 0) > 0 && !clientOfficeRentFees.has(asciiKey)) {
       clientOfficeRentFees.set(asciiKey, s.officeRentFeeAmount);
     }
-  });
+  }
 
   // Pass 2: If a session in active accounting period has price === 0, heal it taking session type into account!
   return sessionList.map(s => {
