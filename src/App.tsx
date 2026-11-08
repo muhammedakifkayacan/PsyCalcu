@@ -2079,9 +2079,31 @@ export default function App() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
 
-  // Helper to filter sessions for any specific date using active agenda filters
+  // Pre-index active sessions by date in O(N) so day/week/month lookups are O(1) instead of scanning all sessions repeatedly
+  const sessionsByDateMap = useMemo(() => {
+    const map = new Map<string, Session[]>();
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      if (!s || s.isDeleted || !s.date) continue;
+      const list = map.get(s.date);
+      if (list) {
+        list.push(s);
+      } else {
+        map.set(s.date, [s]);
+      }
+    }
+    map.forEach(list => {
+      if (list.length > 1) {
+        list.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+      }
+    });
+    return map;
+  }, [sessions]);
+
+  // Helper to filter sessions for any specific date using O(1) map lookup + active agenda filters
   const getFilteredSessionsForDate = useCallback((dateStr: string) => {
-    let daySessions = sessions.filter(s => !s.isDeleted && s.date === dateStr).sort((a, b) => a.time.localeCompare(b.time));
+    let daySessions = sessionsByDateMap.get(dateStr) || [];
+    if (daySessions.length === 0) return daySessions;
 
     if (settings.userRole === 'owner') {
       if (ownerSessionFilter === 'mine') {
@@ -2104,7 +2126,7 @@ export default function App() {
     }
 
     return daySessions;
-  }, [sessions, settings.userRole, ownerSessionFilter, agendaStatusFilter, agendaRoomFilter]);
+  }, [sessionsByDateMap, settings.userRole, ownerSessionFilter, agendaStatusFilter, agendaRoomFilter]);
 
   // 7 days for the week containing selectedDate (Monday to Sunday)
   const weekDays = useMemo(() => {
@@ -2172,7 +2194,7 @@ export default function App() {
     return { totalSessions, totalIncome, paidCount };
   }, [weekDays, getFilteredSessionsForDate]);
 
-  // Aggregate monthly statistics
+  // Aggregate monthly statistics in O(daysInMonth) using sessionsByDateMap instead of O(N * M)
   const monthStats = useMemo(() => {
     const year = calendarViewDate.getFullYear();
     const month = calendarViewDate.getMonth();
@@ -2182,10 +2204,11 @@ export default function App() {
     let totalIncome = 0;
     let paidCount = 0;
 
-    sessions.forEach(s => {
-      if (!s.isDeleted && s.date.startsWith(monthPrefix)) {
-        const daySessions = getFilteredSessionsForDate(s.date);
-        if (daySessions.some(ds => ds.id === s.id)) {
+    sessionsByDateMap.forEach((_list, dateKey) => {
+      if (dateKey.startsWith(monthPrefix)) {
+        const daySessions = getFilteredSessionsForDate(dateKey);
+        for (let i = 0; i < daySessions.length; i++) {
+          const s = daySessions[i];
           if (s.type !== 'cancelled' && s.type !== 'non-session') {
             totalSessions++;
             totalIncome += s.price;
@@ -2196,7 +2219,7 @@ export default function App() {
     });
 
     return { totalSessions, totalIncome, paidCount };
-  }, [calendarViewDate, sessions, getFilteredSessionsForDate]);
+  }, [calendarViewDate, sessionsByDateMap, getFilteredSessionsForDate]);
 
   // Navigation handlers for week view
   const handlePrevWeek = () => {
@@ -2622,9 +2645,11 @@ export default function App() {
   );
   useBodyScrollLock(isAnyModalActive);
 
-  // Gelişmiş Arama Filtreleme ve Hesaplama Memos
+  // Gelişmiş Arama Filtreleme ve Hesaplama Memos (only computed when search tab is active)
   const searchedAndFilteredSessions = useMemo(() => {
+    if (activeTab !== 'search') return [];
     return sessions.filter(session => {
+      if (session.isDeleted) return false;
       // 1. Text filter
       if (searchTabQuery.trim()) {
         const query = toTurkishUpper(searchTabQuery.trim());
@@ -2668,7 +2693,7 @@ export default function App() {
 
       return true;
     });
-  }, [sessions, searchTabQuery, searchStartDate, searchEndDate, searchType, searchPaymentStatus]);
+  }, [activeTab, sessions, searchTabQuery, searchStartDate, searchEndDate, searchType, searchPaymentStatus, tempNotesCache]);
 
   const searchTabCalculations = useMemo(() => {
     let totalSessions = searchedAndFilteredSessions.length;
@@ -2936,8 +2961,19 @@ export default function App() {
     });
   }, [activeSessions, headerSearchQuery, tempNotesCache]);
 
-  // Debt Calculations
+  // Debt Calculations (only bucketed/sorted when viewing debts tab)
   const debtsData = useMemo(() => {
+    const effectiveAccountingStart = settings.accountingStartDate || (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
+    if (activeTab !== 'debts') {
+      return {
+        unpaidSessions: [] as Session[],
+        totalUnpaidAmount: 0,
+        clientsWithDebts: [] as { clientName: string; sessions: Session[]; totalAmount: number; sessionCount: number }[],
+        debtorCount: 0,
+        effectiveAccountingStart
+      };
+    }
+
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -2953,8 +2989,6 @@ export default function App() {
       const m = (parts[1] || '00').padStart(2, '0');
       return `${h}:${m}`;
     };
-
-    const effectiveAccountingStart = settings.accountingStartDate || (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : '');
 
     // Filter non-cancelled, non-session, unpaid, and realized (past or present) sessions
     const unpaidSessions = activeSessions.filter(s => {
@@ -3028,7 +3062,7 @@ export default function App() {
       debtorCount: clientsWithDebts.length,
       effectiveAccountingStart
     };
-  }, [activeSessions, settings.accountingStartDate, registrationCreatedAt]);
+  }, [activeTab, activeSessions, settings.accountingStartDate, registrationCreatedAt]);
 
   const filteredDebtors = useMemo(() => {
     if (!debtSearchQuery.trim()) return debtsData.clientsWithDebts;
@@ -9043,208 +9077,226 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Settings Modal Component */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSave={async (updated) => {
-          const mergedMonthState = mergeClosedMonths(
-            settingsRef.current?.closedMonths,
-            updated.closedMonths,
-            user?.uid,
-            undefined,
-            settingsRef.current?.reopenedMonths || updated.reopenedMonths
-          );
-          const finalUpdated: AppSettings = {
-            ...updated,
-            closedMonths: mergedMonthState.closedMonths,
-            reopenedMonths: mergedMonthState.reopenedMonths
-          };
-          settingsRef.current = finalUpdated;
-          setSettings(finalUpdated);
-          if (user) {
-            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(finalUpdated), user.uid);
-            saveUserData(user.uid, finalUpdated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
-              console.error("Error saving updated settings from SettingsModal:", err);
-            });
-            if (updated.userRole !== settings.userRole) {
-              try {
-                const regRef = doc(db, 'registrations', user.uid);
-                await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
-              } catch (err) {
-                console.error("Error setting role in registrations:", err);
+      {/* Settings Modal Component (Conditionally mounted so closed modals do zero background work) */}
+      {isSettingsOpen && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          settings={settings}
+          onSave={async (updated) => {
+            const mergedMonthState = mergeClosedMonths(
+              settingsRef.current?.closedMonths,
+              updated.closedMonths,
+              user?.uid,
+              undefined,
+              settingsRef.current?.reopenedMonths || updated.reopenedMonths
+            );
+            const finalUpdated: AppSettings = {
+              ...updated,
+              closedMonths: mergedMonthState.closedMonths,
+              reopenedMonths: mergedMonthState.reopenedMonths
+            };
+            settingsRef.current = finalUpdated;
+            setSettings(finalUpdated);
+            if (user) {
+              safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(finalUpdated), user.uid);
+              saveUserData(user.uid, finalUpdated, sessionsRef.current || [], expensesRef.current || []).catch(err => {
+                console.error("Error saving updated settings from SettingsModal:", err);
+              });
+              if (updated.userRole !== settings.userRole) {
+                try {
+                  const regRef = doc(db, 'registrations', user.uid);
+                  await setDoc(regRef, { userRole: updated.userRole }, { merge: true });
+                } catch (err) {
+                  console.error("Error setting role in registrations:", err);
+                }
               }
             }
-          }
-        }}
-        showExplanations={showExplanations}
-        onToggleExplanations={toggleShowExplanations}
-        featuresSmartPriceMatchingAllowed={featuresSmartPriceMatchingAllowed}
-        requestedRole={requestedRole}
-        onRequestRoleChange={async (targetRole) => {
-          if (!user) return;
-          try {
-            const regRef = doc(db, 'registrations', user.uid);
-            await setDoc(regRef, { requestedRole: targetRole }, { merge: true });
-            showToast(targetRole ? 'Rol değişikliği talebi yöneticiye başarıyla iletildi!' : 'Rol değişikliği talebiniz iptal edildi.', 'success');
-          } catch (err: any) {
-            console.error("Error submitting role change request:", err);
-            showToast(`Talep gönderilirken hata oluştu: ${err.message || String(err)}`, 'error');
-          }
-        }}
-        onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
-      />
+          }}
+          showExplanations={showExplanations}
+          onToggleExplanations={toggleShowExplanations}
+          featuresSmartPriceMatchingAllowed={featuresSmartPriceMatchingAllowed}
+          requestedRole={requestedRole}
+          onRequestRoleChange={async (targetRole) => {
+            if (!user) return;
+            try {
+              const regRef = doc(db, 'registrations', user.uid);
+              await setDoc(regRef, { requestedRole: targetRole }, { merge: true });
+              showToast(targetRole ? 'Rol değişikliği talebi yöneticiye başarıyla iletildi!' : 'Rol değişikliği talebiniz iptal edildi.', 'success');
+            } catch (err: any) {
+              console.error("Error submitting role change request:", err);
+              showToast(`Talep gönderilirken hata oluştu: ${err.message || String(err)}`, 'error');
+            }
+          }}
+          onOpenClientPricingModal={() => setIsClientPricingModalOpen(true)}
+        />
+      )}
 
       {/* Client Pricing & Data Recovery Manager Modal */}
-      <ClientPricingManagerModal
-        isOpen={isClientPricingModalOpen}
-        onClose={() => setIsClientPricingModalOpen(false)}
-        initialTab={clientPricingInitialTab}
-        sessions={activeSessions}
-        settings={settings}
-        expenses={expenses}
-        snapshots={backupSnapshots}
-        onApplyRules={async (updatedSessions, updatedSettings) => {
-          const mergedAllSessions = [...updatedSessions, ...deletedSessions];
-          setSessions(mergedAllSessions);
-          setSettings(updatedSettings);
-          if (user) {
-            safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
-            safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(mergedAllSessions), user.uid);
-            await saveUserData(
-              user.uid, 
-              updatedSettings, 
-              mergedAllSessions, 
-              expensesRef.current || [], 
-              'Danışan Fiyatları ve Seans Kayıtları Toplu Güncellemesi'
-            );
-          }
-          showToast('Danışan özel fiyatları ve tüm seanslar başarıyla güncellendi!', 'success');
-        }}
-        onRestoreSnapshot={async (snapshot) => {
-          if (!snapshot || !snapshot.sessions) return;
-          setSessions(snapshot.sessions);
-          if (snapshot.settings) setSettings(snapshot.settings);
-          if (snapshot.expenses) setExpenses(snapshot.expenses);
-          if (user) {
-            await saveUserData(
-              user.uid,
-              snapshot.settings || settings,
-              snapshot.sessions,
-              snapshot.expenses || expenses,
-              `Yedek Noktasına Dönüş (${snapshot.label})`
-            );
-          }
-          showToast(`"${snapshot.label}" yedeği başarıyla geri yüklendi!`, 'success');
-          setIsClientPricingModalOpen(false);
-        }}
-      />
+      {isClientPricingModalOpen && (
+        <ClientPricingManagerModal
+          isOpen={isClientPricingModalOpen}
+          onClose={() => setIsClientPricingModalOpen(false)}
+          initialTab={clientPricingInitialTab}
+          sessions={activeSessions}
+          settings={settings}
+          expenses={expenses}
+          snapshots={backupSnapshots}
+          onApplyRules={async (updatedSessions, updatedSettings) => {
+            const mergedAllSessions = [...updatedSessions, ...deletedSessions];
+            setSessions(mergedAllSessions);
+            setSettings(updatedSettings);
+            if (user) {
+              safeStorage.setItem(`psycalcu_settings_${user.uid}`, JSON.stringify(updatedSettings), user.uid);
+              safeStorage.setItem(`psycalcu_sessions_${user.uid}`, JSON.stringify(mergedAllSessions), user.uid);
+              await saveUserData(
+                user.uid, 
+                updatedSettings, 
+                mergedAllSessions, 
+                expensesRef.current || [], 
+                'Danışan Fiyatları ve Seans Kayıtları Toplu Güncellemesi'
+              );
+            }
+            showToast('Danışan özel fiyatları ve tüm seanslar başarıyla güncellendi!', 'success');
+          }}
+          onRestoreSnapshot={async (snapshot) => {
+            if (!snapshot || !snapshot.sessions) return;
+            setSessions(snapshot.sessions);
+            if (snapshot.settings) setSettings(snapshot.settings);
+            if (snapshot.expenses) setExpenses(snapshot.expenses);
+            if (user) {
+              await saveUserData(
+                user.uid,
+                snapshot.settings || settings,
+                snapshot.sessions,
+                snapshot.expenses || expenses,
+                `Yedek Noktasına Dönüş (${snapshot.label})`
+              );
+            }
+            showToast(`"${snapshot.label}" yedeği başarıyla geri yüklendi!`, 'success');
+            setIsClientPricingModalOpen(false);
+          }}
+        />
+      )}
 
       {/* Soft-Delete Trash Bin Modal (30-day TTL recovery) */}
-      <TrashBinModal
-        isOpen={isTrashBinOpen}
-        onClose={() => setIsTrashBinOpen(false)}
-        deletedSessions={deletedSessions}
-        onRestoreSession={handleRestoreSession}
-        onRestoreAll={handleRestoreAllDeleted}
-        onPermanentDelete={handlePermanentDeleteSession}
-        onEmptyTrash={handleEmptyTrash}
-      />
+      {isTrashBinOpen && (
+        <TrashBinModal
+          isOpen={isTrashBinOpen}
+          onClose={() => setIsTrashBinOpen(false)}
+          deletedSessions={deletedSessions}
+          onRestoreSession={handleRestoreSession}
+          onRestoreAll={handleRestoreAllDeleted}
+          onPermanentDelete={handlePermanentDeleteSession}
+          onEmptyTrash={handleEmptyTrash}
+        />
+      )}
 
       {/* Session Add/Edit Modal Component */}
-      <SessionModal
-        isOpen={isSessionModalOpen}
-        onClose={() => {
-          setIsSessionModalOpen(false);
-          setPrefilledRoomId('');
-          setPrefilledTime('');
-        }}
-        sessionToEdit={editingSession}
-        onSave={handleSaveSession}
-        defaultPrice={settings.defaultSessionPrice}
-        defaultOnlinePrice={settings.defaultOnlinePrice}
-        defaultFaceToFacePrice={settings.defaultFaceToFacePrice}
-        defaultBabysitterFee={settings.defaultBabysitterFee}
-        defaultOfficeRentFee={settings.defaultOfficeRentFee}
-        selectedDate={selectedDate}
-        sessions={sessions}
-        enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
-        clientCustomPrices={settings.clientCustomPrices}
-        userRole={settings.userRole}
-        rooms={settings.rooms || []}
-        prefilledRoomId={prefilledRoomId}
-        prefilledTime={prefilledTime}
-        enableKDV={settings.enableKDV}
-        defaultKdvRate={settings.defaultKdvRate}
-        defaultIsKdvInclusive={settings.defaultIsKdvInclusive}
-        onOpenClientHistory={(name) => {
-          setIsSessionModalOpen(false);
-          handleOpenClientPage(name);
-        }}
-        closedMonths={settings.closedMonths}
-      />
+      {isSessionModalOpen && (
+        <SessionModal
+          isOpen={isSessionModalOpen}
+          onClose={() => {
+            setIsSessionModalOpen(false);
+            setPrefilledRoomId('');
+            setPrefilledTime('');
+          }}
+          sessionToEdit={editingSession}
+          onSave={handleSaveSession}
+          defaultPrice={settings.defaultSessionPrice}
+          defaultOnlinePrice={settings.defaultOnlinePrice}
+          defaultFaceToFacePrice={settings.defaultFaceToFacePrice}
+          defaultBabysitterFee={settings.defaultBabysitterFee}
+          defaultOfficeRentFee={settings.defaultOfficeRentFee}
+          selectedDate={selectedDate}
+          sessions={sessions}
+          enableSmartClientPriceMatching={featuresSmartPriceMatchingAllowed && settings.enableSmartClientPriceMatching}
+          clientCustomPrices={settings.clientCustomPrices}
+          userRole={settings.userRole}
+          rooms={settings.rooms || []}
+          prefilledRoomId={prefilledRoomId}
+          prefilledTime={prefilledTime}
+          enableKDV={settings.enableKDV}
+          defaultKdvRate={settings.defaultKdvRate}
+          defaultIsKdvInclusive={settings.defaultIsKdvInclusive}
+          onOpenClientHistory={(name) => {
+            setIsSessionModalOpen(false);
+            handleOpenClientPage(name);
+          }}
+          closedMonths={settings.closedMonths}
+        />
+      )}
 
       {/* FAQ Modal Component */}
-      <FAQModal
-        isOpen={isFaqOpen}
-        onClose={() => setIsFaqOpen(false)}
-        onStartTour={() => setIsTourOpen(true)}
-      />
+      {isFaqOpen && (
+        <FAQModal
+          isOpen={isFaqOpen}
+          onClose={() => setIsFaqOpen(false)}
+          onStartTour={() => setIsTourOpen(true)}
+        />
+      )}
 
       {/* Sync Details Modal Component */}
-      <SyncDetailsModal
-        isOpen={isSyncDetailsModalOpen}
-        onClose={() => setIsSyncDetailsModalOpen(false)}
-        syncDetails={syncDetailsToShow}
-      />
+      {isSyncDetailsModalOpen && (
+        <SyncDetailsModal
+          isOpen={isSyncDetailsModalOpen}
+          onClose={() => setIsSyncDetailsModalOpen(false)}
+          syncDetails={syncDetailsToShow}
+        />
+      )}
 
       {/* Debt Payment Confirmation Modal */}
-      <DebtPaymentConfirmationModal
-        isOpen={debtConfirmState.isOpen}
-        onClose={() => setDebtConfirmState(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={(method) => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName, method)}
-        clientName={debtConfirmState.clientName}
-        totalAmount={debtConfirmState.totalAmount}
-      />
+      {debtConfirmState.isOpen && (
+        <DebtPaymentConfirmationModal
+          isOpen={debtConfirmState.isOpen}
+          onClose={() => setDebtConfirmState(prev => ({ ...prev, isOpen: false }))}
+          onConfirm={(method) => handleMarkAllClientSessionsAsPaid(debtConfirmState.clientName, method)}
+          clientName={debtConfirmState.clientName}
+          totalAmount={debtConfirmState.totalAmount}
+        />
+      )}
 
       {/* Client Complete History & Ledger Modal */}
-      <ClientHistoryModal
-        isOpen={!!historyModalClientName}
-        onClose={() => setHistoryModalClientName(null)}
-        clientName={historyModalClientName || ''}
-        sessions={sessions}
-        settings={settings}
-        onSelectSession={(session) => {
-          setEditingSession(session);
-          setIsSessionModalOpen(true);
-        }}
-        onJumpToDate={(date) => {
-          setSelectedDate(date);
-          setActiveTab('agenda');
-        }}
-      />
+      {Boolean(historyModalClientName) && (
+        <ClientHistoryModal
+          isOpen={!!historyModalClientName}
+          onClose={() => setHistoryModalClientName(null)}
+          clientName={historyModalClientName || ''}
+          sessions={sessions}
+          settings={settings}
+          onSelectSession={(session) => {
+            setEditingSession(session);
+            setIsSessionModalOpen(true);
+          }}
+          onJumpToDate={(date) => {
+            setSelectedDate(date);
+            setActiveTab('agenda');
+          }}
+        />
+      )}
 
       {/* Month Closing & Audit Modal */}
-      <MonthClosingModal
-        isOpen={isMonthClosingModalOpen}
-        onClose={() => setIsMonthClosingModalOpen(false)}
-        sessions={sessions}
-        settings={settings}
-        expenses={expenses}
-        onCloseMonth={handleCloseMonth}
-        onReopenMonth={handleReopenMonth}
-        onEditSession={(s) => {
-          setEditingSession(s);
-          setPrefilledRoomId(s.roomId || '');
-          setPrefilledTime(s.time);
-          setIsSessionModalOpen(true);
-        }}
-        onUpdateSessionPrice={handleUpdateSingleSessionPrice}
-        onUpdateSessionPaymentStatus={handleUpdateSingleSessionPaymentStatus}
-        showToast={showToast}
-        initialMonthKey={monthClosingInitialKey}
-      />
+      {isMonthClosingModalOpen && (
+        <MonthClosingModal
+          isOpen={isMonthClosingModalOpen}
+          onClose={() => setIsMonthClosingModalOpen(false)}
+          sessions={sessions}
+          settings={settings}
+          expenses={expenses}
+          onCloseMonth={handleCloseMonth}
+          onReopenMonth={handleReopenMonth}
+          onEditSession={(s) => {
+            setEditingSession(s);
+            setPrefilledRoomId(s.roomId || '');
+            setPrefilledTime(s.time);
+            setIsSessionModalOpen(true);
+          }}
+          onUpdateSessionPrice={handleUpdateSingleSessionPrice}
+          onUpdateSessionPaymentStatus={handleUpdateSingleSessionPaymentStatus}
+          showToast={showToast}
+          initialMonthKey={monthClosingInitialKey}
+        />
+      )}
 
       {/* Debt Cutoff Date Modal */}
       <AnimatePresence>

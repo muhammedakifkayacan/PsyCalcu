@@ -1106,8 +1106,9 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     return calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
   }, [calendarViewDate]);
 
-  // Unpaid sessions of the currently viewed month (sorted chronologically by date & time)
+  // Unpaid sessions of the currently viewed month (only computed when assistant drawer is open)
   const monthUnpaidSessions = useMemo(() => {
+    if (!isOpen) return [];
     return sessions
       .filter(
         s =>
@@ -1118,15 +1119,16 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
           s.date.startsWith(visibleMonthKey)
       )
       .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
-  }, [sessions, visibleMonthKey]);
+  }, [isOpen, sessions, visibleMonthKey]);
 
   const activeQueueSession = useMemo(() => {
-    if (!isQueueActive || queueIndex >= queueSessionIds.length) return null;
+    if (!isOpen || !isQueueActive || queueIndex >= queueSessionIds.length) return null;
     const targetId = queueSessionIds[queueIndex];
     return sessions.find(s => s.id === targetId && !s.isDeleted) || null;
-  }, [isQueueActive, queueSessionIds, queueIndex, sessions]);
+  }, [isOpen, isQueueActive, queueSessionIds, queueIndex, sessions]);
 
   const pageRelevantSessions = useMemo(() => {
+    if (!isOpen) return [];
     const active = sessions.filter(s => !s.isDeleted);
     if (activeTab === 'client' && selectedClientName) {
       return active
@@ -1153,7 +1155,7 @@ export const VoiceChatAssistant: React.FC<VoiceChatAssistantProps> = ({
     const monthSessions = active.filter(s => s.date.startsWith(visibleMonthKey));
     if (monthSessions.length > 0) return monthSessions;
     return active.slice(-150);
-  }, [sessions, activeTab, agendaViewMode, selectedDate, visibleMonthKey, selectedClientName]);
+  }, [isOpen, sessions, activeTab, agendaViewMode, selectedDate, visibleMonthKey, selectedClientName]);
 
   const pageContextBadge = useMemo(() => {
     if (activeTab === 'agenda') {

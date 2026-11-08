@@ -86,17 +86,17 @@ export function isMeaningfulLedgerEntry(entry?: Partial<AccountingLedgerEntry> |
   if (!entry) return false;
   if ((entry as Session).type === 'cancelled' || (entry as Session).type === 'non-session') return false;
   const price = Number(entry.price) || 0;
-  const hasRealPayment =
-    entry.paymentStatus === 'paid' ||
-    entry.paymentStatus === 'partial' ||
-    (Number(entry.paidAmount) || 0) > 0;
-  // If user paid or manually edited, it is ALWAYS meaningful and must NEVER be discarded
-  if (hasRealPayment || entry.isManuallyEdited) return true;
-  if (price <= 0) return false;
-  // Only apply cutoff if an explicit date is provided; never default to an arbitrary cutoff date
+  const paidAmt = Number(entry.paidAmount) || 0;
+  // Auto-zeroed historical or cancelled sessions have price <= 0 and paidAmt <= 0 — never store them in the ledger
+  if (price <= 0 && paidAmt <= 0) return false;
   if (cutoffDate && cutoffDate.trim() && entry.date && entry.date < cutoffDate.trim()) {
     return false;
   }
+  const hasRealPayment =
+    entry.paymentStatus === 'paid' ||
+    entry.paymentStatus === 'partial' ||
+    paidAmt > 0;
+  if (hasRealPayment || entry.isManuallyEdited) return true;
   return false;
 }
 
@@ -150,18 +150,21 @@ export function updateLocalAccountingLedger(
 
   // Pre-count how many active sessions a client has on the same day so `day:` key is only written when unique on that date
   const clientDateCounts = new Map<string, number>();
-  (sessions || []).forEach(s => {
-    if (!s || s.isDeleted || !s.clientName || !s.date) return;
+  for (let i = 0; i < (sessions || []).length; i++) {
+    const s = sessions[i];
+    if (!s || s.isDeleted || !s.clientName || !s.date) continue;
+    if (!isMeaningfulLedgerEntry(s)) continue;
     const norm = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
     if (norm) {
       const dk = `day:${norm}_${s.date}`;
       clientDateCounts.set(dk, (clientDateCounts.get(dk) || 0) + 1);
     }
-  });
+  }
 
-  (sessions || []).forEach(s => {
-    if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return;
-    if (!isMeaningfulLedgerEntry(s)) return;
+  for (let i = 0; i < (sessions || []).length; i++) {
+    const s = sessions[i];
+    if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') continue;
+    if (!isMeaningfulLedgerEntry(s)) continue;
 
     const hasPayment =
       s.paymentStatus === 'paid' ||
@@ -229,7 +232,7 @@ export function updateLocalAccountingLedger(
         mergedLedger[k] = nextEntry;
       }
     }
-  });
+  }
 
   cachedMemoryLedger = mergedLedger;
 
@@ -314,26 +317,30 @@ export function applyAccountingLedgerToSessions(
     ? accountingStartDate.split('T')[0]
     : null;
 
-  // Count sessions per client+day to avoid ambiguous `day:` matches when a client has 2 sessions on the same day
+  // Count sessions per client+day (only for post-cutoff sessions) to avoid ambiguous `day:` matches
   const clientDateCounts = new Map<string, number>();
-  sessions.forEach(s => {
-    if (!s || s.isDeleted || !s.clientName || !s.date) return;
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[i];
+    if (!s || s.isDeleted || !s.clientName || !s.date) continue;
+    if (cutoff && s.date < cutoff) continue;
     const norm = toTurkishAscii(getNormalizedClientName(s.clientName)).toLowerCase().trim();
     if (norm) {
       const dk = `day:${norm}_${s.date}`;
       clientDateCounts.set(dk, (clientDateCounts.get(dk) || 0) + 1);
     }
-  });
+  }
 
-  return sessions.map(s => {
+  let anyModified = false;
+  const mapped = sessions.map(s => {
     if (!s || s.isDeleted || s.type === 'cancelled' || s.type === 'non-session') return s;
+    if (cutoff && s.date && s.date < cutoff) return s;
 
     const keys = getLedgerKeysForSession(s);
     let matchedEntry: AccountingLedgerEntry | undefined = undefined;
     for (const k of keys) {
       if (k.startsWith('day:') && (clientDateCounts.get(k) || 0) > 1) continue;
       const candidate = ledger[k];
-      if (candidate) {
+      if (candidate && isMeaningfulLedgerEntry(candidate, cutoff || undefined)) {
         if (
           !matchedEntry ||
           ((candidate.paymentStatus === 'paid' || candidate.paymentStatus === 'partial') &&
@@ -347,8 +354,13 @@ export function applyAccountingLedgerToSessions(
 
     if (!matchedEntry) return s;
 
-    const currentHasPayment = s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || (Number(s.paidAmount) || 0) > 0;
-    const ledgerHasPayment = matchedEntry.paymentStatus === 'paid' || matchedEntry.paymentStatus === 'partial' || (Number(matchedEntry.paidAmount) || 0) > 0;
+    const sPrice = Number(s.price) || 0;
+    const sPaidAmt = Number(s.paidAmount) || 0;
+    const mPrice = Number(matchedEntry.price) || 0;
+    const mPaidAmt = Number(matchedEntry.paidAmount) || 0;
+
+    const currentHasPayment = (s.paymentStatus === 'paid' || s.paymentStatus === 'partial' || sPaidAmt > 0) && (sPrice > 0 || sPaidAmt > 0);
+    const ledgerHasPayment = (matchedEntry.paymentStatus === 'paid' || matchedEntry.paymentStatus === 'partial' || mPaidAmt > 0) && (mPrice > 0 || mPaidAmt > 0);
     const sTime = s.updatedAt || 0;
     const lTime = matchedEntry.updatedAt || 0;
 
@@ -357,6 +369,7 @@ export function applyAccountingLedgerToSessions(
     // ALWAYS restore the payment status from the ledger!
     if ((ledgerHasPayment && !currentHasPayment) ||
         (matchedEntry.isManuallyEdited && (!s.isManuallyEdited || lTime > sTime))) {
+      anyModified = true;
       const isOnline = s.type === 'online';
       return {
         ...s,
@@ -376,6 +389,7 @@ export function applyAccountingLedgerToSessions(
     }
 
     if (ledgerHasPayment && !s.isPaymentLocked) {
+      anyModified = true;
       return {
         ...s,
         isPaymentLocked: true,
@@ -385,6 +399,8 @@ export function applyAccountingLedgerToSessions(
 
     return s;
   });
+
+  return anyModified ? mapped : sessions;
 }
 
 export function checkIsQuotaError(error: any): boolean {

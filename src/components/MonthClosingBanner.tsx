@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ChevronRight, X, Lock } from 'lucide-react';
 import { Session, AppSettings } from '../types';
 import { getUnclosedPastMonths, formatMonthKey } from '../utils/monthCloseUtils';
@@ -22,7 +22,10 @@ export const MonthClosingBanner: React.FC<MonthClosingBannerProps> = ({
     }
   });
 
-  const unclosedMonths = getUnclosedPastMonths(sessions, settings.closedMonths);
+  const unclosedMonths = useMemo(() => {
+    if (isDismissed) return [];
+    return getUnclosedPastMonths(sessions, settings.closedMonths);
+  }, [isDismissed, sessions, settings.closedMonths]);
 
   if (isDismissed || unclosedMonths.length === 0) {
     return null;
