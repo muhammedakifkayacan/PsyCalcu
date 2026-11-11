@@ -202,11 +202,25 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Extract ONLY this client's calendar Event IDs and session names (never query other clients' events)
-  const targetClientEventIdsInfo = useMemo(() => {
-    const validSessions = clientSessions.filter(
-      s => s && !s.isDeleted && s.type !== 'non-session'
+  // Yalnızca mevcut güne kadar (bugün dahil, s.date <= todayDateStr) olan seansları rapora dahil et;
+  // gelecekte planlanan seansları süreç raporuna ve takvim not sorgusuna dahil etme.
+  const todayDateStr = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const reportEligibleSessions = useMemo(() => {
+    return clientSessions.filter(
+      s => s && !s.isDeleted && s.type !== 'non-session' && Boolean(s.date && s.date <= todayDateStr)
     );
+  }, [clientSessions, todayDateStr]);
+
+  // Extract ONLY this client's calendar Event IDs and session names up to today (never query other clients' or future events)
+  const targetClientEventIdsInfo = useMemo(() => {
+    const validSessions = reportEligibleSessions;
     const syncedSessions = validSessions.filter(
       s => s.id && (s.id.startsWith('ics_') || s.isSyncedFromCalendar)
     );
@@ -217,12 +231,22 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     const targetSessionNames = Array.from(
       new Set(validSessions.map(s => s.clientName?.trim()).filter((n): n is string => Boolean(n)))
     );
+    let minDate = '';
+    let maxDate = '';
+    for (const s of validSessions) {
+      if (s.date) {
+        if (!minDate || s.date < minDate) minDate = s.date;
+        if (!maxDate || s.date > maxDate) maxDate = s.date;
+      }
+    }
     return {
       targetEventIds,
       targetBaseUids,
-      targetSessionNames
+      targetSessionNames,
+      minDate,
+      maxDate
     };
-  }, [clientSessions]);
+  }, [reportEligibleSessions]);
 
   // Clear local note state when modal closes so no notes linger in memory
   useEffect(() => {
@@ -238,11 +262,10 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     }
   }, [isOpen]);
 
-  // Chronological sessions (oldest to newest for timeline progression)
+  // Chronological sessions up to today (oldest to newest for timeline progression)
   const chronologicalSessions = useMemo(() => {
-    return [...clientSessions]
+    return [...reportEligibleSessions]
       .filter(s => {
-        if (!s || s.isDeleted || s.type === 'non-session') return false;
         if (!includeCancelled && s.type === 'cancelled') return false;
         return true;
       })
@@ -252,12 +275,12 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         if (dA !== dB) return dA.localeCompare(dB);
         return (a.time || '').localeCompare(b.time || '');
       });
-  }, [clientSessions, includeCancelled]);
+  }, [reportEligibleSessions, includeCancelled]);
 
-  // Overall stats
+  // Overall stats (strictly up to today)
   const reportStats = useMemo(() => {
-    const active = clientSessions.filter(s => !s.isDeleted && s.type !== 'cancelled' && s.type !== 'non-session');
-    const cancelled = clientSessions.filter(s => !s.isDeleted && s.type === 'cancelled');
+    const active = reportEligibleSessions.filter(s => s.type !== 'cancelled');
+    const cancelled = reportEligibleSessions.filter(s => s.type === 'cancelled');
     const onlineCount = active.filter(s => s.type === 'online').length;
     const faceToFaceCount = active.filter(s => s.type === 'face-to-face').length;
     const totalBilled = active.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
@@ -285,7 +308,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
       firstDate,
       lastDate
     };
-  }, [clientSessions]);
+  }, [reportEligibleSessions]);
 
   // Gather all configured calendar URLs (from settings + localStorage + IndexedDB backups)
   const getConfiguredCalendarUrls = async (): Promise<string[]> => {
@@ -355,11 +378,11 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     return lines.join('\n').trim();
   };
 
-  // Generate AI Report (queries ONLY this client's events and keeps them strictly isolated in local modal state)
+  // Generate AI Report (queries ONLY this client's events up to today and keeps them strictly isolated in local modal state)
   const handleGenerateReport = async (forceRefreshCalendar = false) => {
     let activeMap: Record<string, string> = forceRefreshCalendar ? {} : { ...liveNotesMap };
 
-    const { targetEventIds, targetBaseUids, targetSessionNames } = targetClientEventIdsInfo;
+    const { targetEventIds, targetBaseUids, targetSessionNames, minDate, maxDate } = targetClientEventIdsInfo;
     const targetEventIdSet = new Set(targetEventIds);
     const targetBaseUidSet = new Set(targetBaseUids);
     const candidateNames = Array.from(new Set([clientName, displayTitle, ...targetSessionNames].filter(Boolean)));
@@ -377,7 +400,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
     };
 
     if (
-      clientSessions.length > 0 &&
+      reportEligibleSessions.length > 0 &&
       (forceRefreshCalendar || Object.keys(activeMap).length === 0)
     ) {
       setIsFetchingCalendar(true);
@@ -386,7 +409,7 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
         try {
           const localIcsNotes = await idbGet<Record<string, string>>('psycalcu_local_ics_notes');
           if (localIcsNotes && typeof localIcsNotes === 'object') {
-            for (const s of clientSessions) {
+            for (const s of reportEligibleSessions) {
               if (!s) continue;
               const baseUid = s.id?.startsWith('ics_') ? extractBaseCalendarUid(s.id) : '';
               const compactDate = (s.date || '').replace(/-/g, '');
@@ -437,9 +460,8 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
           console.warn('Could not query targeted client calendar event IDs:', err);
         }
 
-        // 3. Client-side /api/proxy-ical + parseICS across ALL months (closedMonths=undefined, accountingStartDate=null)
-        // Strictly filtered to ONLY this client, never touching tempNotesCache
-        if (calendarUrls.length > 0) {
+        // 3. Client-side /api/proxy-ical + parseICS restricted strictly to this client's [minDate, maxDate <= today]
+        if (calendarUrls.length > 0 && minDate && maxDate) {
           for (const calUrl of calendarUrls) {
             try {
               const proxyRes = await fetch(`/api/proxy-ical?url=${encodeURIComponent(calUrl)}&_t=${Date.now()}`, {
@@ -457,10 +479,15 @@ export const ClientPdfReportModal: React.FC<ClientPdfReportModalProps> = ({
                   false,
                   null,
                   undefined,
-                  false
+                  false,
+                  undefined,
+                  undefined,
+                  minDate,
+                  maxDate
                 );
                 for (const ev of parsedEvents) {
-                  if (!ev || !isEventForTargetClient(ev.id, ev.clientName)) continue;
+                  if (!ev || (ev.date && ev.date > todayDateStr)) continue;
+                  if (!isEventForTargetClient(ev.id, ev.clientName)) continue;
                   const cleanedNote = cleanParsedIcsNote(ev.notes);
                   if (!cleanedNote) continue;
                   const evBaseUid = ev.id?.startsWith('ics_') ? extractBaseCalendarUid(ev.id) : '';

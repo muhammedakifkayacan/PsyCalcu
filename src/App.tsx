@@ -2486,8 +2486,9 @@ export default function App() {
     let visibleScreenSessions: Session[] = [];
 
     if (activeClientTarget) {
+      const todayNow = formatLocalDate(new Date());
       visibleScreenSessions = currentAllSessions.filter(
-        s => s && !s.isDeleted && s.date && areClientNamesEquivalent(s.clientName, activeClientTarget)
+        s => s && !s.isDeleted && s.date && s.date <= todayNow && areClientNamesEquivalent(s.clientName, activeClientTarget)
       );
     } else if (activeTab === 'agenda') {
       if (agendaViewMode === 'day') {
