@@ -619,6 +619,34 @@ export default function App() {
   useEffect(() => { isManualSyncingRef.current = isManualSyncing; }, [isManualSyncing]);
   const isAutoSyncingRef = useRef(false);
   useEffect(() => { isAutoSyncingRef.current = isAutoSyncing; }, [isAutoSyncing]);
+  const [isCalendarSweepActive, setIsCalendarSweepActive] = useState(false);
+  const sweepStartTimestampRef = useRef<number>(0);
+  const sweepStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [recentlySyncedSessionIds, setRecentlySyncedSessionIds] = useState<Record<string, 'added' | 'updated'>>({});
+  const recentlySyncedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startCalendarLightSweep = useCallback(() => {
+    if (sweepStopTimerRef.current) {
+      clearTimeout(sweepStopTimerRef.current);
+      sweepStopTimerRef.current = null;
+    }
+    sweepStartTimestampRef.current = Date.now();
+    setIsCalendarSweepActive(true);
+  }, []);
+
+  const stopCalendarLightSweep = useCallback(() => {
+    const elapsed = Date.now() - sweepStartTimestampRef.current;
+    const minDurationMs = 950;
+    const remaining = Math.max(0, minDurationMs - elapsed);
+    if (sweepStopTimerRef.current) {
+      clearTimeout(sweepStopTimerRef.current);
+    }
+    sweepStopTimerRef.current = setTimeout(() => {
+      setIsCalendarSweepActive(false);
+      sweepStopTimerRef.current = null;
+    }, remaining);
+  }, []);
+
   const [lastCalendarSyncTime, setLastCalendarSyncTime] = useState<Date | null>(null);
   const lastSyncTimestampRef = useRef<number>(0);
   const [isCloudSaving, setIsCloudSaving] = useState(false);
@@ -2538,8 +2566,10 @@ export default function App() {
     }
 
     setIsFetchingNotes(true);
+    startCalendarLightSweep();
     const newCache: Record<string, string> = { ...tempNotesCache };
     let fetchedAny = false;
+    const updatedNoteIds: Record<string, 'updated'> = {};
 
     const urls: { url: string; type: 'online' | 'face-to-face' | 'rent-income' }[] = [];
     if (onlineCalendarWebcalUrl) urls.push({ url: onlineCalendarWebcalUrl, type: 'online' });
@@ -2580,6 +2610,9 @@ export default function App() {
 
           parsed.forEach(ev => {
             if (ev.id && ev.notes && visibleSessionIds.has(ev.id)) {
+              if (newCache[ev.id] !== ev.notes) {
+                updatedNoteIds[ev.id] = 'updated';
+              }
               newCache[ev.id] = ev.notes;
               fetchedAny = true;
             }
@@ -2593,6 +2626,14 @@ export default function App() {
     setTempNotesCache(newCache);
     setHasFetchedInstantNotes(true);
     setIsFetchingNotes(false);
+    stopCalendarLightSweep();
+    if (Object.keys(updatedNoteIds).length > 0) {
+      setRecentlySyncedSessionIds(prev => ({ ...prev, ...updatedNoteIds }));
+      if (recentlySyncedTimerRef.current) clearTimeout(recentlySyncedTimerRef.current);
+      recentlySyncedTimerRef.current = setTimeout(() => {
+        setRecentlySyncedSessionIds({});
+      }, 4500);
+    }
     setShowNotes(true);
     try {
       const key = user ? `psycalcu_show_notes_${user.uid}` : 'psycalcu_show_notes';
@@ -5149,6 +5190,7 @@ export default function App() {
     if (!isBackgroundAuto) {
       setIsManualSyncing(true);
     }
+    startCalendarLightSweep();
     let totalNewSessions: Session[] = [];
     let hasFetchedOnline = false;
     let hasFetchedFaceToFace = false;
@@ -5300,6 +5342,7 @@ export default function App() {
     if (!isBackgroundAuto) {
       setIsManualSyncing(false);
     }
+    stopCalendarLightSweep();
     setLastCalendarSyncTime(new Date());
 
     const syncedTypesFetched: ('online' | 'face-to-face')[] = [];
@@ -5313,6 +5356,20 @@ export default function App() {
         isFullSync: isFullSyncMode,
         allowLockedMonthBackfill: allowLockedMonthBackfillForView
       });
+      if (stats.addedList.length > 0 || stats.updatedList.length > 0) {
+        const nextUpdatedIds: Record<string, 'added' | 'updated'> = {};
+        stats.addedList.forEach((item: any) => {
+          if (item?.id) nextUpdatedIds[item.id] = 'added';
+        });
+        stats.updatedList.forEach((item: any) => {
+          if (item?.id) nextUpdatedIds[item.id] = 'updated';
+        });
+        setRecentlySyncedSessionIds(nextUpdatedIds);
+        if (recentlySyncedTimerRef.current) clearTimeout(recentlySyncedTimerRef.current);
+        recentlySyncedTimerRef.current = setTimeout(() => {
+          setRecentlySyncedSessionIds({});
+        }, 4500);
+      }
       if (!isBackgroundAuto && (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0)) {
         let msg = isFullSyncMode
           ? 'Tam takvim senkronizasyonu tamamlandı: '
@@ -7098,22 +7155,36 @@ export default function App() {
                 </div>
 
                 {/* Daily Agenda List */}
-                <div className="bg-white rounded-[2rem] border border-[#e5e1d8] flex flex-col min-h-[400px] overflow-hidden shadow-sm">
+                <div className={`bg-white rounded-[2rem] border border-[#e5e1d8] flex flex-col min-h-[400px] overflow-hidden shadow-sm ${
+                  (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(selectedDate, settings.closedMonths)
+                    ? 'psy-lightsweep-bar'
+                    : ''
+                }`}>
                   
                   {/* Card Header for Daily Agenda List */}
-                  <div className="px-5 md:px-8 py-3.5 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]/60">
+                  <div className="px-5 md:px-8 py-3.5 border-b border-[#f5f5f0] flex justify-between items-center bg-[#fdfbf7]/60 flex-wrap gap-2">
                     <h3 className="text-base font-serif text-[#6b705c] flex items-center gap-2 font-bold">
                       Günlük Seans Listesi
                       <span className="text-xs bg-white text-slate-700 font-sans font-bold px-2.5 py-0.5 rounded-full border border-[#e5e1d8] shadow-3xs">
                         {new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                       </span>
                     </h3>
+                    {(isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(selectedDate, settings.closedMonths) && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-[10px] font-bold animate-fade-in">
+                        <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                        <span>Bu gün takvimden sorgulanıyor...</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Session List */}
                   <div className="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto">
                     {displayedSessions.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className={`flex flex-col items-center justify-center py-16 text-center rounded-2xl ${
+                        (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(selectedDate, settings.closedMonths)
+                          ? 'psy-lightsweep bg-slate-50/40'
+                          : ''
+                      }`}>
                         <CalendarIcon className="w-12 h-12 text-[#a5a58d]/60 stroke-[1.5] mb-2" />
                         <h4 className="text-sm font-semibold text-slate-600">
                           {filteredSessions.length === 0 
@@ -7140,11 +7211,17 @@ export default function App() {
                         );
                         const sessionRoom = settings.rooms?.find(r => r.id === session.roomId);
                         const isTenantSession = session.type === 'rent-income';
+                        const isSessionSweeping = (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(session.date, settings.closedMonths);
+                        const recentSyncBadge = recentlySyncedSessionIds[session.id];
                         
                         return (
                           <div
                             key={session.id}
                             className={`group flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-2xl border transition-all ${
+                              isSessionSweeping ? 'psy-lightsweep' : ''
+                            } ${
+                              recentSyncBadge ? 'psy-updated-flash ring-2 ring-emerald-400/70' : ''
+                            } ${
                               isCancelled 
                                 ? 'bg-red-50/20 border-red-100 opacity-60' 
                                 : session.type === 'non-session'
@@ -7273,6 +7350,13 @@ export default function App() {
                                     title="Bu seans Ödendi olarak işaretlendiği için kilitlenmiştir. Takvim senkronizasyonunda gün/saat değişse bile ödeme durumu ve fiyat bilgileriniz korunur."
                                   >
                                     🔒 Ödeme Kilitli
+                                  </span>
+                                )}
+
+                                {/* Recently Added / Updated Badge after Calendar Sync */}
+                                {recentSyncBadge && (
+                                  <span className="text-[9px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-extrabold tracking-wider flex items-center gap-0.5 shadow-xs animate-bounce">
+                                    ✨ {recentSyncBadge === 'added' ? 'YENİ EKLENDİ' : 'GÜNCELLENDİ'}
                                   </span>
                                 )}
 
@@ -7590,10 +7674,12 @@ export default function App() {
 
             {/* WEEKLY AGENDA VIEW */}
             {agendaViewMode === 'week' && (
-              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in">
+              <div className={`bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in ${
+                isCalendarSweepActive || isFetchingNotes ? 'psy-lightsweep-bar' : ''
+              }`}>
                 {/* Weekly Header & Navigation */}
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#f5f5f0]">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={handlePrevWeek}
@@ -7623,6 +7709,13 @@ export default function App() {
                     <span className="text-sm font-serif font-bold text-slate-800 ml-2">
                       {weekRangeStr}
                     </span>
+
+                    {(isCalendarSweepActive || isFetchingNotes) && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-[10px] font-bold animate-fade-in">
+                        <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                        <span>Bu hafta takvimden sorgulanıyor...</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Summary Stats */}
@@ -7652,6 +7745,7 @@ export default function App() {
                     const isToday = day.dateStr === getTodayLocalDate();
                     const isSelected = day.dateStr === selectedDate;
                     const daySessions = getFilteredSessionsForDate(day.dateStr);
+                    const isDaySweeping = (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(day.dateStr, settings.closedMonths);
 
                     const dayRevenue = daySessions.reduce((acc, s) => s.type !== 'cancelled' && s.type !== 'non-session' ? acc + s.price : acc, 0);
 
@@ -7659,6 +7753,8 @@ export default function App() {
                       <div
                         key={day.dateStr}
                         className={`flex flex-col rounded-2xl border transition-all min-h-[360px] ${
+                          isDaySweeping ? 'psy-lightsweep-bar' : ''
+                        } ${
                           isToday
                             ? 'bg-[#fdfbf7] border-[#6b705c] ring-2 ring-[#6b705c]/20 shadow-xs'
                             : isSelected
@@ -7670,6 +7766,8 @@ export default function App() {
                         <div
                           onClick={() => setSelectedDate(day.dateStr)}
                           className={`p-3 border-b flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                            isDaySweeping && daySessions.length === 0 ? 'psy-lightsweep' : ''
+                          } ${
                             isToday
                               ? 'bg-[#6b705c] text-white rounded-t-2xl'
                               : 'bg-[#fdfbf7] hover:bg-[#f5f5f0] text-slate-800 rounded-t-2xl border-[#e5e1d8]'
@@ -7718,6 +7816,7 @@ export default function App() {
                               const isFaceToFace = session.type === 'face-to-face';
                               const isTenant = session.type === 'rent-income';
                               const isPaid = session.paymentStatus === 'paid';
+                              const recentSyncBadge = recentlySyncedSessionIds[session.id];
 
                               return (
                                 <motion.div
@@ -7729,6 +7828,10 @@ export default function App() {
                                     setIsSessionModalOpen(true);
                                   }}
                                   className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                                    isDaySweeping ? 'psy-lightsweep' : ''
+                                  } ${
+                                    recentSyncBadge ? 'psy-updated-flash ring-2 ring-emerald-400/70' : ''
+                                  } ${
                                     isCancelled
                                       ? 'bg-rose-50/40 border-rose-200 text-rose-800 opacity-60 line-through'
                                       : isPaid
@@ -7745,7 +7848,11 @@ export default function App() {
                                       <Clock className="w-3 h-3" />
                                       {session.time || 'Saat yok'}
                                     </span>
-                                    {isPaid ? (
+                                    {recentSyncBadge ? (
+                                      <span className="inline-flex items-center gap-0.5 text-[8px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.2 rounded-full">
+                                        ✨ {recentSyncBadge === 'added' ? 'Yeni' : 'Güncel'}
+                                      </span>
+                                    ) : isPaid ? (
                                       <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.2 rounded-full shadow-2xs">
                                         ✓ Ödendi
                                       </span>
@@ -7822,10 +7929,14 @@ export default function App() {
 
             {/* MONTHLY AGENDA VIEW */}
             {agendaViewMode === 'month' && (
-              <div className="bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in">
+              <div className={`bg-white rounded-[2rem] border border-[#e5e1d8] p-4 sm:p-6 shadow-sm flex flex-col gap-6 animate-fade-in ${
+                (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(`${calendarViewDate.getFullYear()}-${String(calendarViewDate.getMonth() + 1).padStart(2, '0')}-01`, settings.closedMonths)
+                  ? 'psy-lightsweep-bar'
+                  : ''
+              }`}>
                 {/* Month Header & Nav */}
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#f5f5f0]">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={handlePrevMonth}
@@ -7855,6 +7966,13 @@ export default function App() {
                     <span className="text-base font-serif font-bold text-slate-800 ml-2">
                       {calendarViewDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
                     </span>
+
+                    {(isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(`${calendarViewDate.getFullYear()}-${String(calendarViewDate.getMonth() + 1).padStart(2, '0')}-01`, settings.closedMonths) && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-[10px] font-bold animate-fade-in">
+                        <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                        <span>Bu ay takvimden sorgulanıyor...</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 text-xs">
@@ -7893,6 +8011,7 @@ export default function App() {
                       const isSelected = cell.dateStr === selectedDate;
                       const isToday = cell.dateStr === getTodayLocalDate();
                       const daySessions = getFilteredSessionsForDate(cell.dateStr);
+                      const isCellSweeping = cell.isCurrentMonth && (isCalendarSweepActive || isFetchingNotes) && !isDateInClosedMonth(cell.dateStr, settings.closedMonths);
 
                       const dayRevenue = daySessions.reduce((acc, s) => s.type !== 'cancelled' && s.type !== 'non-session' ? acc + s.price : acc, 0);
 
@@ -7901,6 +8020,8 @@ export default function App() {
                           key={idx}
                           onClick={() => setSelectedDate(cell.dateStr)}
                           className={`min-h-[90px] md:min-h-[110px] p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            isCellSweeping ? 'psy-lightsweep' : ''
+                          } ${
                             !cell.isCurrentMonth
                               ? 'bg-slate-100/50 text-slate-300 border-slate-200/50'
                               : isSelected
