@@ -932,6 +932,139 @@
           </div>
         </div>
 
+        <!-- Feature 5: Akıllı Başlık Filtreleme & Danışan Profilleri -->
+        <div class='isometric-card bg-[#fbfbf9] p-7 rounded-3xl border border-emerald-200/80 flex flex-col justify-between h-80 scroll-reveal relative overflow-hidden'>
+          <span class='absolute top-4 right-4 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full tracking-wider'>YENİ</span>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #0f766e;'>
+            <i data-lucide='user-check' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Akıllı Danışan Profilleri</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Takvimdeki <code>Online - İsim 1</code>, <code>Yüz Yüze İsim (2. Seans)</code> gibi ekleri otomatik temizler; tüm geçmişi tek bir <strong>Danışan Profili</strong> altında birleştirir.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 6: KVKK Uyumlu PDF & Word Danışan Raporu -->
+        <div class='bg-[#fbfbf9] p-7 rounded-3xl border border-emerald-200/80 flex flex-col justify-between h-80 scroll-reveal transform hover:translate-y-[-8px] transition-all duration-300 shadow-xs relative overflow-hidden'>
+          <span class='absolute top-4 right-4 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full tracking-wider'>%100 KVKK</span>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #4f46e5;'>
+            <i data-lucide='file-text' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>KVKK Uyumlu PDF &amp; Word Rapor</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Danışan profilinden tek tıkla antetli PDF veya Word süreç raporu oluşturun. Klinik notlar sunucuya <strong>asla kaydedilmez</strong>, cihazınızda anlık üretilir.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 7: Dönem (Ay) Kilitleme & Ödeme Koruması -->
+        <div class='bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal transform hover:translate-y-[-8px] transition-all duration-300 shadow-xs relative overflow-hidden'>
+          <span class='absolute top-4 right-4 bg-amber-100 text-amber-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full tracking-wider'>KORUMA</span>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #b45309;'>
+            <i data-lucide='lock' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Ay Kapatma &amp; Ödeme Kilidi</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Mutabakatı biten ayları kilitleyerek geçmiş verileri mühürleyin. <code>🔒 Ödendi</code> kilidi ile tahsil edilmiş seansları takvim değişimlerine karşı koruyun.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 8: Görünüm Bazlı Hızlı Senkronizasyon & Özel Kurallar -->
+        <div class='isometric-card-right bg-[#fbfbf9] p-7 rounded-3xl border border-slate-200/70 flex flex-col justify-between h-80 scroll-reveal relative overflow-hidden'>
+          <span class='absolute top-4 right-4 bg-slate-200 text-slate-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full tracking-wider'>PERFORMANS</span>
+          <div class='w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold' style='background: #334155;'>
+            <i data-lucide='zap' class='w-6 h-6'></i>
+          </div>
+          <div>
+            <h3 class='font-display text-lg font-bold text-slate-900 mb-2'>Akıllı Görünüm Sorgusu &amp; KDV</h3>
+            <p class='text-xs text-slate-500 leading-relaxed font-normal'>
+              Ajandada bulunduğunuz gün, hafta veya aya göre ultra hızlı takvim sorgusu yapar; KDV (Dahil/Hariç), kısmi ödeme ve özel danışan fiyatlarını yönetir.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Highlight Banner: Danışan Profili & KVKK Uyumlu PDF/Word Süreç Raporu Vitrin Kartı -->
+      <div class='mt-12 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-3xl p-6 sm:p-10 text-white border border-slate-800 shadow-xl scroll-reveal'>
+        <div class='grid grid-cols-1 lg:grid-cols-12 gap-8 items-center'>
+          <div class='lg:col-span-7 space-y-4'>
+            <div class='inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold tracking-wider uppercase'>
+              <i data-lucide='shield-check' class='w-3.5 h-3.5'></i>
+              Zero-Storage Mimari • %100 KVKK Uyumlu Raporlama
+            </div>
+            <h3 class='font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight'>
+              Dağınık Takvim Başlıklarından Tek Tıkla Profesyonel Danışan Profiline ve PDF Rapora
+            </h3>
+            <p class='text-xs sm:text-sm text-slate-300 leading-relaxed font-normal'>
+              Takviminize <strong>"Online - Zeynep Kaya 1"</strong>, <strong>"Yüz Yüze Zeynep Kaya (Çift)"</strong> veya <strong>"Zeynep Kaya - 4. Seans"</strong> yazmanız fark etmez. Akıllı Başlık Filtreleme motoru tüm ekleri ve seans numaralarını temizleyerek danışanınızın tüm geçmişini tek bir temiz profilde toplar.
+            </p>
+            <div class='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs text-slate-200'>
+              <div class='flex items-start gap-2.5 bg-white/5 p-3.5 rounded-2xl border border-white/10'>
+                <i data-lucide='sparkles' class='w-4 h-4 text-amber-400 shrink-0 mt-0.5'></i>
+                <div>
+                  <strong class='block text-white mb-0.5'>Otomatik Başlık Temizleme</strong>
+                  <span class='text-[11px] text-slate-400'>Online, Yüz Yüze, Bireysel, Çift, Seans No ve parantez içi notları ayıklar.</span>
+                </div>
+              </div>
+              <div class='flex items-start gap-2.5 bg-white/5 p-3.5 rounded-2xl border border-white/10'>
+                <i data-lucide='file-down' class='w-4 h-4 text-emerald-400 shrink-0 mt-0.5'></i>
+                <div>
+                  <strong class='block text-white mb-0.5'>Sisteme Kaydedilmeyen PDF &amp; Word</strong>
+                  <span class='text-[11px] text-slate-400'>Seans notları veritabanına uğramadan doğrudan tarayıcınızda rapora dönüştürülür.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class='lg:col-span-5 bg-slate-950/90 rounded-2xl p-5 border border-slate-800 space-y-4'>
+            <div class='flex items-center justify-between border-b border-slate-800 pb-3'>
+              <div class='flex items-center gap-3'>
+                <div class='w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-display font-bold text-sm'>
+                  ZK
+                </div>
+                <div>
+                  <div class='text-xs font-bold text-white flex items-center gap-1.5'>
+                    Zeynep Kaya
+                    <span class='text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-semibold'>12 Seans Birleştirildi</span>
+                  </div>
+                  <div class='text-[10px] text-slate-400'>Takvimdeki 4 farklı yazım biçimi tek profilde eşlendi</div>
+                </div>
+              </div>
+            </div>
+
+            <div class='space-y-1.5 text-[10px]'>
+              <div class='flex items-center justify-between bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-800/80'>
+                <span class='text-slate-400 line-through'>Online - Zeynep Kaya (1. Seans)</span>
+                <span class='text-emerald-400 font-semibold'>→ Zeynep Kaya</span>
+              </div>
+              <div class='flex items-center justify-between bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-800/80'>
+                <span class='text-slate-400 line-through'>Yüz Yüze: Zeynep Kaya 2</span>
+                <span class='text-emerald-400 font-semibold'>→ Zeynep Kaya</span>
+              </div>
+            </div>
+
+            <div class='pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800'>
+              <span class='text-[10px] text-slate-400 flex items-center gap-1'>
+                <i data-lucide='lock' class='w-3 h-3 text-emerald-400'></i>
+                Notlar sunucuya kaydedilmez
+              </span>
+              <div class='flex items-center gap-2'>
+                <span class='px-2.5 py-1.5 rounded-lg bg-indigo-600/90 text-white text-[10px] font-bold inline-flex items-center gap-1'>
+                  <i data-lucide='file-text' class='w-3 h-3'></i> PDF Süreç Raporu
+                </span>
+                <span class='px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-[10px] font-bold inline-flex items-center gap-1 border border-slate-700'>
+                  Word (.doc)
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1857,10 +1990,11 @@
             <h3 class='font-display text-xl font-bold text-slate-900 mb-2'>Terapist Modülü</h3>
             <p class='text-xs text-slate-500 mb-6'>Tekil çalışan bağımsız psikologlar ve psikolojik danışmanlar için özel yönetim paketi.</p>
             <ul class='space-y-3 text-xs text-slate-600 mb-8 pt-2 border-t border-slate-200/60'>
-              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Sınırsız Seans &amp; Danışan Kaydı</li>
-              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Çift Takvim Entegrasyonu</li>
-              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Otomatik Bakıcı &amp; Ofis Kirası Hesabı</li>
-              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> PDF &amp; Google E-Tablo Raporları</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Sınırsız Seans &amp; Akıllı Danışan Profili</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Takvim Başlık Filtreleme &amp; Otomatik Gruplama</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> %100 KVKK Uyumlu PDF &amp; Word Danışan Raporu</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> Ay Kapatma (Dönem Kilidi) &amp; Ödeme Koruması</li>
+              <li class='flex items-center gap-2.5'><span class='text-emerald-600 font-bold'>✓</span> KDV Hesabı, Kısmi Ödeme &amp; E-Tablo Çıktısı</li>
             </ul>
           </div>
           <a href='mailto:muhammedakifkayacan@gmail.com?subject=PsyCalcu%20-%20Bireysel%20Plan%20Talebi&amp;body=Merhaba%20Muhammed%20Akif%20Bey%2C%0D%0A%0D%0APsyCalcu%20platformundaki%20%22Bireysel%20Plan%20(Terapist%20Mod%C3%BCl%C3%BC)%22%20hakk%C4%B1nda%20bilgi%20almak%20ve%20kullan%C4%B1ma%20ba%C5%9Flamak%20istiyorum.%0D%0A%0D%0ABilgilerim%3A%0D%0AAd%20Soyad%3A%20%0D%0AUzmanl%C4%B1k%20%2F%20Klinik%3A%20%0D%0A%0D%0ATe%C5%9Fekk%C3%BCrler.' class='w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center transition-all inline-flex items-center justify-center gap-2 shadow-sm'>
@@ -1880,9 +2014,10 @@
             <p class='text-xs text-slate-400 mb-6'>Ortak ofis mülk sahipleri ve çok ortaklı klinik yöneticileri için.</p>
             <ul class='space-y-3 text-xs text-slate-300 mb-8 pt-2 border-t border-slate-800/80'>
               <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> 10 Adete Kadar Kiracı Takvimi Bağlama</li>
-              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Kiracı Terapist Bazlı Hakediş Yönetimi</li>
-              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Ofis Kira Gelirleri Otomatik Takibi</li>
-              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Gelişmiş Filtreleme &amp; Borç Takip</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Kiracı Terapist Bazlı Hakediş &amp; KDV Yönetimi</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Seans Sağlama &amp; Denetim (Audit) Tablosu</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Kilitli Ay (Dönem Mühürleme) &amp; Borç Takibi</li>
+              <li class='flex items-center gap-2.5'><span class='text-accent font-bold'>✓</span> Tüm Terapist Modülü &amp; KVKK Rapor Özellikleri</li>
             </ul>
           </div>
           <a href='mailto:muhammedakifkayacan@gmail.com?subject=PsyCalcu%20-%20Klinik%20ve%20%C3%87oklu%20Y%C3%B6netim%20Mod%C3%BCl%C3%BC%20Talebi&amp;body=Merhaba%20Muhammed%20Akif%20Bey%2C%0D%0A%0D%0APsyCalcu%20platformundaki%20%22Ofis%20Sahibi%20%2F%20Klinik%20%C3%87oklu%20Y%C3%B6netim%20Mod%C3%BCl%C3%BC%22%20hakk%C4%B1nda%20bilgi%20almak%20ve%20klini%C4%9Fimiz%20i%C3%A7in%20g%C3%B6r%C3%BC%C5%9Fmek%20istiyorum.%0D%0A%0D%0ABilgilerim%3A%0D%0AAd%20Soyad%20%2F%20Klinik%20Ad%C4%B1%3A%20%0D%0ATerapist%20%2F%20Oda%20Say%C4%B1s%C4%B1%3A%20%0D%0A%0D%0ATe%C5%9Fekk%C3%BCrler.' class='w-full py-3.5 bg-accent hover:opacity-90 text-slate-950 text-xs font-bold rounded-xl text-center transition-all inline-flex items-center justify-center gap-2 shadow-sm'>
@@ -2452,6 +2587,24 @@
           <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Takvimimdeki spor, alışveriş veya doktor randevusu gibi kişisel etkinlikler seans hesaplarına karışır mı?</h4>
           <p class='text-slate-500 leading-relaxed font-normal'>
             Hayır, kesinlikle karışmaz. PsyCalcu bünyesinde barındırdığı <strong>Otomatik Kişisel Etkinlik &amp; Seans Dışı Filtreleme Sistemi</strong> sayesinde takviminizdeki spor, fitness, market, kuaför, doktor, hastane/tahlil, yemek veya tatil gibi kişisel etkinlikleri akıllı olarak tespit eder. Ayrıca etkinlik adında veya açıklamasında <code>#seansdeğil</code> (veya <code>#seansdisi</code>) etiketi yer alıyorsa, öncesinde veya sonrasında ne yazdığı fark etmeksizin etkinlik otomatik olarak seans dışı (0 ₺) olarak kaydedilir; seans sayılarına, ciroya, ofis kirası veya bakıcı kesintilerine asla dahil edilmez.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Takvimdeki farklı yazılmış etkinlik başlıklarından Danışan Profilleri nasıl oluşturuluyor?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            PsyCalcu'nun <strong>Akıllı Takvim Başlığı Filtreleme</strong> algoritması; takviminize girdiğiniz <code>Online - Danışan Adı</code>, <code>Yüz Yüze: Danışan Adı 3</code>, <code>Danışan Adı (Çift Terapisi)</code> veya <code>Seans - Danışan Adı</code> gibi farklı yazımlardaki ön ekleri, son ekleri ve seans numaralarını otomatik olarak temizler. Böylece aynı danışana ait tüm geçmiş ve gelecek randevuları tek bir <strong>Danışan Profili</strong> kartında birleştirir; toplam seans sayısını, tahsilat geçmişini ve kalan bakiyeyi hatasız izlemenizi sağlar.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Danışan profilinden PDF veya Word süreç raporu oluştururken notlar sisteme kaydediliyor mu?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Hayır, <strong>kesinlikle sisteme veya bulut veritabanına kaydedilmez</strong>. Danışan profilinden <strong>PDF veya Word Süreç Raporu</strong> oluşturmak istediğinizde, takvim açıklamalarınızdaki seans notları yalnızca kendi cihazınızın yerel belleğinde (tarayıcı içi geçici önbellekte) okunur ve doğrudan cihazınızda PDF/Word dosyasına dönüştürülür. Rapor başlığını, klinik/uzman adınızı, web sitenizi ve rapora hangi bilgilerin (ücret tablosu, seans notları, değerlendirme özeti vb.) dahil edileceğini tamamen kendiniz seçebilirsiniz; üstelik hiçbir klinik not sunucularımıza uğramadığı için <strong>%100 KVKK uyumludur</strong>.
+          </p>
+        </div>
+        <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>
+          <h4 class='text-xs font-bold text-slate-900 tracking-wide mb-2'>Ay Kapatma (Dönem Kilitleme) ve Ödeme Kilidi (🔒) verilerimi nasıl korur?</h4>
+          <p class='text-slate-500 leading-relaxed font-normal'>
+            Hesabını kapattığınız geçmiş ayları <strong>Ayı Kapat (Dönemi Kilitle)</strong> butonuyla mühürlediğinizde, o aya ait tüm seanslar veritabanında kalıcı olarak kilitlenir ve sonraki takvim senkronizasyonlarından etkilenmez. Ayrıca ödemesini aldığınız herhangi bir seansı <strong>Ödendi</strong> olarak işaretlediğinizde otomatik devreye giren <code>🔒 Ödeme Kilidi</code> sayesinde, takvimde etkinlik saati değişse bile tahsilat ve fiyat bilginiz asla bozulmaz.
           </p>
         </div>
         <div class='bg-white p-5 rounded-2xl border border-slate-200/50 scroll-reveal'>

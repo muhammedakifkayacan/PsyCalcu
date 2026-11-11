@@ -2367,6 +2367,8 @@ export default function App() {
   }, []);
 
   const activeTab = activeTabInternal;
+  const activeTabRef = useRef(activeTabInternal);
+  activeTabRef.current = activeTabInternal;
 
   // Selected client for dedicated ClientDetailPage view
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
@@ -2476,13 +2478,73 @@ export default function App() {
       return;
     }
 
+    // Ekranda o an listelenen (görünen) seansların ID'lerini ve tarih aralığını tespit et:
+    // - Danışan Profili açıkken: Sadece o danışanın seans ID'leri
+    // - Ajanda (Günlük / Haftalık / Aylık): Sadece o günün / haftanın / ayın ekrandaki seans ID'leri
+    const currentAllSessions = (sessionsRef.current && sessionsRef.current.length > 0) ? sessionsRef.current : sessions;
+    const activeClientTarget = historyModalClientName || (activeTab === 'client' ? selectedClientName : null);
+    let visibleScreenSessions: Session[] = [];
+
+    if (activeClientTarget) {
+      visibleScreenSessions = currentAllSessions.filter(
+        s => s && !s.isDeleted && s.date && areClientNamesEquivalent(s.clientName, activeClientTarget)
+      );
+    } else if (activeTab === 'agenda') {
+      if (agendaViewMode === 'day') {
+        visibleScreenSessions = getFilteredSessionsForDate(selectedDate);
+      } else if (agendaViewMode === 'week') {
+        const wStart = weekDays[0]?.dateStr || selectedDate;
+        const wEnd = weekDays[6]?.dateStr || selectedDate;
+        visibleScreenSessions = currentAllSessions.filter(
+          s => s && !s.isDeleted && s.date >= wStart && s.date <= wEnd
+        );
+      } else {
+        const y = calendarViewDate.getFullYear();
+        const m = calendarViewDate.getMonth();
+        const mPrefix = `${y}-${String(m + 1).padStart(2, '0')}`;
+        visibleScreenSessions = currentAllSessions.filter(
+          s => s && !s.isDeleted && s.date && s.date.startsWith(mPrefix)
+        );
+      }
+    } else {
+      // Diğer sekmelerde (Örn. Yedekleme/Rapor veya Arama) seçili ayın seansları
+      const y = calendarViewDate.getFullYear();
+      const m = calendarViewDate.getMonth();
+      const mPrefix = `${y}-${String(m + 1).padStart(2, '0')}`;
+      visibleScreenSessions = currentAllSessions.filter(
+        s => s && !s.isDeleted && s.date && s.date.startsWith(mPrefix)
+      );
+    }
+
+    const visibleSessionIds = new Set<string>();
+    let minVisibleDate = '';
+    let maxVisibleDate = '';
+    for (let i = 0; i < visibleScreenSessions.length; i++) {
+      const s = visibleScreenSessions[i];
+      if (!s || !s.id) continue;
+      visibleSessionIds.add(s.id);
+      if (s.date) {
+        if (!minVisibleDate || s.date < minVisibleDate) minVisibleDate = s.date;
+        if (!maxVisibleDate || s.date > maxVisibleDate) maxVisibleDate = s.date;
+      }
+    }
+
+    if (visibleSessionIds.size === 0) {
+      if (!silent) {
+        showToast('Bu ekranda notu sorgulanacak aktif bir seans bulunmuyor.', 'info');
+      }
+      return;
+    }
+
     setIsFetchingNotes(true);
     const newCache: Record<string, string> = { ...tempNotesCache };
     let fetchedAny = false;
 
     const urls: { url: string; type: 'online' | 'face-to-face' | 'rent-income' }[] = [];
     if (onlineCalendarWebcalUrl) urls.push({ url: onlineCalendarWebcalUrl, type: 'online' });
-    if (faceToFaceCalendarWebcalUrl) urls.push({ url: faceToFaceCalendarWebcalUrl, type: 'face-to-face' });
+    if (faceToFaceCalendarWebcalUrl && faceToFaceCalendarWebcalUrl.trim() !== (onlineCalendarWebcalUrl || '').trim()) {
+      urls.push({ url: faceToFaceCalendarWebcalUrl, type: 'face-to-face' });
+    }
     if (hasOwnerCalendars && ownerCalendars) {
       ownerCalendars.forEach(c => {
         if (c && c.url) urls.push({ url: c.url, type: 'rent-income' });
@@ -2497,6 +2559,7 @@ export default function App() {
           const effectiveNoteCutoff = settings.accountingStartDate
             ? settings.accountingStartDate.split('T')[0]
             : (registrationCreatedAt ? registrationCreatedAt.split('T')[0] : null);
+          // Sadece ekranda listelenen seansların tarih aralığını (minVisibleDate .. maxVisibleDate) ayrıştır
           const parsed = parseICS(
             icsText, 
             settings.defaultSessionPrice, 
@@ -2507,11 +2570,15 @@ export default function App() {
             false,
             effectiveNoteCutoff,
             settings.closedMonths,
-            true
+            false,
+            undefined,
+            undefined,
+            minVisibleDate,
+            maxVisibleDate
           );
 
           parsed.forEach(ev => {
-            if (ev.id && ev.notes) {
+            if (ev.id && ev.notes && visibleSessionIds.has(ev.id)) {
               newCache[ev.id] = ev.notes;
               fetchedAny = true;
             }
@@ -2532,9 +2599,9 @@ export default function App() {
     } catch (e) {}
     if (!silent) {
       if (fetchedAny) {
-        showToast('Takvim açıklamaları başarıyla anlık olarak çekildi (KVKK uyumlu - veritabanına kaydedilmez).', 'success');
+        showToast(`Ekrandaki ${visibleSessionIds.size} seans için takvim notları anlık çekildi (KVKK uyumlu - kaydedilmez).`, 'success');
       } else {
-        showToast('Takvimlerde yeni bir seans notu bulunamadı.', 'info');
+        showToast('Ekrandaki seanslar için takvimde açıklama/not bulunamadı.', 'info');
       }
     }
   };
@@ -4115,7 +4182,7 @@ export default function App() {
   const handleImportSessions = (
     newSessions: Session[],
     syncedTypesFetched?: 'online' | 'face-to-face' | 'rent-income' | ('online' | 'face-to-face' | 'rent-income')[],
-    syncWindow?: { start: string; end: string; isFullSync?: boolean }
+    syncWindow?: { start: string; end: string; isFullSync?: boolean; allowLockedMonthBackfill?: boolean }
   ) => {
     const activeSettings = settingsRef.current || settings;
     const activeClosedMonths = getEffectiveClosedMonths(activeSettings.closedMonths, user?.uid);
@@ -4180,6 +4247,7 @@ export default function App() {
         safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') !== 'true' &&
         effectiveSessions.length === 0)
     );
+    const allowLockedMonthBackfill = Boolean(isFullSyncMode || syncWindow?.allowLockedMonthBackfill);
 
     const todayDateObj = new Date();
     const past30DaysDateObj = new Date(todayDateObj);
@@ -4415,9 +4483,9 @@ export default function App() {
     };
 
     uniqueNewSessions.forEach(ns => {
-      // 1. In routine view-scoped sync (!isFullSyncMode), ignore events outside the queried window or inside closed months
+      // 1. In routine view-scoped sync (!isFullSyncMode), ignore events outside the queried window or inside closed months (unless backfilling an empty locked month on screen)
       if (!isFullSyncMode) {
-        if (isDateInClosedMonth(ns.date, activeClosedMonths)) {
+        if (!allowLockedMonthBackfill && isDateInClosedMonth(ns.date, activeClosedMonths)) {
           return;
         }
         if (ns.date && (ns.date < windowStartStr || ns.date > windowEndStr)) {
@@ -5039,43 +5107,41 @@ export default function App() {
     const activeClosedMonths = getEffectiveClosedMonths(activeSettings.closedMonths, user?.uid);
     const currentList = sessionsRef.current || [];
 
-    // Self-healing check: if any locked month in activeClosedMonths has 0 sessions in the database (or v2 backfill hasn't run yet),
-    // automatically run a one-time full backfill to restore missing locked-month sessions into Firestore!
-    let hasMissingLockedMonthSessions = false;
-    const closedKeys = Object.keys(activeClosedMonths);
-    if (closedKeys.length > 0) {
-      const backfillKey = user?.uid ? `psycalcu_locked_backfill_v2_${user.uid}` : 'psycalcu_locked_backfill_v2';
-      if (safeStorage.getItem(backfillKey) !== 'true') {
-        hasMissingLockedMonthSessions = true;
-      } else {
-        for (const mk of closedKeys) {
-          if ((activeClosedMonths[mk]?.sessionCount || 0) > 0) {
-            const hasAnyInMonth = currentList.some(s => s && !s.isDeleted && s.date && s.date.startsWith(mk));
-            if (!hasAnyInMonth) {
-              hasMissingLockedMonthSessions = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-
     const hasCompletedInitial = Boolean(
       activeSettings.hasCompletedInitialCalendarSync ||
       safeStorage.getItem('psycalcu_has_completed_initial_calendar_sync') === 'true' ||
       currentList.length > 0
     );
 
-    const isFullSyncMode = Boolean(forceFullCalendarSync || !hasCompletedInitial || hasMissingLockedMonthSessions);
+    // Tam takvim eşitlemesi SADECE ilk kez takvim bağlandığında (0 seans varken) veya kullanıcı "Tüm Takvimi Baştan Eşitle" butonuna bastığında çalışır.
+    // Uygulama açılışında veya normal kullanımda ASLA tüm yılları taramaz!
+    const isFullSyncMode = Boolean(forceFullCalendarSync || !hasCompletedInitial);
     const activeViewWindow = getActiveAgendaSyncWindow();
 
-    // If running a background auto-sync on a view range that is completely inside a locked month (and no backfill is needed), skip network query
-    if (
-      isBackgroundAuto &&
-      !isFullSyncMode &&
-      isDateInClosedMonth(activeViewWindow.start, activeClosedMonths) &&
-      isDateInClosedMonth(activeViewWindow.end, activeClosedMonths)
-    ) {
+    // Ekranda görüntülenen pencere kilitli (kapatılmış) bir aya ait mi kontrol et:
+    const isWindowStartLocked = isDateInClosedMonth(activeViewWindow.start, activeClosedMonths);
+    const isWindowEndLocked = isDateInClosedMonth(activeViewWindow.end, activeClosedMonths);
+    const isEntireWindowLocked = isWindowStartLocked && isWindowEndLocked;
+
+    // Eğer ekranda görüntülenen ay kilitliyse ama veritabanında o aya ait hiç seans kalmamışsa (eski sürüm kaybı),
+    // komple takvimi taramak yerine SADECE o an ekranda açık olan kilitli görünüm aralığını takvimden tamamla!
+    let allowLockedMonthBackfillForView = false;
+    if (!isFullSyncMode && (isWindowStartLocked || isWindowEndLocked)) {
+      const startMonthKey = activeViewWindow.start.slice(0, 7);
+      const endMonthKey = activeViewWindow.end.slice(0, 7);
+      for (const mk of [startMonthKey, endMonthKey]) {
+        if (activeClosedMonths[mk] && (activeClosedMonths[mk].sessionCount || 0) > 0) {
+          const hasAnyInMonth = currentList.some(s => s && !s.isDeleted && s.date && s.date.startsWith(mk));
+          if (!hasAnyInMonth) {
+            allowLockedMonthBackfillForView = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Kilitli bir ayda (ve seansları veritabanında mevcutken) arka plan sorgusu atma!
+    if (isBackgroundAuto && !isFullSyncMode && isEntireWindowLocked && !allowLockedMonthBackfillForView) {
       return;
     }
 
@@ -5109,7 +5175,7 @@ export default function App() {
             activeSettings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
             activeClosedMonths,
-            !isFullSyncMode,
+            !(isFullSyncMode || allowLockedMonthBackfillForView),
             onlineDefaultPrice,
             faceToFaceDefaultPrice,
             isFullSyncMode ? undefined : activeViewWindow.start,
@@ -5155,7 +5221,7 @@ export default function App() {
             activeSettings.autoMarkShortEventsAsNonSession ?? true,
             effectiveAccountingStartDate,
             activeClosedMonths,
-            !isFullSyncMode,
+            !(isFullSyncMode || allowLockedMonthBackfillForView),
             onlineDefaultPrice,
             faceToFaceDefaultPrice,
             isFullSyncMode ? undefined : activeViewWindow.start,
@@ -5204,7 +5270,7 @@ export default function App() {
               activeSettings.autoMarkShortEventsAsNonSession ?? true,
               effectiveAccountingStartDate,
               activeClosedMonths,
-              !isFullSyncMode,
+              !(isFullSyncMode || allowLockedMonthBackfillForView),
               undefined,
               undefined,
               isFullSyncMode ? undefined : activeViewWindow.start,
@@ -5240,15 +5306,11 @@ export default function App() {
     if (hasFetchedFaceToFace || hasFetchedOwnerCalendars) syncedTypesFetched.push('face-to-face');
 
     if (syncedTypesFetched.length > 0 || hasFetchedOwnerCalendars) {
-      if (isFullSyncMode && closedKeys.length > 0) {
-        const backfillKey = user?.uid ? `psycalcu_locked_backfill_v2_${user.uid}` : 'psycalcu_locked_backfill_v2';
-        try { safeStorage.setItem(backfillKey, 'true', user?.uid); } catch (e) {}
-      }
-
       const stats = handleImportSessions(totalNewSessions, syncedTypesFetched, {
         start: activeViewWindow.start,
         end: activeViewWindow.end,
-        isFullSync: isFullSyncMode
+        isFullSync: isFullSyncMode,
+        allowLockedMonthBackfill: allowLockedMonthBackfillForView
       });
       if (!isBackgroundAuto && (stats.addedCount > 0 || stats.updatedCount > 0 || stats.deletedCount > 0)) {
         let msg = isFullSyncMode
@@ -5292,10 +5354,11 @@ export default function App() {
   // Track last synced view key so switching Day / Week / Month on Agenda queries that view range smoothly
   const lastSyncedViewKeyRef = useRef<string>('');
 
-  // Automated background calendar sync orchestrator (non-intrusive, throttled)
+  // Automated background calendar sync orchestrator (non-intrusive, throttled, strictly only when Agenda tab is active)
   const triggerAutoCalendarSync = useCallback(async (minIntervalMs = 15000) => {
-    // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized!
+    // CRITICAL GUARD: NEVER run auto-sync while initial data sync is still loading or uninitialized, or when not on Agenda tab!
     if (!isInitialSyncDone || isAuthLoading || isAuthSyncing) return;
+    if (activeTabRef.current !== 'agenda') return;
     if (featuresCalendarAllowed === false) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     
